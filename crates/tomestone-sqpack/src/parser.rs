@@ -1,5 +1,6 @@
 use std::{
-    io::{BufRead, Read},
+    convert::TryInto,
+    io::{self, BufRead, Read, Seek, SeekFrom},
     num::NonZeroUsize,
 };
 
@@ -15,6 +16,8 @@ use nom::{
 use sha1::{Digest, Sha1};
 
 use crate::{PlatformId, SqPackType};
+
+const SHA1_OUTPUT_SIZE: usize = 20;
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
     map(tag(b"SqPack\x00\x00"), |_| ())(input)
@@ -80,7 +83,7 @@ pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32
     map_parser(
         map(
             verify(
-                pair(take(0x3c0usize), take(Sha1::output_size())),
+                pair(take(0x3c0usize), take(SHA1_OUTPUT_SIZE)),
                 |(header_input, header_hash)| {
                     let mut hash = Sha1::new();
                     hash.update(header_input);
@@ -90,6 +93,32 @@ pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32
             |(header_input, _header_hash)| header_input,
         ),
         complete(all_consuming(sqpack_header_inner)),
+    )(input)
+}
+
+pub fn segment_header(input: &[u8]) -> IResult<&[u8], (u32, u32, u32, u32)> {
+    map(
+        tuple((le_u32, le_u32, le_u32, le_u32)),
+        |(size, index_type, index_data_offset, index_data_size)| {
+            (size, index_type, index_data_offset, index_data_size)
+        },
+    )(input)
+}
+
+pub fn index_segment_header(
+    input: &[u8],
+) -> IResult<&[u8], (u32, u32, u32, u32, [u8; SHA1_OUTPUT_SIZE])> {
+    map(
+        tuple((segment_header, take(SHA1_OUTPUT_SIZE))),
+        |((size, index_type, index_data_offset, index_data_size), segment_hash)| {
+            (
+                size,
+                index_type,
+                index_data_offset,
+                index_data_size,
+                segment_hash.try_into().unwrap(),
+            )
+        },
     )(input)
 }
 
@@ -149,6 +178,15 @@ impl<R: Read> Read for GrowableBufReader<R> {
         };
         self.consume(nread);
         Ok(nread)
+    }
+}
+
+impl<R: Read + Seek> Seek for GrowableBufReader<R> {
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64, io::Error> {
+        // throw away the entire buffer, no optimizations
+        self.pos = 0;
+        self.cap = 0;
+        self.inner.seek(pos)
     }
 }
 
