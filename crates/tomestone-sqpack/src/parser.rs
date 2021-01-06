@@ -6,7 +6,7 @@ use std::{
 use nom::{
     branch::alt,
     bytes::streaming::{tag, take},
-    combinator::{all_consuming, complete, map, map_parser, verify},
+    combinator::{all_consuming, complete, map, map_parser, map_res, verify},
     error::{Error, ErrorKind, ParseError},
     number::streaming::le_u32,
     sequence::{pair, tuple},
@@ -14,7 +14,7 @@ use nom::{
 };
 use sha1::{Digest, Sha1};
 
-use crate::PlatformId;
+use crate::{PlatformId, SqPackType};
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
     map(tag(b"SqPack\x00\x00"), |_| ())(input)
@@ -48,16 +48,15 @@ where
 #[derive(Debug, PartialEq, Eq)]
 struct PlatformIdParseError;
 
-fn platform_id(input: &[u8]) -> IResult<&[u8], Result<PlatformId, PlatformIdParseError>> {
-    map(take(1usize), |byte: &[u8]| match byte[0] {
-        0 => Ok(PlatformId::Win32),
-        1 => Ok(PlatformId::PS3),
-        2 => Ok(PlatformId::PS4),
-        _ => Err(PlatformIdParseError),
-    })(input)
+fn platform_id(input: &[u8]) -> IResult<&[u8], PlatformId> {
+    map_res(take(1usize), |byte: &[u8]| PlatformId::from_u8(byte[0]))(input)
 }
 
-fn sqpack_header_inner(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, u32)> {
+fn sqpack_type(input: &[u8]) -> IResult<&[u8], SqPackType> {
+    map_res(le_u32, |value| SqPackType::from_u32(value))(input)
+}
+
+fn sqpack_header_inner(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
     map(
         tuple((
             alt((sqpack_magic, alternate_dat_magic)),
@@ -65,19 +64,19 @@ fn sqpack_header_inner(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, u3
             null_padding(3),
             le_u32,
             le_u32,
-            le_u32,
+            sqpack_type,
             le_u32,
             le_u32,
             tag(b"\xff\xff\xff\xff"),
             null_padding(0x39c),
         )),
         |(_, platform_id, _, size, version, sqpack_type, _date, _unknown, _, _)| {
-            (platform_id.unwrap(), size, version, sqpack_type)
+            (platform_id, size, version, sqpack_type)
         },
     )(input)
 }
 
-pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, u32)> {
+pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
     map_parser(
         map(
             verify(
@@ -201,7 +200,7 @@ mod tests {
 
     use nom::{error::ErrorKind, Err, Needed};
 
-    use crate::PlatformId;
+    use crate::{PlatformId, SqPackType};
 
     #[test]
     fn test_null_padding() {
@@ -226,25 +225,39 @@ mod tests {
     fn test_platform_id() {
         use super::platform_id;
         assert_eq!(
-            platform_id(&[PlatformId::Win32 as u8][..])
-                .unwrap()
-                .1
-                .unwrap(),
+            platform_id(&[PlatformId::Win32 as u8][..]).unwrap().1,
             PlatformId::Win32
         );
         assert_eq!(
-            platform_id(&[PlatformId::PS3 as u8][..])
-                .unwrap()
-                .1
-                .unwrap(),
+            platform_id(&[PlatformId::PS3 as u8][..]).unwrap().1,
             PlatformId::PS3
         );
         assert_eq!(
-            platform_id(&[PlatformId::PS4 as u8][..])
-                .unwrap()
-                .1
-                .unwrap(),
+            platform_id(&[PlatformId::PS4 as u8][..]).unwrap().1,
             PlatformId::PS4
+        );
+    }
+
+    #[test]
+    fn test_sqpack_type() {
+        use super::sqpack_type;
+        assert_eq!(
+            sqpack_type(&[SqPackType::SQDB as u8, 0, 0, 0][..])
+                .unwrap()
+                .1,
+            SqPackType::SQDB
+        );
+        assert_eq!(
+            sqpack_type(&[SqPackType::Data as u8, 0, 0, 0][..])
+                .unwrap()
+                .1,
+            SqPackType::Data
+        );
+        assert_eq!(
+            sqpack_type(&[SqPackType::Index as u8, 0, 0, 0][..])
+                .unwrap()
+                .1,
+            SqPackType::Index
         );
     }
 }
