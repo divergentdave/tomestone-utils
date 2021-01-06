@@ -8,7 +8,7 @@ use nom::{
     bytes::streaming::{tag, take},
     combinator::{all_consuming, complete, map, map_parser, map_res, verify},
     error::{Error, ErrorKind, ParseError},
-    number::streaming::le_u32,
+    number::streaming::{le_u32, le_u8},
     sequence::{pair, tuple},
     Err, IResult, InputLength, InputTake, Needed,
 };
@@ -49,7 +49,7 @@ where
 struct PlatformIdParseError;
 
 fn platform_id(input: &[u8]) -> IResult<&[u8], PlatformId> {
-    map_res(take(1usize), |byte: &[u8]| PlatformId::from_u8(byte[0]))(input)
+    map_res(le_u8, |byte: u8| PlatformId::from_u8(byte))(input)
 }
 
 fn sqpack_type(input: &[u8]) -> IResult<&[u8], SqPackType> {
@@ -101,8 +101,8 @@ pub struct GrowableBufReader<R: Read> {
 }
 
 impl<R: Read> GrowableBufReader<R> {
-    pub fn new(inner: R) -> GrowableBufReader<R> {
-        let mut buf = Vec::with_capacity(8192);
+    pub fn with_capacity(inner: R, capacity: usize) -> GrowableBufReader<R> {
+        let mut buf = Vec::with_capacity(capacity);
         buf.resize(buf.capacity(), 0);
         GrowableBufReader {
             inner,
@@ -110,6 +110,10 @@ impl<R: Read> GrowableBufReader<R> {
             pos: 0,
             cap: 0,
         }
+    }
+
+    pub fn new(inner: R) -> GrowableBufReader<R> {
+        GrowableBufReader::with_capacity(inner, 1024)
     }
 
     fn fill_buf_required(&mut self, required: usize) -> std::io::Result<(&[u8], bool)> {
@@ -181,7 +185,7 @@ where
                 return Ok(Ok(output));
             }
             Err(Err::Incomplete(Needed::Unknown)) => {
-                reader.fill_buf_required(8192)?;
+                reader.fill_buf_required(1024)?;
             }
             Err(Err::Incomplete(Needed::Size(needed))) => {
                 reader.fill_buf_required(needed.get())?;
