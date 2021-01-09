@@ -7,7 +7,7 @@ use std::{
 use nom::{
     branch::alt,
     bytes::streaming::{tag, take},
-    combinator::{all_consuming, complete, map, map_parser, map_res, verify},
+    combinator::{all_consuming, complete, map, map_opt, map_parser, map_res, verify},
     error::{Error, ErrorKind, ParseError},
     number::streaming::{le_u32, le_u8},
     sequence::{pair, tuple},
@@ -96,27 +96,85 @@ pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32
     )(input)
 }
 
-pub fn segment_header(input: &[u8]) -> IResult<&[u8], (u32, u32, u32, u32)> {
+#[derive(Debug)]
+pub enum IndexType {
+    ZERO = 0,
+    FILES = 1,
+    TWO = 2,
+    THREE = 3,
+    FOUR = 4,
+    FIVE = 5,
+}
+
+impl IndexType {
+    pub fn parse(value: u32) -> Option<IndexType> {
+        match value {
+            0 => Some(IndexType::ZERO),
+            1 => Some(IndexType::FILES),
+            2 => Some(IndexType::TWO),
+            3 => Some(IndexType::THREE),
+            4 => Some(IndexType::FOUR),
+            5 => Some(IndexType::FIVE),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct IndexSegmentHeader {
+    pub index_type: IndexType,
+    pub offset: u32,
+    pub size: u32,
+    pub hash: [u8; SHA1_OUTPUT_SIZE],
+}
+
+fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
     map(
-        tuple((le_u32, le_u32, le_u32, le_u32)),
-        |(size, index_type, index_data_offset, index_data_size)| {
-            (size, index_type, index_data_offset, index_data_size)
+        tuple((
+            map_opt(le_u32, |value| IndexType::parse(value)),
+            le_u32,
+            le_u32,
+            take(SHA1_OUTPUT_SIZE),
+        )),
+        |(index_type, offset, size, hash): (IndexType, u32, u32, &[u8])| IndexSegmentHeader {
+            index_type,
+            offset,
+            size,
+            hash: hash.try_into().unwrap(),
         },
     )(input)
 }
 
-pub fn index_segment_header(
-    input: &[u8],
-) -> IResult<&[u8], (u32, u32, u32, u32, [u8; SHA1_OUTPUT_SIZE])> {
+pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegmentHeader; 4])> {
     map(
-        tuple((segment_header, take(SHA1_OUTPUT_SIZE))),
-        |((size, index_type, index_data_offset, index_data_size), segment_hash)| {
+        tuple((
+            le_u32,
+            index_segment_header,
+            null_padding(44),
+            index_segment_header,
+            null_padding(40),
+            index_segment_header,
+            null_padding(40),
+            index_segment_header,
+        )),
+        |(
+            size,
+            segment_header_1,
+            _,
+            segment_header_2,
+            _,
+            segment_header_3,
+            _,
+            segment_header_4,
+        )| {
             (
                 size,
-                index_type,
-                index_data_offset,
-                index_data_size,
-                segment_hash.try_into().unwrap(),
+                [
+                    segment_header_1,
+                    segment_header_2,
+                    segment_header_3,
+                    segment_header_4,
+                ],
             )
         },
     )(input)

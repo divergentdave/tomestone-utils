@@ -9,7 +9,7 @@ use sha1::{Digest, Sha1};
 use tomestone_sqpack::{
     list_repositories,
     parser::{
-        drive_streaming_parser, index_segment_header, sqpack_header_outer, GrowableBufReader,
+        drive_streaming_parser, index_segment_headers, sqpack_header_outer, GrowableBufReader,
     },
 };
 
@@ -48,7 +48,7 @@ fn parse_game_data() {
                             bufreader.seek(SeekFrom::Start(size.into())).unwrap();
                             let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
                                 &mut bufreader,
-                                index_segment_header,
+                                index_segment_headers,
                             )
                             .unwrap()
                             .unwrap();
@@ -91,22 +91,23 @@ fn check_index_hashes() {
                         bufreader.seek(SeekFrom::Start(size.into())).unwrap();
                         let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
                             &mut bufreader,
-                            index_segment_header,
+                            index_segment_headers,
                         )
                         .unwrap()
                         .unwrap();
-                        let (_, _, index_data_offset, index_data_size, segment_hash) = parsed;
-                        if index_data_size == 0 {
-                            continue;
+                        for header in &parsed.1 {
+                            if header.size == 0 {
+                                continue;
+                            }
+                            bufreader
+                                .seek(SeekFrom::Start(header.offset.into()))
+                                .unwrap();
+                            let mut buf = vec![0; header.size as usize];
+                            bufreader.read_exact(&mut buf).unwrap();
+                            let mut hash = Sha1::new();
+                            hash.update(&buf);
+                            assert_eq!(*hash.finalize(), header.hash);
                         }
-                        bufreader
-                            .seek(SeekFrom::Start(index_data_offset.into()))
-                            .unwrap();
-                        let mut buf = vec![0; index_data_size as usize];
-                        bufreader.read_exact(&mut buf).unwrap();
-                        let mut hash = Sha1::new();
-                        hash.update(&buf);
-                        assert_eq!(*hash.finalize(), segment_hash);
                     }
                     _ => {}
                 }
