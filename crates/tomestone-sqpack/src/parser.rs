@@ -15,9 +15,10 @@ use nom::{
 };
 use sha1::{Digest, Sha1};
 
-use crate::{PlatformId, SqPackType};
-
-const SHA1_OUTPUT_SIZE: usize = 20;
+use crate::{
+    IndexEntry1, IndexEntry2, IndexSegmentHeader, IndexType, PlatformId, SqPackType,
+    SHA1_OUTPUT_SIZE,
+};
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
     map(tag(b"SqPack\x00\x00"), |_| ())(input)
@@ -96,38 +97,6 @@ pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32
     )(input)
 }
 
-#[derive(Debug)]
-pub enum IndexType {
-    ZERO = 0,
-    FILES = 1,
-    TWO = 2,
-    THREE = 3,
-    FOUR = 4,
-    FIVE = 5,
-}
-
-impl IndexType {
-    pub fn parse(value: u32) -> Option<IndexType> {
-        match value {
-            0 => Some(IndexType::ZERO),
-            1 => Some(IndexType::FILES),
-            2 => Some(IndexType::TWO),
-            3 => Some(IndexType::THREE),
-            4 => Some(IndexType::FOUR),
-            5 => Some(IndexType::FIVE),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct IndexSegmentHeader {
-    pub index_type: IndexType,
-    pub offset: u32,
-    pub size: u32,
-    pub hash: [u8; SHA1_OUTPUT_SIZE],
-}
-
 fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
     map(
         tuple((
@@ -178,6 +147,26 @@ pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegment
             )
         },
     )(input)
+}
+
+pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
+    map(
+        tuple((le_u32, le_u32, le_u32, null_padding(4))),
+        |(filename_crc, folder_crc, packed, _)| IndexEntry1 {
+            filename_crc,
+            folder_crc,
+            data_file_id: (packed & 7) as u8,
+            offset: packed & !7,
+        },
+    )(input)
+}
+
+pub fn index_entry_2(input: &[u8]) -> IResult<&[u8], IndexEntry2> {
+    map(tuple((le_u32, le_u32)), |(path_crc, packed)| IndexEntry2 {
+        path_crc,
+        data_file_id: (packed & 7) as u8,
+        offset: packed & !7,
+    })(input)
 }
 
 pub struct GrowableBufReader<R: Read> {
@@ -287,7 +276,6 @@ where
                 reader.fill_buf_required(needed.get())?;
             }
             Err(Err::Error(e)) | Err(Err::Failure(e)) => {
-                dbg!(&e);
                 return Ok(Err(e.code));
             }
         }
