@@ -67,7 +67,7 @@ fn sqpack_header_inner(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, Sq
             alt((sqpack_magic, alternate_dat_magic)),
             platform_id,
             null_padding(3),
-            le_u32,
+            le_u32, // note that this doesn't seem to match header size for .dat2 files
             le_u32,
             sqpack_type,
             le_u32,
@@ -81,11 +81,34 @@ fn sqpack_header_inner(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, Sq
     )(input)
 }
 
-pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
+pub fn integrity_checked_header<
+    'a,
+    LP: FnMut(&'a [u8]) -> IResult<&'a [u8], usize>,
+    CP: FnMut(&'a [u8]) -> IResult<&'a [u8], O>,
+    O,
+>(
+    input: &'a [u8],
+    mut length_parser: LP,
+    contents_parser: CP,
+) -> IResult<&[u8], O> {
+    const HASH_OFFSET: usize = 0x3c0;
+
     map_parser(
         map(
             verify(
-                pair(take(0x3c0usize), take(SHA1_OUTPUT_SIZE)),
+                |input: &'a [u8]| -> IResult<&[u8], (&[u8], &[u8; SHA1_OUTPUT_SIZE])> {
+                    let (_, length) = length_parser(input)?;
+                    if length < HASH_OFFSET + SHA1_OUTPUT_SIZE {
+                        eprintln!("bad!");
+                        return Err(Err::Error(Error::from_error_kind(input, ErrorKind::Eof)));
+                    }
+                    let (input, (header_input, hash_input, ())) = tuple((
+                        take(HASH_OFFSET),
+                        take(SHA1_OUTPUT_SIZE),
+                        null_padding(length - (HASH_OFFSET + SHA1_OUTPUT_SIZE)),
+                    ))(input)?;
+                    Ok((input, (header_input, hash_input.try_into().unwrap())))
+                },
                 |(header_input, header_hash)| {
                     let mut hash = Sha1::new();
                     hash.update(header_input);
@@ -94,8 +117,12 @@ pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32
             ),
             |(header_input, _header_hash)| header_input,
         ),
-        complete(all_consuming(sqpack_header_inner)),
+        complete(contents_parser),
     )(input)
+}
+
+pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
+    integrity_checked_header(input, |_| Ok((b"", 1024usize)), sqpack_header_inner)
 }
 
 fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
