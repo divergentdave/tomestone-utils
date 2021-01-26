@@ -143,38 +143,42 @@ fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
 }
 
 pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegmentHeader; 4])> {
-    map(
-        tuple((
-            le_u32,
-            index_segment_header,
-            null_padding(44),
-            index_segment_header,
-            null_padding(40),
-            index_segment_header,
-            null_padding(40),
-            index_segment_header,
-        )),
-        |(
-            size,
-            segment_header_1,
-            _,
-            segment_header_2,
-            _,
-            segment_header_3,
-            _,
-            segment_header_4,
-        )| {
-            (
+    integrity_checked_header(
+        input,
+        map(le_u32, |size| size as usize),
+        map(
+            tuple((
+                le_u32,
+                index_segment_header,
+                null_padding(44),
+                index_segment_header,
+                null_padding(40),
+                index_segment_header,
+                null_padding(40),
+                index_segment_header,
+            )),
+            |(
                 size,
-                [
-                    segment_header_1,
-                    segment_header_2,
-                    segment_header_3,
-                    segment_header_4,
-                ],
-            )
-        },
-    )(input)
+                segment_header_1,
+                _,
+                segment_header_2,
+                _,
+                segment_header_3,
+                _,
+                segment_header_4,
+            )| {
+                (
+                    size,
+                    [
+                        segment_header_1,
+                        segment_header_2,
+                        segment_header_3,
+                        segment_header_4,
+                    ],
+                )
+            },
+        ),
+    )
 }
 
 pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
