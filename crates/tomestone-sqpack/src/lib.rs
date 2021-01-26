@@ -217,6 +217,12 @@ pub struct Index<E: IndexEntry> {
     table: Vec<E>,
 }
 
+impl<E: IndexEntry> Index<E> {
+    pub(crate) fn new(table: Vec<E>) -> Index<E> {
+        Index { table }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SqPackId {
     category: u8,

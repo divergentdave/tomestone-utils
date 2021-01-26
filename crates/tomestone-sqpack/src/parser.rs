@@ -8,17 +8,17 @@ use std::{
 use nom::{
     branch::alt,
     bytes::streaming::{tag, take},
-    combinator::{all_consuming, complete, map, map_opt, map_parser, map_res, verify},
+    combinator::{complete, map, map_opt, map_parser, map_res, verify},
     error::{Error, ErrorKind, ParseError},
     number::streaming::{le_u32, le_u8},
-    sequence::{pair, tuple},
+    sequence::tuple,
     Err, IResult, InputLength, InputTake, Needed,
 };
 use sha1::{Digest, Sha1};
 
 use crate::{
-    IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader, IndexType,
-    PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
+    Index, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader,
+    IndexType, PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
 };
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
@@ -311,6 +311,39 @@ where
             }
         }
     }
+}
+
+pub fn load_index<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
+    bufreader: &mut GrowableBufReader<File>,
+    parser: P,
+) -> Result<Result<Index<I>, ErrorKind>, io::Error> {
+    let file_header =
+        match drive_streaming_parser::<_, _, _, Error<&[u8]>>(bufreader, sqpack_header_outer)? {
+            Ok(file_header) => file_header,
+            Err(e) => return Ok(Err(e)),
+        };
+    let size = file_header.1;
+
+    bufreader.seek(SeekFrom::Start(size.into()))?;
+    let index_header =
+        match drive_streaming_parser::<_, _, _, Error<&[u8]>>(bufreader, index_segment_headers)? {
+            Ok(index_header) => index_header,
+            Err(e) => return Ok(Err(e)),
+        };
+    let first_segment_header = &index_header.1[0];
+
+    bufreader.seek(SeekFrom::Start(first_segment_header.offset.into()))?;
+    let entry_count = first_segment_header.size / I::SIZE;
+    let mut entries = Vec::with_capacity(entry_count as usize);
+    for _ in 0..entry_count {
+        let index_entry = match drive_streaming_parser::<_, _, _, Error<&[u8]>>(bufreader, &parser)?
+        {
+            Ok(index_entry) => index_entry,
+            Err(e) => return Ok(Err(e)),
+        };
+        entries.push(index_entry);
+    }
+    Ok(Ok(Index::new(entries)))
 }
 
 #[cfg(test)]
