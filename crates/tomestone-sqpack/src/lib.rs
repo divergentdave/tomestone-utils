@@ -1,4 +1,6 @@
+use once_cell::sync::OnceCell;
 use std::{
+    collections::hash_map::HashMap,
     ffi::OsString,
     io,
     path::{Path, PathBuf},
@@ -212,7 +214,36 @@ impl IndexEntry for IndexEntry2 {
 
 #[derive(Debug)]
 pub struct Index<E: IndexEntry> {
-    repository: String,
-    path: PathBuf,
     table: Vec<E>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SqPackId {
+    category: u8,
+    expansion: u8,
+    number: u8,
+}
+
+pub struct GameData {
+    root_path: PathBuf,
+    repositories: Vec<OsString>,
+    index_map: HashMap<SqPackId, OnceCell<Index<IndexEntry2>>>,
+    decompressed_map: HashMap<SqPackId, OnceCell<()>>,
+}
+
+impl GameData {
+    pub fn new<P: AsRef<Path>>(path: P) -> std::io::Result<GameData> {
+        let root_path = path.as_ref().to_owned();
+        let repositories = list_repositories(&root_path)?;
+        Ok(GameData {
+            root_path,
+            repositories,
+            index_map: HashMap::new(),
+            decompressed_map: HashMap::new(),
+        })
+    }
+
+    pub fn lookup(&self, path: &str) {
+        todo!()
+    }
 }
