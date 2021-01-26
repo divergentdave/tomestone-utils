@@ -1,5 +1,6 @@
 use std::{
     convert::TryInto,
+    fs::File,
     io::{self, BufRead, Read, Seek, SeekFrom},
     num::NonZeroUsize,
 };
@@ -16,8 +17,8 @@ use nom::{
 use sha1::{Digest, Sha1};
 
 use crate::{
-    IndexEntry1, IndexEntry2, IndexSegmentHeader, IndexType, PlatformId, SqPackType,
-    SHA1_OUTPUT_SIZE,
+    IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader, IndexType,
+    PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
 };
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
@@ -153,8 +154,7 @@ pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
     map(
         tuple((le_u32, le_u32, le_u32, null_padding(4))),
         |(filename_crc, folder_crc, packed, _)| IndexEntry1 {
-            filename_crc,
-            folder_crc,
+            hash: IndexHash1::new(folder_crc, filename_crc),
             data_file_id: (packed & 7) as u8,
             offset: packed & !7,
         },
@@ -163,7 +163,7 @@ pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
 
 pub fn index_entry_2(input: &[u8]) -> IResult<&[u8], IndexEntry2> {
     map(tuple((le_u32, le_u32)), |(path_crc, packed)| IndexEntry2 {
-        path_crc,
+        hash: IndexHash2::new(path_crc),
         data_file_id: (packed & 7) as u8,
         offset: packed & !7,
     })(input)

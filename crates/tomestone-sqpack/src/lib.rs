@@ -104,8 +104,67 @@ pub struct IndexSegmentHeader {
     pub hash: [u8; SHA1_OUTPUT_SIZE],
 }
 
+pub trait IndexHash {
+    fn hash(path: &str) -> Self;
+}
+
+fn crc32(data: &[u8]) -> u32 {
+    let mut hasher = crc32fast::Hasher::new();
+    hasher.update(data);
+    hasher.finalize()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct IndexHash1 {
+    folder_crc: u32,
+    filename_crc: u32,
+}
+
+impl IndexHash1 {
+    pub fn new(folder_crc: u32, filename_crc: u32) -> IndexHash1 {
+        IndexHash1 {
+            folder_crc,
+            filename_crc,
+        }
+    }
+}
+
+impl IndexHash for IndexHash1 {
+    fn hash(path: &str) -> Self {
+        let (folder, filename) = if let Some(last_separator_pos) = path.rfind('/') {
+            let (folder_slice, filename_slice) = path.split_at(last_separator_pos + 1);
+            (folder_slice.to_lowercase(), filename_slice.to_lowercase())
+        } else {
+            ("".to_string(), path.to_lowercase())
+        };
+        IndexHash1 {
+            folder_crc: crc32(folder.as_bytes()),
+            filename_crc: crc32(filename.as_bytes()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct IndexHash2 {
+    path_crc: u32,
+}
+
+impl IndexHash2 {
+    pub fn new(path_crc: u32) -> IndexHash2 {
+        IndexHash2 { path_crc }
+    }
+}
+
+impl IndexHash for IndexHash2 {
+    fn hash(path: &str) -> Self {
+        IndexHash2 {
+            path_crc: crc32(path.to_lowercase().as_bytes()),
+        }
+    }
+}
+
 pub trait IndexEntry {
-    type Hash: PartialOrd + Ord + PartialEq + Eq;
+    type Hash: PartialEq + Eq + PartialOrd + Ord;
     const SIZE: u32;
     fn hash(&self) -> Self::Hash;
     fn data_location(&self) -> (u8, u32);
@@ -113,18 +172,17 @@ pub trait IndexEntry {
 
 #[derive(Debug)]
 pub struct IndexEntry1 {
-    filename_crc: u32,
-    folder_crc: u32,
+    hash: IndexHash1,
     data_file_id: u8,
     offset: u32,
 }
 
 impl IndexEntry for IndexEntry1 {
-    type Hash = (u32, u32);
+    type Hash = IndexHash1;
     const SIZE: u32 = 16;
 
     fn hash(&self) -> Self::Hash {
-        (self.folder_crc, self.filename_crc)
+        self.hash
     }
 
     fn data_location(&self) -> (u8, u32) {
@@ -134,17 +192,17 @@ impl IndexEntry for IndexEntry1 {
 
 #[derive(Debug)]
 pub struct IndexEntry2 {
-    path_crc: u32,
+    hash: IndexHash2,
     data_file_id: u8,
     offset: u32,
 }
 
 impl IndexEntry for IndexEntry2 {
-    type Hash = u32;
+    type Hash = IndexHash2;
     const SIZE: u32 = 8;
 
     fn hash(&self) -> Self::Hash {
-        self.path_crc
+        self.hash
     }
 
     fn data_location(&self) -> (u8, u32) {
