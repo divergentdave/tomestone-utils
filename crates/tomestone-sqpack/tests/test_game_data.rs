@@ -1,6 +1,7 @@
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
+    panic::{catch_unwind, RefUnwindSafe, UnwindSafe},
     path::PathBuf,
 };
 
@@ -15,7 +16,7 @@ use tomestone_sqpack::{
     IndexEntry, IndexEntry1, IndexEntry2, IndexSegmentHeader,
 };
 
-fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>)) {
+fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + RefUnwindSafe) {
     dotenv::dotenv().unwrap();
     // Don't test anything if the game directory isn't provided
     if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
@@ -27,7 +28,11 @@ fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>)) {
                 let file_entry = res.unwrap();
                 let path = file_entry.path();
                 let file = File::open(&path).unwrap();
-                f(path, GrowableBufReader::new(file));
+                let res = catch_unwind(|| f(path, GrowableBufReader::new(file)));
+                if let Err(panic) = res {
+                    eprintln!("Error while processing {:?}", file_entry.path());
+                    panic!(panic);
+                }
             }
         }
     }
