@@ -1,0 +1,9 @@
+[package]
+name = "tomestone-sqpack-dump"
+version = "0.1.0"
+authors = ["David Cook <divergentdave@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+dotenv = "0.15.0"
+tomestone-sqpack = { path = "../tomestone-sqpack" }

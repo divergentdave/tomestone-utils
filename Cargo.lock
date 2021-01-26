@@ -357,6 +357,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tomestone-sqpack-dump"
+version = "0.1.0"
+dependencies = [
+ "dotenv",
+ "tomestone-sqpack",
+]
+
+[[package]]
 name = "tomestone-string-interp"
 version = "0.1.0"
 dependencies = [
