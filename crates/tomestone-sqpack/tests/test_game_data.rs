@@ -5,15 +5,15 @@ use std::{
     path::PathBuf,
 };
 
-use nom::{error::Error, IResult};
+use nom::error::Error;
 use sha1::{Digest, Sha1};
 use tomestone_sqpack::{
     list_repositories,
     parser::{
-        drive_streaming_parser, index_entry_1, index_entry_2, index_segment_headers, load_index,
-        sqpack_header_outer, GrowableBufReader,
+        data_header, drive_streaming_parser, index_entry_1, index_entry_2, index_segment_headers,
+        load_index, sqpack_header_outer, GrowableBufReader,
     },
-    Index, IndexEntry, IndexEntry1, IndexEntry2, IndexSegmentHeader,
+    Index, IndexEntry,
 };
 
 fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + RefUnwindSafe) {
@@ -51,15 +51,21 @@ fn parse_game_data() {
             .unwrap()
             .unwrap();
             println!("{:?}", parsed);
+            bufreader.seek(SeekFrom::Start(1024)).unwrap();
             if ext == "index" || ext == "index2" {
-                let size = parsed.1;
-                bufreader.seek(SeekFrom::Start(size.into())).unwrap();
                 let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
                     &mut bufreader,
                     index_segment_headers,
                 )
                 .unwrap()
                 .unwrap();
+                println!("{:?}", parsed);
+            } else {
+                // dat file
+                let parsed =
+                    drive_streaming_parser::<_, _, _, Error<&[u8]>>(&mut bufreader, data_header)
+                        .unwrap()
+                        .unwrap();
                 println!("{:?}", parsed);
             }
         }

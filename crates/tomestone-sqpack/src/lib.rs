@@ -106,6 +106,13 @@ pub struct IndexSegmentHeader {
     pub hash: [u8; SHA1_OUTPUT_SIZE],
 }
 
+#[derive(Debug)]
+pub struct DataHeader {
+    pub data_size: u64,
+    pub spanned_dat: u32,
+    pub max_file_size: u32,
+}
+
 pub trait IndexHash {
     fn hash(path: &str) -> Self;
 }

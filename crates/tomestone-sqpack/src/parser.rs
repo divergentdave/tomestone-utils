@@ -17,8 +17,8 @@ use nom::{
 use sha1::{Digest, Sha1};
 
 use crate::{
-    Index, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader,
-    IndexType, PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
+    DataHeader, Index, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2,
+    IndexSegmentHeader, IndexType, PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
 };
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
@@ -99,7 +99,6 @@ pub fn integrity_checked_header<
                 |input: &'a [u8]| -> IResult<&[u8], (&[u8], &[u8; SHA1_OUTPUT_SIZE])> {
                     let (_, length) = length_parser(input)?;
                     if length < HASH_OFFSET + SHA1_OUTPUT_SIZE {
-                        eprintln!("bad!");
                         return Err(Err::Error(Error::from_error_kind(input, ErrorKind::Eof)));
                     }
                     let (input, (header_input, hash_input, ())) = tuple((
@@ -176,6 +175,30 @@ pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegment
                         segment_header_4,
                     ],
                 )
+            },
+        ),
+    )
+}
+
+pub fn data_header(input: &[u8]) -> IResult<&[u8], DataHeader> {
+    integrity_checked_header(
+        input,
+        map(le_u32, |size| size as usize),
+        map(
+            tuple((
+                le_u32,
+                null_padding(4),
+                le_u32,
+                le_u32,
+                le_u32,
+                null_padding(4),
+                le_u32,
+                null_padding(4),
+            )),
+            |(_, _, _, data_size, spanned_dat, _, max_file_size, _)| DataHeader {
+                data_size: data_size as u64 * 8,
+                spanned_dat,
+                max_file_size,
             },
         ),
     )
