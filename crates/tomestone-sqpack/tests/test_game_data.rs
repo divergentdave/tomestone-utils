@@ -10,10 +10,10 @@ use sha1::{Digest, Sha1};
 use tomestone_sqpack::{
     list_repositories,
     parser::{
-        drive_streaming_parser, index_entry_1, index_entry_2, index_segment_headers,
+        drive_streaming_parser, index_entry_1, index_entry_2, index_segment_headers, load_index,
         sqpack_header_outer, GrowableBufReader,
     },
-    IndexEntry, IndexEntry1, IndexEntry2, IndexSegmentHeader,
+    Index, IndexEntry, IndexEntry1, IndexEntry2, IndexSegmentHeader,
 };
 
 fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + RefUnwindSafe) {
@@ -105,16 +105,9 @@ fn check_index_hashes() {
 
 #[test]
 fn check_index_order() {
-    fn inner<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
-        header: &IndexSegmentHeader,
-        bufreader: &mut GrowableBufReader<File>,
-        parser: P,
-    ) {
-        let mut last_hash: Option<I::Hash> = None;
-        for _ in 0..(header.size / I::SIZE) {
-            let index_entry = drive_streaming_parser::<_, _, _, Error<&[u8]>>(bufreader, &parser)
-                .unwrap()
-                .unwrap();
+    fn inner<E: IndexEntry>(index: &Index<E>) {
+        let mut last_hash: Option<E::Hash> = None;
+        for index_entry in index.iter() {
             let hash = index_entry.hash();
             if let Some(last_hash) = &last_hash {
                 assert!(last_hash < &hash);
@@ -124,33 +117,13 @@ fn check_index_order() {
     }
 
     forall_sqpack(|path, mut bufreader| match path.extension() {
-        Some(ext) if ext == "index" || ext == "index2" => {
-            let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
-                &mut bufreader,
-                sqpack_header_outer,
-            )
-            .unwrap()
-            .unwrap();
-            let size = parsed.1;
-            bufreader.seek(SeekFrom::Start(size.into())).unwrap();
-            let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
-                &mut bufreader,
-                index_segment_headers,
-            )
-            .unwrap()
-            .unwrap();
-            let header = &parsed.1[0];
-            if header.size == 0 {
-                return;
-            }
-            bufreader
-                .seek(SeekFrom::Start(header.offset.into()))
-                .unwrap();
-            if ext == "index" {
-                inner::<IndexEntry1, _>(&header, &mut bufreader, index_entry_1);
-            } else {
-                inner::<IndexEntry2, _>(&header, &mut bufreader, index_entry_2);
-            }
+        Some(ext) if ext == "index" => {
+            let index = load_index(&mut bufreader, index_entry_1).unwrap().unwrap();
+            inner(&index);
+        }
+        Some(ext) if ext == "index2" => {
+            let index = load_index(&mut bufreader, index_entry_2).unwrap().unwrap();
+            inner(&index);
         }
         _ => {}
     });

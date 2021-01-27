@@ -221,6 +221,10 @@ impl<E: IndexEntry> Index<E> {
     pub(crate) fn new(table: Vec<E>) -> Index<E> {
         Index { table }
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &E> {
+        self.table.iter()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
