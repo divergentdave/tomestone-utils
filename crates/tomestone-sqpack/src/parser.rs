@@ -284,6 +284,12 @@ impl<R: Read> Read for GrowableBufReader<R> {
 
 impl<R: Read + Seek> Seek for GrowableBufReader<R> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, io::Error> {
+        match pos {
+            SeekFrom::Current(_) => {
+                panic!("Seeking from the current position is unsupported for GrowableBufReader")
+            }
+            _ => {}
+        }
         // throw away the entire buffer, no optimizations
         self.pos = 0;
         self.cap = 0;
