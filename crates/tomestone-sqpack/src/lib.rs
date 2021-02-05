@@ -241,6 +241,15 @@ pub struct SqPackId {
     number: u8,
 }
 
+#[derive(Debug)]
+pub enum DataBlocks {
+    Empty,
+    Unsupported,
+    Binary(),
+    Model(),
+    Texture(),
+}
+
 pub struct GameData {
     root_path: PathBuf,
     repositories: Vec<OsString>,

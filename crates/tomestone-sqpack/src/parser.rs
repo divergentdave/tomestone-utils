@@ -10,14 +10,15 @@ use nom::{
     bytes::streaming::{tag, take},
     combinator::{complete, map, map_opt, map_parser, map_res, verify},
     error::{Error, ErrorKind, ParseError},
-    number::streaming::{le_u32, le_u8},
+    multi::count,
+    number::streaming::{le_u16, le_u32, le_u8},
     sequence::tuple,
     Err, IResult, InputLength, InputTake, Needed,
 };
 use sha1::{Digest, Sha1};
 
 use crate::{
-    DataHeader, Index, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2,
+    DataBlocks, DataHeader, Index, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2,
     IndexSegmentHeader, IndexType, PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
 };
 
@@ -204,6 +205,128 @@ pub fn data_header(input: &[u8]) -> IResult<&[u8], DataHeader> {
     )
 }
 
+#[derive(Debug)]
+enum DataContentType {
+    Empty = 1,
+    Binary = 2,
+    Model = 3,
+    Texture = 4,
+    Unsupported,
+}
+
+impl DataContentType {
+    fn parse(value: u32) -> Option<DataContentType> {
+        match value {
+            0 => Some(DataContentType::Unsupported),
+            1 => Some(DataContentType::Empty),
+            2 => Some(DataContentType::Binary),
+            3 => Some(DataContentType::Model),
+            4 => Some(DataContentType::Texture),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct DataEntryHeaderCommon {
+    content_type: DataContentType,
+    uncompressed_size: u32,
+    block_buffer_size: u32,
+    num_blocks: u32,
+}
+
+fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeaderCommon)> {
+    map(
+        tuple((
+            le_u32,
+            map_opt(le_u32, DataContentType::parse),
+            le_u32,
+            le_u32,
+            le_u32,
+            le_u32,
+        )),
+        |(
+            header_length,
+            content_type,
+            uncompressed_size,
+            _unknown,
+            block_buffer_size,
+            num_blocks,
+        )| {
+            (
+                header_length,
+                DataEntryHeaderCommon {
+                    content_type,
+                    uncompressed_size,
+                    block_buffer_size,
+                    num_blocks,
+                },
+            )
+        },
+    )(input)
+}
+
+fn type_2_block_table<'a>(
+    num_blocks: u32,
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(u32, u16, u16)>> {
+    count(tuple((le_u32, le_u16, le_u16)), num_blocks as usize)
+}
+
+fn type_3_block_table<'a>(
+    _num_blocks: u32,
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (Vec<u32>, Vec<u32>, Vec<u32>, u16)> {
+    tuple((
+        count(le_u32, 11),
+        count(le_u32, 11),
+        count(le_u32, 11),
+        le_u16,
+        // count(le_u16, num_blocks as usize),
+    ))
+}
+
+fn type_4_block_table<'a>(
+    num_blocks: u32,
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (Vec<(u32, u32, u32, u32, u32)>, Vec<u16>)> {
+    move |input: &[u8]| {
+        let (input, frame_infos) = count(
+            tuple((
+                le_u32, // frame_offset
+                le_u32, // frame_size
+                le_u32, // _unknown
+                le_u32, // frame_block_size_offset
+                le_u32, // frame_block_size_count
+            )),
+            num_blocks as usize,
+        )(input)?;
+        let size_field_count = frame_infos.iter().map(|tuple| tuple.4 as usize).sum();
+        let (input, frame_block_sizes) = count(le_u16, size_field_count)(input)?;
+        Ok((input, (frame_infos, frame_block_sizes)))
+    }
+}
+
+pub fn data_entry_headers(input: &[u8]) -> IResult<&[u8], DataBlocks> {
+    let (_, (header_length, header_common)) = data_entry_header_common(input)?;
+    let (input, header_data) = take(header_length as usize)(input)?;
+    let (header_data, _) = complete(data_entry_header_common)(header_data)?;
+    let blocks = match header_common.content_type {
+        DataContentType::Empty => DataBlocks::Empty,
+        DataContentType::Unsupported => DataBlocks::Unsupported,
+        DataContentType::Binary => {
+            let _ = complete(type_2_block_table(header_common.num_blocks))(header_data)?;
+            DataBlocks::Binary()
+        }
+        DataContentType::Model => {
+            let _ = complete(type_3_block_table(header_common.num_blocks))(header_data)?;
+            DataBlocks::Model()
+        }
+        DataContentType::Texture => {
+            let _ = complete(type_4_block_table(header_common.num_blocks))(header_data)?;
+            DataBlocks::Texture()
+        }
+    };
+    Ok((input, blocks))
+}
+
 pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
     map(
         tuple((le_u32, le_u32, le_u32, null_padding(4))),
@@ -246,7 +369,11 @@ impl<R: Read> GrowableBufReader<R> {
         GrowableBufReader::with_capacity(inner, 1024)
     }
 
-    fn fill_buf_required(&mut self, required: usize) -> std::io::Result<(&[u8], bool)> {
+    pub fn buffer_capacity(&self) -> usize {
+        self.cap - self.pos
+    }
+
+    pub fn fill_buf_required(&mut self, required: usize) -> std::io::Result<(&[u8], bool)> {
         let mut eof = false;
         if self.cap - self.pos <= required {
             if self.buf.len() < required {
@@ -330,10 +457,16 @@ where
                 return Ok(Ok(output));
             }
             Err(Err::Incomplete(Needed::Unknown)) => {
-                reader.fill_buf_required(1024)?;
+                let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + 1024)?;
+                if eof {
+                    return Ok(Err(ErrorKind::Eof));
+                }
             }
             Err(Err::Incomplete(Needed::Size(needed))) => {
-                reader.fill_buf_required(needed.get())?;
+                let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + needed.get())?;
+                if eof {
+                    return Ok(Err(ErrorKind::Eof));
+                }
             }
             Err(Err::Error(e)) | Err(Err::Failure(e)) => {
                 return Ok(Err(e.code));

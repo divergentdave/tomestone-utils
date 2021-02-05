@@ -10,8 +10,8 @@ use sha1::{Digest, Sha1};
 use tomestone_sqpack::{
     list_repositories,
     parser::{
-        data_header, drive_streaming_parser, index_entry_1, index_entry_2, index_segment_headers,
-        load_index, sqpack_header_outer, GrowableBufReader,
+        data_entry_headers, data_header, drive_streaming_parser, index_entry_1, index_entry_2,
+        index_segment_headers, load_index, sqpack_header_outer, GrowableBufReader,
     },
     Index, IndexEntry,
 };
@@ -67,6 +67,15 @@ fn parse_game_data() {
                         .unwrap()
                         .unwrap();
                 println!("{:?}", parsed);
+                if parsed.data_size > 0 {
+                    let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
+                        &mut bufreader,
+                        data_entry_headers,
+                    )
+                    .unwrap()
+                    .unwrap();
+                    println!("{:?}", parsed);
+                }
             }
         }
         _ => {}
