@@ -235,9 +235,102 @@ impl<E: IndexEntry> Index<E> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Category {
+    Common = 0,
+    BgCommon = 1,
+    Bg = 2,
+    Cut = 3,
+    Chara = 4,
+    Shader = 5,
+    Ui = 6,
+    Sound = 7,
+    Vfx = 8,
+    UiScript = 9,
+    Exd = 0xA,
+    GameScript = 0xB,
+    Music = 0xC,
+    SqpackTest = 0x12,
+    Debug = 0x13,
+}
+
+impl Category {
+    pub fn parse_name(name: &str) -> Result<Category, ()> {
+        match name {
+            "common" => Ok(Category::Common),
+            "bgcommon" => Ok(Category::BgCommon),
+            "bg" => Ok(Category::Bg),
+            "cut" => Ok(Category::Cut),
+            "chara" => Ok(Category::Chara),
+            "shader" => Ok(Category::Shader),
+            "ui" => Ok(Category::Ui),
+            "sound" => Ok(Category::Sound),
+            "vfx" => Ok(Category::Vfx),
+            "ui_script" => Ok(Category::UiScript),
+            "exd" => Ok(Category::Exd),
+            "game_script" => Ok(Category::GameScript),
+            "music" => Ok(Category::Music),
+            "sqpack_test" => Ok(Category::SqpackTest),
+            "debug" => Ok(Category::Debug),
+            _ => Err(()),
+        }
+    }
+
+    pub fn iter_all() -> impl Iterator<Item = &'static Category> {
+        const LIST: [Category; 15] = [
+            Category::Common,
+            Category::BgCommon,
+            Category::Bg,
+            Category::Cut,
+            Category::Chara,
+            Category::Shader,
+            Category::Ui,
+            Category::Sound,
+            Category::Vfx,
+            Category::UiScript,
+            Category::Exd,
+            Category::GameScript,
+            Category::Music,
+            Category::SqpackTest,
+            Category::Debug,
+        ];
+        LIST.iter()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Expansion {
+    Base = 0,
+    Ex1 = 1,
+    Ex2 = 2,
+    Ex3 = 3,
+}
+
+impl Expansion {
+    pub fn parse_name(name: &str) -> Result<Expansion, ()> {
+        match name {
+            "ffxiv" => Ok(Expansion::Base),
+            "ex1" => Ok(Expansion::Ex1),
+            "ex2" => Ok(Expansion::Ex2),
+            "ex3" => Ok(Expansion::Ex3),
+            _ => Err(()),
+        }
+    }
+
+    pub fn iter_all() -> impl Iterator<Item = &'static Expansion> {
+        const LIST: [Expansion; 4] = [
+            Expansion::Base,
+            Expansion::Ex1,
+            Expansion::Ex2,
+            Expansion::Ex3,
+        ];
+        LIST.iter()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SqPackId {
-    category: u8,
-    expansion: u8,
+    category: Category,
+    expansion: Expansion,
     number: u8,
 }
 
