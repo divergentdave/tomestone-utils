@@ -1,4 +1,5 @@
 use std::{
+    convert::TryInto,
     fs::File,
     io::{Read, Seek, SeekFrom},
     panic::{catch_unwind, RefUnwindSafe, UnwindSafe},
@@ -107,7 +108,7 @@ fn check_index_hashes() {
                 bufreader
                     .seek(SeekFrom::Start(header.offset.into()))
                     .unwrap();
-                let mut buf = vec![0; header.size as usize];
+                let mut buf = vec![0; header.size.try_into().unwrap()];
                 bufreader.read_exact(&mut buf).unwrap();
                 let mut hash = Sha1::new();
                 hash.update(&buf);

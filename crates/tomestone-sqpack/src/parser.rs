@@ -145,7 +145,7 @@ fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
 pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegmentHeader; 4])> {
     integrity_checked_header(
         input,
-        map(le_u32, |size| size as usize),
+        map(le_u32, |size| size.try_into().unwrap()),
         map(
             tuple((
                 le_u32,
@@ -184,7 +184,7 @@ pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegment
 pub fn data_header(input: &[u8]) -> IResult<&[u8], DataHeader> {
     integrity_checked_header(
         input,
-        map(le_u32, |size| size as usize),
+        map(le_u32, |size| size.try_into().unwrap()),
         map(
             tuple((
                 le_u32,
@@ -197,7 +197,7 @@ pub fn data_header(input: &[u8]) -> IResult<&[u8], DataHeader> {
                 null_padding(4),
             )),
             |(_, _, _, data_size, spanned_dat, _, max_file_size, _)| DataHeader {
-                data_size: data_size as u64 * 8,
+                data_size: TryInto::<u64>::try_into(data_size).unwrap() * 8,
                 spanned_dat,
                 max_file_size,
             },
@@ -269,7 +269,10 @@ fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeade
 fn type_2_block_table<'a>(
     num_blocks: u32,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(u32, u16, u16)>> {
-    count(tuple((le_u32, le_u16, le_u16)), num_blocks as usize)
+    count(
+        tuple((le_u32, le_u16, le_u16)),
+        num_blocks.try_into().unwrap(),
+    )
 }
 
 fn type_3_block_table<'a>(
@@ -280,7 +283,7 @@ fn type_3_block_table<'a>(
         count(le_u32, 11),
         count(le_u32, 11),
         le_u16,
-        // count(le_u16, num_blocks as usize),
+        // count(le_u16, TryInto::<usize>::try_into(num_blocks).unwrap()),
     ))
 }
 
@@ -296,9 +299,12 @@ fn type_4_block_table<'a>(
                 le_u32, // frame_block_size_offset
                 le_u32, // frame_block_size_count
             )),
-            num_blocks as usize,
+            num_blocks.try_into().unwrap(),
         )(input)?;
-        let size_field_count = frame_infos.iter().map(|tuple| tuple.4 as usize).sum();
+        let size_field_count = frame_infos
+            .iter()
+            .map(|tuple| TryInto::<usize>::try_into(tuple.4).unwrap())
+            .sum();
         let (input, frame_block_sizes) = count(le_u16, size_field_count)(input)?;
         Ok((input, (frame_infos, frame_block_sizes)))
     }
@@ -306,7 +312,7 @@ fn type_4_block_table<'a>(
 
 pub fn data_entry_headers(input: &[u8]) -> IResult<&[u8], DataBlocks> {
     let (_, (header_length, header_common)) = data_entry_header_common(input)?;
-    let (input, header_data) = take(header_length as usize)(input)?;
+    let (input, header_data) = take(TryInto::<usize>::try_into(header_length).unwrap())(input)?;
     let (header_data, _) = complete(data_entry_header_common)(header_data)?;
     let blocks = match header_common.content_type {
         DataContentType::Empty => DataBlocks::Empty,
@@ -332,7 +338,7 @@ pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
         tuple((le_u32, le_u32, le_u32, null_padding(4))),
         |(filename_crc, folder_crc, packed, _)| IndexEntry1 {
             hash: IndexHash1::new(folder_crc, filename_crc),
-            data_file_id: (packed & 7) as u8,
+            data_file_id: (packed & 7).try_into().unwrap(),
             offset: packed & !7,
         },
     )(input)
@@ -341,7 +347,7 @@ pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
 pub fn index_entry_2(input: &[u8]) -> IResult<&[u8], IndexEntry2> {
     map(tuple((le_u32, le_u32)), |(path_crc, packed)| IndexEntry2 {
         hash: IndexHash2::new(path_crc),
-        data_file_id: (packed & 7) as u8,
+        data_file_id: (packed & 7).try_into().unwrap(),
         offset: packed & !7,
     })(input)
 }
@@ -496,7 +502,7 @@ pub fn load_index<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
 
     bufreader.seek(SeekFrom::Start(first_segment_header.offset.into()))?;
     let entry_count = first_segment_header.size / I::SIZE;
-    let mut entries = Vec::with_capacity(entry_count as usize);
+    let mut entries = Vec::with_capacity(entry_count.try_into().unwrap());
     for _ in 0..entry_count {
         let index_entry = match drive_streaming_parser::<_, _, _, Error<&[u8]>>(bufreader, &parser)?
         {
