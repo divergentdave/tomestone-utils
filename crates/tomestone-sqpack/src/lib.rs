@@ -1,11 +1,12 @@
-use once_cell::sync::OnceCell;
 use std::{
-    collections::hash_map::HashMap,
+    collections::{BTreeMap, BTreeSet},
     convert::TryInto,
-    ffi::OsString,
-    io,
+    fmt, io,
     path::{Path, PathBuf},
 };
+
+use once_cell::sync::{Lazy, OnceCell};
+use regex::Regex;
 
 pub mod compression;
 pub mod parser;
@@ -13,7 +14,30 @@ pub mod parser;
 pub(crate) const SHA1_OUTPUT_SIZE: usize = 20;
 
 #[derive(Debug)]
-pub(crate) struct PlatformIdParseError;
+pub enum Error {
+    Io(io::Error),
+    Nom(nom::error::ErrorKind),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Io(e) => e.fmt(f),
+            Error::Nom(e) => write!(f, "error: {:?}", e),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<io::Error> for Error {
+    fn from(e: io::Error) -> Error {
+        Error::Io(e)
+    }
+}
+
+#[derive(Debug)]
+pub struct EnumParseError;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum PlatformId {
@@ -23,12 +47,12 @@ pub enum PlatformId {
 }
 
 impl PlatformId {
-    pub(crate) fn from_u8(value: u8) -> Result<PlatformId, PlatformIdParseError> {
+    pub(crate) fn from_u8(value: u8) -> Result<PlatformId, EnumParseError> {
         match value {
             0 => Ok(PlatformId::Win32),
             1 => Ok(PlatformId::PS3),
             2 => Ok(PlatformId::PS4),
-            _ => Err(PlatformIdParseError),
+            _ => Err(EnumParseError),
         }
     }
 }
@@ -52,28 +76,6 @@ impl SqPackType {
             _ => Err(SqPackTypeParseError),
         }
     }
-}
-
-pub fn list_repositories<P: AsRef<Path>>(root: P) -> Result<Vec<OsString>, io::Error> {
-    let sqpack_dir = root.as_ref().join("game").join("sqpack");
-    sqpack_dir
-        .read_dir()?
-        .filter_map(|res| {
-            let entry = match res {
-                Ok(entry) => entry,
-                Err(e) => return Some(Err(e)),
-            };
-            let file_type = match entry.file_type() {
-                Ok(file_type) => file_type,
-                Err(e) => return Some(Err(e)),
-            };
-            if file_type.is_dir() {
-                Some(Ok(entry.file_name()))
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 #[derive(Debug)]
@@ -177,6 +179,7 @@ impl IndexHash for IndexHash2 {
 pub trait IndexEntry {
     type Hash: PartialEq + Eq + PartialOrd + Ord;
     const SIZE: u32;
+    const FILE_EXTENSION: &'static str;
     fn hash(&self) -> Self::Hash;
     fn data_location(&self) -> (u8, u32);
 }
@@ -191,6 +194,7 @@ pub struct IndexEntry1 {
 impl IndexEntry for IndexEntry1 {
     type Hash = IndexHash1;
     const SIZE: u32 = 16;
+    const FILE_EXTENSION: &'static str = "index";
 
     fn hash(&self) -> Self::Hash {
         self.hash
@@ -211,6 +215,7 @@ pub struct IndexEntry2 {
 impl IndexEntry for IndexEntry2 {
     type Hash = IndexHash2;
     const SIZE: u32 = 8;
+    const FILE_EXTENSION: &'static str = "index2";
 
     fn hash(&self) -> Self::Hash {
         self.hash
@@ -234,9 +239,17 @@ impl<E: IndexEntry> Index<E> {
     pub fn iter(&self) -> impl Iterator<Item = &E> {
         self.table.iter()
     }
+
+    pub fn get(&self, hash: &E::Hash) -> Option<&E> {
+        if let Ok(index) = self.table.binary_search_by_key(hash, IndexEntry::hash) {
+            Some(&self.table[index])
+        } else {
+            None
+        }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Category {
     Common = 0,
     BgCommon = 1,
@@ -256,7 +269,7 @@ pub enum Category {
 }
 
 impl Category {
-    pub fn parse_name(name: &str) -> Result<Category, ()> {
+    pub fn parse_name(name: &str) -> Result<Category, EnumParseError> {
         match name {
             "common" => Ok(Category::Common),
             "bgcommon" => Ok(Category::BgCommon),
@@ -273,7 +286,28 @@ impl Category {
             "music" => Ok(Category::Music),
             "sqpack_test" => Ok(Category::SqpackTest),
             "debug" => Ok(Category::Debug),
-            _ => Err(()),
+            _ => Err(EnumParseError),
+        }
+    }
+
+    pub fn from_u8(value: u8) -> Result<Category, EnumParseError> {
+        match value {
+            0 => Ok(Category::Common),
+            1 => Ok(Category::BgCommon),
+            2 => Ok(Category::Bg),
+            3 => Ok(Category::Cut),
+            4 => Ok(Category::Chara),
+            5 => Ok(Category::Shader),
+            6 => Ok(Category::Ui),
+            7 => Ok(Category::Sound),
+            8 => Ok(Category::Vfx),
+            9 => Ok(Category::UiScript),
+            0xA => Ok(Category::Exd),
+            0xB => Ok(Category::GameScript),
+            0xC => Ok(Category::Music),
+            0x12 => Ok(Category::SqpackTest),
+            0x13 => Ok(Category::Debug),
+            _ => Err(EnumParseError),
         }
     }
 
@@ -299,7 +333,7 @@ impl Category {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Expansion {
     Base = 0,
     Ex1 = 1,
@@ -308,13 +342,23 @@ pub enum Expansion {
 }
 
 impl Expansion {
-    pub fn parse_name(name: &str) -> Result<Expansion, ()> {
+    pub fn parse_name(name: &str) -> Result<Expansion, EnumParseError> {
         match name {
             "ffxiv" => Ok(Expansion::Base),
             "ex1" => Ok(Expansion::Ex1),
             "ex2" => Ok(Expansion::Ex2),
             "ex3" => Ok(Expansion::Ex3),
-            _ => Err(()),
+            _ => Err(EnumParseError),
+        }
+    }
+
+    pub fn from_u8(value: u8) -> Result<Expansion, EnumParseError> {
+        match value {
+            0 => Ok(Expansion::Base),
+            1 => Ok(Expansion::Ex1),
+            2 => Ok(Expansion::Ex2),
+            3 => Ok(Expansion::Ex3),
+            _ => Err(EnumParseError),
         }
     }
 
@@ -327,13 +371,22 @@ impl Expansion {
         ];
         LIST.iter()
     }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Expansion::Base => "ffxiv",
+            Expansion::Ex1 => "ex1",
+            Expansion::Ex2 => "ex2",
+            Expansion::Ex3 => "ex3",
+        }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SqPackId {
-    category: Category,
-    expansion: Expansion,
-    number: u8,
+    pub category: Category,
+    pub expansion: Expansion,
+    pub number: u8,
 }
 
 #[derive(Debug)]
@@ -367,26 +420,231 @@ impl DataBlocks {
     }
 }
 
+fn list_packs(root_path: &Path) -> io::Result<BTreeSet<SqPackId>> {
+    static RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new("^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})\\.[0-9a-z]*\\.index2?$").unwrap()
+    });
+
+    let sqpack_dir = root_path.join("game").join("sqpack");
+    let mut ids = BTreeSet::new();
+    for expansion in Expansion::iter_all() {
+        let expansion_dir = sqpack_dir.join(expansion.name());
+        for entry in expansion_dir.read_dir()? {
+            if let Ok(name) = entry?.file_name().into_string() {
+                if let Some(caps) = RE.captures(&name) {
+                    if let (Ok(category_num), Ok(expansion_num), Ok(number)) = (
+                        u8::from_str_radix(caps.get(1).unwrap().as_str(), 16),
+                        u8::from_str_radix(caps.get(2).unwrap().as_str(), 16),
+                        u8::from_str_radix(caps.get(3).unwrap().as_str(), 16),
+                    ) {
+                        if let (Ok(category), Ok(expansion)) = (
+                            Category::from_u8(category_num),
+                            Expansion::from_u8(expansion_num),
+                        ) {
+                            let id = SqPackId {
+                                category,
+                                expansion,
+                                number,
+                            };
+                            ids.insert(id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(ids)
+}
+
 pub struct GameData {
     root_path: PathBuf,
-    repositories: Vec<OsString>,
-    index_map: HashMap<SqPackId, OnceCell<Index<IndexEntry2>>>,
-    decompressed_map: HashMap<SqPackId, OnceCell<()>>,
+    index_map_1: BTreeMap<SqPackId, OnceCell<Index<IndexEntry1>>>,
+    index_map_2: BTreeMap<SqPackId, OnceCell<Index<IndexEntry2>>>,
+    decompressed_map: BTreeMap<SqPackId, OnceCell<()>>,
 }
 
 impl GameData {
-    pub fn new<P: AsRef<Path>>(path: P) -> std::io::Result<GameData> {
+    pub fn new<P: AsRef<Path>>(path: P) -> io::Result<GameData> {
         let root_path = path.as_ref().to_owned();
-        let repositories = list_repositories(&root_path)?;
+        let ids = list_packs(&root_path)?;
+        let mut index_map_1 = BTreeMap::new();
+        let mut index_map_2 = BTreeMap::new();
+        let mut decompressed_map = BTreeMap::new();
+        for id in ids {
+            index_map_1.insert(id.clone(), OnceCell::new());
+            index_map_2.insert(id.clone(), OnceCell::new());
+            decompressed_map.insert(id.clone(), OnceCell::new());
+        }
         Ok(GameData {
             root_path,
-            repositories,
-            index_map: HashMap::new(),
-            decompressed_map: HashMap::new(),
+            index_map_1,
+            index_map_2,
+            decompressed_map,
         })
     }
 
-    pub fn lookup(&self, path: &str) {
+    fn build_index_path<I: IndexEntry>(&self, id: SqPackId) -> PathBuf {
+        self.root_path
+            .join("game")
+            .join("sqpack")
+            .join(id.expansion.name())
+            .join(format!(
+                "{:02x}{:02x}{:02x}.{}",
+                id.category as u8,
+                id.expansion as u8,
+                id.number,
+                I::FILE_EXTENSION
+            ))
+    }
+
+    fn build_data_path(&self, id: SqPackId, dat_number: u8) -> PathBuf {
+        self.root_path
+            .join("game")
+            .join("sqpack")
+            .join(id.expansion.name())
+            .join(format!(
+                "{:02x}{:02x}{:02x}.dat{}",
+                id.category as u8, id.expansion as u8, id.number, dat_number,
+            ))
+    }
+
+    fn fetch_data(&self, data_location: (u8, u32)) -> Result<Option<Vec<u8>>, Error> {
         todo!()
+    }
+
+    pub fn lookup_path(&self, path: &str) -> Result<Option<Vec<u8>>, Error> {
+        let segments: Vec<_> = path.splitn(3, '/').collect();
+        let category = if let Ok(category) = Category::parse_name(segments[0]) {
+            category
+        } else {
+            return Ok(None);
+        };
+        let expansion = if let Some(segment) = segments.get(1) {
+            if let Ok(expansion) = Expansion::parse_name(segment) {
+                expansion
+            } else {
+                Expansion::Base
+            }
+        } else {
+            Expansion::Base
+        };
+
+        let hash = IndexHash2::hash(path);
+
+        for id in self.iter_packs_category_expansion(category, expansion) {
+            let index = self.get_index_2(&id).unwrap()?;
+            if let Some(entry) = index.get(&hash) {
+                return self.fetch_data(entry.data_location());
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn lookup_hash_1(&self, hash: &IndexHash1) -> Result<Option<Vec<u8>>, Error> {
+        for id in self.iter_packs() {
+            let index = self.get_index_1(&id).unwrap()?;
+            if let Some(entry) = index.get(hash) {
+                return self.fetch_data(entry.data_location());
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn lookup_hash_2(&self, hash: &IndexHash2) -> Result<Option<Vec<u8>>, Error> {
+        for id in self.iter_packs() {
+            let index = self.get_index_2(&id).unwrap()?;
+            if let Some(entry) = index.get(hash) {
+                return self.fetch_data(entry.data_location());
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn iter_packs(&self) -> impl Iterator<Item = SqPackId> + '_ {
+        self.index_map_2.keys().copied()
+    }
+
+    pub fn iter_packs_category_expansion(
+        &self,
+        category: Category,
+        expansion: Expansion,
+    ) -> impl Iterator<Item = SqPackId> + '_ {
+        self.index_map_2
+            .range(
+                SqPackId {
+                    category,
+                    expansion,
+                    number: 0,
+                }..=SqPackId {
+                    category,
+                    expansion,
+                    number: 0xFF,
+                },
+            )
+            .map(|(id, _)| *id)
+    }
+
+    pub fn get_index_1(&self, id: &SqPackId) -> Option<Result<&Index<IndexEntry1>, io::Error>> {
+        self.index_map_1
+            .get(id)
+            .map(|cell| cell.get_or_try_init(|| todo!()))
+    }
+
+    pub fn get_index_2(&self, id: &SqPackId) -> Option<Result<&Index<IndexEntry2>, io::Error>> {
+        self.index_map_2
+            .get(id)
+            .map(|cell| cell.get_or_try_init(|| todo!()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Expansion;
+
+    #[test]
+    fn expansion_round_trip() {
+        assert_eq!(Expansion::parse_name("ffxiv").unwrap().name(), "ffxiv");
+        assert_eq!(Expansion::parse_name("ex1").unwrap().name(), "ex1");
+        assert_eq!(Expansion::parse_name("ex2").unwrap().name(), "ex2");
+        assert_eq!(Expansion::parse_name("ex3").unwrap().name(), "ex3");
+
+        assert_eq!(
+            Expansion::parse_name(Expansion::Base.name()).unwrap(),
+            Expansion::Base
+        );
+        assert_eq!(
+            Expansion::parse_name(Expansion::Ex1.name()).unwrap(),
+            Expansion::Ex1
+        );
+        assert_eq!(
+            Expansion::parse_name(Expansion::Ex2.name()).unwrap(),
+            Expansion::Ex2
+        );
+        assert_eq!(
+            Expansion::parse_name(Expansion::Ex3.name()).unwrap(),
+            Expansion::Ex3
+        );
+
+        assert_eq!(Expansion::from_u8(0).unwrap() as u8, 0);
+        assert_eq!(Expansion::from_u8(1).unwrap() as u8, 1);
+        assert_eq!(Expansion::from_u8(2).unwrap() as u8, 2);
+        assert_eq!(Expansion::from_u8(3).unwrap() as u8, 3);
+
+        assert_eq!(
+            Expansion::from_u8(Expansion::Base as u8).unwrap(),
+            Expansion::Base
+        );
+        assert_eq!(
+            Expansion::from_u8(Expansion::Ex1 as u8).unwrap(),
+            Expansion::Ex1
+        );
+        assert_eq!(
+            Expansion::from_u8(Expansion::Ex2 as u8).unwrap(),
+            Expansion::Ex2
+        );
+        assert_eq!(
+            Expansion::from_u8(Expansion::Ex3 as u8).unwrap(),
+            Expansion::Ex3
+        );
     }
 }

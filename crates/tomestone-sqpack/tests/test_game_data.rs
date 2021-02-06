@@ -11,31 +11,32 @@ use sha1::{Digest, Sha1};
 
 use tomestone_sqpack::{
     compression::decompress_sqpack_block,
-    list_repositories,
     parser::{
         block_header, data_entry_headers, data_header, drive_streaming_parser, index_entry_1,
         index_entry_2, index_segment_headers, load_index, sqpack_header_outer, GrowableBufReader,
     },
-    Index, IndexEntry,
+    Expansion, Index, IndexEntry,
 };
 
 fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + RefUnwindSafe) {
-    dotenv::dotenv().unwrap();
+    dotenv::dotenv().ok();
     // Don't test anything if the game directory isn't provided
-    if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-        let repositories = list_repositories(&root).unwrap();
-        let sqpack_dir = PathBuf::from(root).join("game").join("sqpack");
-        for repository in repositories {
-            let path = sqpack_dir.join(repository);
-            for res in std::fs::read_dir(path).unwrap() {
-                let file_entry = res.unwrap();
-                let path = file_entry.path();
-                let file = File::open(&path).unwrap();
-                let res = catch_unwind(|| f(path, GrowableBufReader::new(file)));
-                if let Err(panic) = res {
-                    eprintln!("Error while processing {:?}", file_entry.path());
-                    panic!(panic);
-                }
+    let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+        root
+    } else {
+        return;
+    };
+    let sqpack_dir = PathBuf::from(root).join("game").join("sqpack");
+    for expansion in Expansion::iter_all() {
+        let path = sqpack_dir.join(expansion.name());
+        for res in std::fs::read_dir(path).unwrap() {
+            let file_entry = res.unwrap();
+            let path = file_entry.path();
+            let file = File::open(&path).unwrap();
+            let res = catch_unwind(|| f(path, GrowableBufReader::new(file)));
+            if let Err(panic) = res {
+                eprintln!("Error while processing {:?}", file_entry.path());
+                panic!(panic);
             }
         }
     }
@@ -178,10 +179,10 @@ fn decompress_all_blocks() {
                             .seek(SeekFrom::Start(block_offset.try_into().unwrap()))
                             .unwrap();
                         reader.read_exact(&mut header_buffer).unwrap();
-                        let (_, (_, compressed_size, decompressed_length)) =
+                        let (_, (compressed_length, decompressed_length)) =
                             block_header(&header_buffer).unwrap();
-                        if compressed_size != 32000 {
-                            let mut take = reader.take(compressed_size.try_into().unwrap());
+                        if compressed_length != 32000 {
+                            let mut take = reader.take(compressed_length.try_into().unwrap());
                             take.read_to_end(&mut compressed).unwrap();
                             let decompressed = decompress_sqpack_block(
                                 &compressed,
