@@ -1,5 +1,5 @@
 use std::{
-    io::{self, stdout, Write},
+    io::{stdout, Write},
     process,
 };
 
@@ -9,7 +9,7 @@ use clap::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use tomestone_sqpack::{Category, Error, Expansion, GameData, IndexHash1, IndexHash2};
+use tomestone_sqpack::{Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2};
 
 fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Vec<u8>>, Error> {
     static CRC_RE: Lazy<Regex> = Lazy::new(|| Regex::new("^[0-9A-Fa-f]{8}$").unwrap());
@@ -40,15 +40,12 @@ fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Ve
     }
 }
 
-fn list_files(
-    game_data: &GameData,
-    category: Category,
-    expansion: Expansion,
-) -> Result<(), io::Error> {
+fn list_files(game_data: &GameData, category: Category, expansion: Expansion) -> Result<(), Error> {
     for id in game_data.iter_packs_category_expansion(category, expansion) {
         let index = game_data.get_index_1(&id).unwrap()?;
         for entry in index.iter() {
-            todo!()
+            let hash = entry.hash();
+            println!("{:08x} {:08x}", hash.folder_crc, hash.filename_crc);
         }
     }
     Ok(())

@@ -3,13 +3,14 @@ use std::{
     fs::File,
     io::{self, BufRead, Read, Seek, SeekFrom},
     num::NonZeroUsize,
+    path::PathBuf,
 };
 
 use nom::{
     branch::alt,
     bytes::streaming::{tag, take},
     combinator::{complete, map, map_opt, map_parser, map_res, verify},
-    error::{Error, ErrorKind, ParseError},
+    error::{ErrorKind, ParseError},
     multi::count,
     number::streaming::{le_u16, le_u32, le_u8},
     sequence::tuple,
@@ -18,8 +19,8 @@ use nom::{
 use sha1::{Digest, Sha1};
 
 use crate::{
-    DataBlocks, DataHeader, Index, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2,
-    IndexSegmentHeader, IndexType, PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
+    DataBlocks, DataHeader, Error, Index, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1,
+    IndexHash2, IndexSegmentHeader, IndexType, PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
 };
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
@@ -100,7 +101,10 @@ pub fn integrity_checked_header<
                 |input: &'a [u8]| -> IResult<&[u8], (&[u8], &[u8; SHA1_OUTPUT_SIZE])> {
                     let (_, length) = length_parser(input)?;
                     if length < HASH_OFFSET + SHA1_OUTPUT_SIZE {
-                        return Err(Err::Error(Error::from_error_kind(input, ErrorKind::Eof)));
+                        return Err(Err::Error(nom::error::Error::from_error_kind(
+                            input,
+                            ErrorKind::Eof,
+                        )));
                     }
                     let (input, (header_input, hash_input, ())) = tuple((
                         take(HASH_OFFSET),
@@ -483,10 +487,10 @@ impl<R: Read> BufRead for GrowableBufReader<R> {
 pub fn drive_streaming_parser<R, F, O, E>(
     reader: &mut GrowableBufReader<R>,
     mut parser: F,
-) -> Result<Result<O, ErrorKind>, std::io::Error>
+) -> Result<O, Error>
 where
     R: Read,
-    F: FnMut(&[u8]) -> IResult<&[u8], O, Error<&[u8]>>,
+    F: FnMut(&[u8]) -> IResult<&[u8], O, nom::error::Error<&[u8]>>,
 {
     loop {
         let data = reader.fill_buf()?;
@@ -495,58 +499,63 @@ where
                 debug_assert!(data.ends_with(rest_input));
                 let consume_amount = data.len() - rest_input.len();
                 reader.consume(consume_amount);
-                return Ok(Ok(output));
+                return Ok(output);
             }
             Err(Err::Incomplete(Needed::Unknown)) => {
                 let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + 1024)?;
                 if eof {
-                    return Ok(Err(ErrorKind::Eof));
+                    Err(ErrorKind::Eof)?
                 }
             }
             Err(Err::Incomplete(Needed::Size(needed))) => {
                 let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + needed.get())?;
                 if eof {
-                    return Ok(Err(ErrorKind::Eof));
+                    Err(ErrorKind::Eof)?
                 }
             }
-            Err(Err::Error(e)) | Err(Err::Failure(e)) => {
-                return Ok(Err(e.code));
-            }
+            Err(Err::Error(e)) | Err(Err::Failure(e)) => Err(e.code)?,
         }
     }
 }
 
-pub fn load_index<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
+pub fn load_index_reader<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
     bufreader: &mut GrowableBufReader<File>,
     parser: P,
-) -> Result<Result<Index<I>, ErrorKind>, io::Error> {
-    let file_header =
-        match drive_streaming_parser::<_, _, _, Error<&[u8]>>(bufreader, sqpack_header_outer)? {
-            Ok(file_header) => file_header,
-            Err(e) => return Ok(Err(e)),
-        };
+) -> Result<Index<I>, Error> {
+    let file_header = drive_streaming_parser::<_, _, _, nom::error::Error<&[u8]>>(
+        bufreader,
+        sqpack_header_outer,
+    )?;
     let size = file_header.1;
 
     bufreader.seek(SeekFrom::Start(size.into()))?;
-    let index_header =
-        match drive_streaming_parser::<_, _, _, Error<&[u8]>>(bufreader, index_segment_headers)? {
-            Ok(index_header) => index_header,
-            Err(e) => return Ok(Err(e)),
-        };
+    let index_header = drive_streaming_parser::<_, _, _, nom::error::Error<&[u8]>>(
+        bufreader,
+        index_segment_headers,
+    )?;
     let first_segment_header = &index_header.1[0];
 
     bufreader.seek(SeekFrom::Start(first_segment_header.offset.into()))?;
     let entry_count = first_segment_header.size / I::SIZE;
     let mut entries = Vec::with_capacity(entry_count.try_into().unwrap());
     for _ in 0..entry_count {
-        let index_entry = match drive_streaming_parser::<_, _, _, Error<&[u8]>>(bufreader, &parser)?
-        {
-            Ok(index_entry) => index_entry,
-            Err(e) => return Ok(Err(e)),
-        };
+        let index_entry =
+            drive_streaming_parser::<_, _, _, nom::error::Error<&[u8]>>(bufreader, &parser)?;
         entries.push(index_entry);
     }
-    Ok(Ok(Index::new(entries)))
+    Ok(Index::new(entries))
+}
+
+pub fn load_index_1(path: PathBuf) -> Result<Index<IndexEntry1>, Error> {
+    let file = File::open(path)?;
+    let mut bufreader = GrowableBufReader::new(file);
+    load_index_reader(&mut bufreader, index_entry_1)
+}
+
+pub fn load_index_2(path: PathBuf) -> Result<Index<IndexEntry2>, Error> {
+    let file = File::open(path)?;
+    let mut bufreader = GrowableBufReader::new(file);
+    load_index_reader(&mut bufreader, index_entry_2)
 }
 
 #[cfg(test)]

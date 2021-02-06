@@ -6,6 +6,7 @@ use std::{
 };
 
 use once_cell::sync::{Lazy, OnceCell};
+use parser::{load_index_1, load_index_2};
 use regex::Regex;
 
 pub mod compression;
@@ -33,6 +34,12 @@ impl std::error::Error for Error {}
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Error {
         Error::Io(e)
+    }
+}
+
+impl From<nom::error::ErrorKind> for Error {
+    fn from(e: nom::error::ErrorKind) -> Error {
+        Error::Nom(e)
     }
 }
 
@@ -129,8 +136,8 @@ fn crc32(data: &[u8]) -> u32 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IndexHash1 {
-    folder_crc: u32,
-    filename_crc: u32,
+    pub folder_crc: u32,
+    pub filename_crc: u32,
 }
 
 impl IndexHash1 {
@@ -159,7 +166,7 @@ impl IndexHash for IndexHash1 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IndexHash2 {
-    path_crc: u32,
+    pub path_crc: u32,
 }
 
 impl IndexHash2 {
@@ -422,7 +429,7 @@ impl DataBlocks {
 
 fn list_packs(root_path: &Path) -> io::Result<BTreeSet<SqPackId>> {
     static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new("^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})\\.[0-9a-z]*\\.index2?$").unwrap()
+        Regex::new("^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})\\.win32\\.index2?$").unwrap()
     });
 
     let sqpack_dir = root_path.join("game").join("sqpack");
@@ -489,7 +496,7 @@ impl GameData {
             .join("sqpack")
             .join(id.expansion.name())
             .join(format!(
-                "{:02x}{:02x}{:02x}.{}",
+                "{:02x}{:02x}{:02x}.win32.{}",
                 id.category as u8,
                 id.expansion as u8,
                 id.number,
@@ -503,7 +510,7 @@ impl GameData {
             .join("sqpack")
             .join(id.expansion.name())
             .join(format!(
-                "{:02x}{:02x}{:02x}.dat{}",
+                "{:02x}{:02x}{:02x}.win32.dat{}",
                 id.category as u8, id.expansion as u8, id.number, dat_number,
             ))
     }
@@ -584,16 +591,22 @@ impl GameData {
             .map(|(id, _)| *id)
     }
 
-    pub fn get_index_1(&self, id: &SqPackId) -> Option<Result<&Index<IndexEntry1>, io::Error>> {
-        self.index_map_1
-            .get(id)
-            .map(|cell| cell.get_or_try_init(|| todo!()))
+    pub fn get_index_1(&self, id: &SqPackId) -> Option<Result<&Index<IndexEntry1>, Error>> {
+        self.index_map_1.get(id).map(|cell| {
+            cell.get_or_try_init(|| -> Result<Index<IndexEntry1>, Error> {
+                let path = self.build_index_path::<IndexEntry1>(*id);
+                load_index_1(path)
+            })
+        })
     }
 
-    pub fn get_index_2(&self, id: &SqPackId) -> Option<Result<&Index<IndexEntry2>, io::Error>> {
-        self.index_map_2
-            .get(id)
-            .map(|cell| cell.get_or_try_init(|| todo!()))
+    pub fn get_index_2(&self, id: &SqPackId) -> Option<Result<&Index<IndexEntry2>, Error>> {
+        self.index_map_2.get(id).map(|cell| {
+            cell.get_or_try_init(|| {
+                let path = self.build_index_path::<IndexEntry2>(*id);
+                load_index_2(path)
+            })
+        })
     }
 }
 
