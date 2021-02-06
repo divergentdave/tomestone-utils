@@ -373,8 +373,8 @@ pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
         tuple((le_u32, le_u32, le_u32, null_padding(4))),
         |(filename_crc, folder_crc, packed, _)| IndexEntry1 {
             hash: IndexHash1::new(folder_crc, filename_crc),
-            data_file_id: (packed & 7).try_into().unwrap(),
-            offset: packed & !7,
+            data_file_id: ((packed & 7) >> 1).try_into().unwrap(),
+            offset: (packed & !7) << 3,
         },
     )(input)
 }
