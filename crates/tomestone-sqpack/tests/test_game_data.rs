@@ -147,7 +147,7 @@ fn check_index_order() {
 }
 
 #[test]
-fn decompress_all_blocks() {
+fn decompress_blocks() {
     forall_sqpack(|path, mut bufreader| {
         if let Some(extension) = path.extension() {
             if extension.to_string_lossy().starts_with("dat") {
@@ -159,6 +159,8 @@ fn decompress_all_blocks() {
                     )
                     .unwrap();
                 if data_header.data_size > 0 {
+                    // the first data entry header in the file should immediately follow the data
+                    // header
                     let data_blocks = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
                         &mut bufreader,
                         data_entry_headers(next_start_position),
@@ -167,6 +169,7 @@ fn decompress_all_blocks() {
                     let mut reader = bufreader.into_inner();
                     let mut header_buffer = [0u8; 16];
                     let mut compressed = Vec::new();
+                    let mut is_first = true;
                     for block_offset in data_blocks.all_blocks() {
                         reader
                             .seek(SeekFrom::Start(block_offset.try_into().unwrap()))
@@ -182,7 +185,10 @@ fn decompress_all_blocks() {
                                 decompressed_length.try_into().unwrap(),
                             )
                             .unwrap();
-                            println!("{:?}", String::from_utf8_lossy(&decompressed[..4]));
+                            if is_first {
+                                println!("{:?}", String::from_utf8_lossy(&decompressed[..4]));
+                                is_first = false;
+                            }
                             compressed.clear();
                             reader = take.into_inner();
                         }
