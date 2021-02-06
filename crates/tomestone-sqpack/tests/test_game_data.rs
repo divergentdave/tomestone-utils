@@ -8,11 +8,13 @@ use std::{
 
 use nom::error::Error;
 use sha1::{Digest, Sha1};
+
 use tomestone_sqpack::{
+    compression::decompress_sqpack_block,
     list_repositories,
     parser::{
-        data_entry_headers, data_header, drive_streaming_parser, index_entry_1, index_entry_2,
-        index_segment_headers, load_index, sqpack_header_outer, GrowableBufReader,
+        block_header, data_entry_headers, data_header, drive_streaming_parser, index_entry_1,
+        index_entry_2, index_segment_headers, load_index, sqpack_header_outer, GrowableBufReader,
     },
     Index, IndexEntry,
 };
@@ -63,15 +65,18 @@ fn parse_game_data() {
                 println!("{:?}", parsed);
             } else {
                 // dat file
-                let parsed =
-                    drive_streaming_parser::<_, _, _, Error<&[u8]>>(&mut bufreader, data_header)
-                        .unwrap()
-                        .unwrap();
+                let (next_start_position, parsed) =
+                    drive_streaming_parser::<_, _, _, Error<&[u8]>>(
+                        &mut bufreader,
+                        data_header(1024),
+                    )
+                    .unwrap()
+                    .unwrap();
                 println!("{:?}", parsed);
                 if parsed.data_size > 0 {
                     let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
                         &mut bufreader,
-                        data_entry_headers,
+                        data_entry_headers(next_start_position),
                     )
                     .unwrap()
                     .unwrap();
@@ -142,5 +147,54 @@ fn check_index_order() {
             inner(&index);
         }
         _ => {}
+    });
+}
+
+#[test]
+fn decompress_all_blocks() {
+    forall_sqpack(|path, mut bufreader| {
+        if let Some(extension) = path.extension() {
+            if extension.to_string_lossy().starts_with("dat") {
+                bufreader.seek(SeekFrom::Start(1024)).unwrap();
+                let (next_start_position, data_header) =
+                    drive_streaming_parser::<_, _, _, Error<&[u8]>>(
+                        &mut bufreader,
+                        data_header(1024),
+                    )
+                    .unwrap()
+                    .unwrap();
+                if data_header.data_size > 0 {
+                    let data_blocks = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
+                        &mut bufreader,
+                        data_entry_headers(next_start_position),
+                    )
+                    .unwrap()
+                    .unwrap();
+                    let mut reader = bufreader.into_inner();
+                    let mut header_buffer = [0u8; 16];
+                    let mut compressed = Vec::new();
+                    for block_offset in data_blocks.all_blocks() {
+                        reader
+                            .seek(SeekFrom::Start(block_offset.try_into().unwrap()))
+                            .unwrap();
+                        reader.read_exact(&mut header_buffer).unwrap();
+                        let (_, (_, compressed_size, decompressed_length)) =
+                            block_header(&header_buffer).unwrap();
+                        if compressed_size != 32000 {
+                            let mut take = reader.take(compressed_size.try_into().unwrap());
+                            take.read_to_end(&mut compressed).unwrap();
+                            let decompressed = decompress_sqpack_block(
+                                &compressed,
+                                decompressed_length.try_into().unwrap(),
+                            )
+                            .unwrap();
+                            println!("{:?}", String::from_utf8_lossy(&decompressed[..4]));
+                            compressed.clear();
+                            reader = take.into_inner();
+                        }
+                    }
+                }
+            }
+        }
     });
 }

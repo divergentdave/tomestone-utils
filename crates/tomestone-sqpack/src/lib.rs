@@ -1,11 +1,13 @@
 use once_cell::sync::OnceCell;
 use std::{
     collections::hash_map::HashMap,
+    convert::TryInto,
     ffi::OsString,
     io,
     path::{Path, PathBuf},
 };
 
+pub mod compression;
 pub mod parser;
 
 pub(crate) const SHA1_OUTPUT_SIZE: usize = 20;
@@ -338,9 +340,31 @@ pub struct SqPackId {
 pub enum DataBlocks {
     Empty,
     Unsupported,
-    Binary(),
+    Binary {
+        base_position: usize,
+        blocks: Vec<(u32, u16, u16)>,
+    },
     Model(),
     Texture(),
+}
+
+impl DataBlocks {
+    pub fn all_blocks<'a>(&'a self) -> Box<dyn Iterator<Item = usize> + 'a> {
+        match self {
+            DataBlocks::Binary {
+                base_position,
+                blocks,
+            } => {
+                let base_position = *base_position;
+                Box::new(blocks.iter().map(
+                    move |(offset, _block_size, _decompressed_data_size)| {
+                        base_position + TryInto::<usize>::try_into(*offset).unwrap()
+                    },
+                ))
+            }
+            _ => Box::new(vec![].into_iter()),
+        }
+    }
 }
 
 pub struct GameData {

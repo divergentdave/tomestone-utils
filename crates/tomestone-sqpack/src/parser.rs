@@ -181,28 +181,37 @@ pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegment
     )
 }
 
-pub fn data_header(input: &[u8]) -> IResult<&[u8], DataHeader> {
-    integrity_checked_header(
-        input,
-        map(le_u32, |size| size.try_into().unwrap()),
-        map(
-            tuple((
-                le_u32,
-                null_padding(4),
-                le_u32,
-                le_u32,
-                le_u32,
-                null_padding(4),
-                le_u32,
-                null_padding(4),
-            )),
-            |(_, _, _, data_size, spanned_dat, _, max_file_size, _)| DataHeader {
-                data_size: TryInto::<u64>::try_into(data_size).unwrap() * 8,
-                spanned_dat,
-                max_file_size,
-            },
-        ),
-    )
+pub fn data_header(
+    start_position: usize,
+) -> impl FnMut(&[u8]) -> IResult<&[u8], (usize, DataHeader)> {
+    move |input: &[u8]| {
+        integrity_checked_header(
+            input,
+            map(le_u32, |size| size.try_into().unwrap()),
+            map(
+                tuple((
+                    le_u32,
+                    null_padding(4),
+                    le_u32,
+                    le_u32,
+                    le_u32,
+                    null_padding(4),
+                    le_u32,
+                    null_padding(4),
+                )),
+                |(length, _, _, data_size, spanned_dat, _, max_file_size, _)| {
+                    (
+                        start_position + TryInto::<usize>::try_into(length).unwrap(),
+                        DataHeader {
+                            data_size: TryInto::<u64>::try_into(data_size).unwrap() * 8,
+                            spanned_dat,
+                            max_file_size,
+                        },
+                    )
+                },
+            ),
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -310,27 +319,49 @@ fn type_4_block_table<'a>(
     }
 }
 
-pub fn data_entry_headers(input: &[u8]) -> IResult<&[u8], DataBlocks> {
-    let (_, (header_length, header_common)) = data_entry_header_common(input)?;
-    let (input, header_data) = take(TryInto::<usize>::try_into(header_length).unwrap())(input)?;
-    let (header_data, _) = complete(data_entry_header_common)(header_data)?;
-    let blocks = match header_common.content_type {
-        DataContentType::Empty => DataBlocks::Empty,
-        DataContentType::Unsupported => DataBlocks::Unsupported,
-        DataContentType::Binary => {
-            let _ = complete(type_2_block_table(header_common.num_blocks))(header_data)?;
-            DataBlocks::Binary()
-        }
-        DataContentType::Model => {
-            let _ = complete(type_3_block_table(header_common.num_blocks))(header_data)?;
-            DataBlocks::Model()
-        }
-        DataContentType::Texture => {
-            let _ = complete(type_4_block_table(header_common.num_blocks))(header_data)?;
-            DataBlocks::Texture()
-        }
-    };
-    Ok((input, blocks))
+pub fn data_entry_headers(
+    start_position: usize,
+) -> impl FnMut(&[u8]) -> IResult<&[u8], DataBlocks> {
+    move |input: &[u8]| {
+        let (_, (header_length, header_common)) = data_entry_header_common(input)?;
+        let (input, header_data) = take(TryInto::<usize>::try_into(header_length).unwrap())(input)?;
+        let (header_data, _) = complete(data_entry_header_common)(header_data)?;
+        let base_position = start_position + TryInto::<usize>::try_into(header_length).unwrap();
+        let blocks = match header_common.content_type {
+            DataContentType::Empty => DataBlocks::Empty,
+            DataContentType::Unsupported => DataBlocks::Unsupported,
+            DataContentType::Binary => {
+                let (_, blocks) =
+                    complete(type_2_block_table(header_common.num_blocks))(header_data)?;
+                DataBlocks::Binary {
+                    base_position,
+                    blocks,
+                }
+            }
+            DataContentType::Model => {
+                let (_, _) = complete(type_3_block_table(header_common.num_blocks))(header_data)?;
+                DataBlocks::Model()
+            }
+            DataContentType::Texture => {
+                let (_, _) = complete(type_4_block_table(header_common.num_blocks))(header_data)?;
+                DataBlocks::Texture()
+            }
+        };
+        Ok((input, blocks))
+    }
+}
+
+pub fn block_header(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
+    let (_, header_length) = le_u32(input)?;
+    map_parser(
+        take(TryInto::<usize>::try_into(header_length).unwrap()),
+        complete(map(
+            tuple((le_u32, null_padding(4), le_u32, le_u32)),
+            |(_, _, compressed_length, decompressed_length)| {
+                (compressed_length, decompressed_length)
+            },
+        )),
+    )(input)
 }
 
 pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
@@ -401,6 +432,10 @@ impl<R: Read> GrowableBufReader<R> {
             }
         }
         Ok((&self.buf[self.pos..self.cap], eof))
+    }
+
+    pub fn into_inner(self) -> R {
+        self.inner
     }
 }
 
