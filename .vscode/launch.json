@@ -1,0 +1,195 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'fanttheysia'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=fanttheysia",
+                    "--package=fanttheysia"
+                ],
+                "filter": {
+                    "name": "fanttheysia",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'fanttheysia'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=fanttheysia",
+                    "--package=fanttheysia"
+                ],
+                "filter": {
+                    "name": "fanttheysia",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'tomestone-exdf'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=tomestone-exdf"
+                ],
+                "filter": {
+                    "name": "tomestone-exdf",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'tomestone-explorer'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=tomestone-explorer",
+                    "--package=tomestone-explorer"
+                ],
+                "filter": {
+                    "name": "tomestone-explorer",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'tomestone-explorer'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=tomestone-explorer",
+                    "--package=tomestone-explorer"
+                ],
+                "filter": {
+                    "name": "tomestone-explorer",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'tomestone-sqpack'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=tomestone-sqpack"
+                ],
+                "filter": {
+                    "name": "tomestone-sqpack",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'test_game_data'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=test_game_data",
+                    "--package=tomestone-sqpack"
+                ],
+                "filter": {
+                    "name": "test_game_data",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'tomestone-sqpack-dump'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=tomestone-sqpack-dump",
+                    "--package=tomestone-sqpack-dump"
+                ],
+                "filter": {
+                    "name": "tomestone-sqpack-dump",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'tomestone-sqpack-dump'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=tomestone-sqpack-dump",
+                    "--package=tomestone-sqpack-dump"
+                ],
+                "filter": {
+                    "name": "tomestone-sqpack-dump",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'tomestone-string-interp'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=tomestone-string-interp"
+                ],
+                "filter": {
+                    "name": "tomestone-string-interp",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
