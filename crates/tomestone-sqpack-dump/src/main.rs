@@ -7,7 +7,7 @@ use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, Arg, SubCommand, Values,
 };
 use once_cell::sync::Lazy;
-use regex::Regex;
+use regex::{bytes::Regex as BytesRegex, Regex};
 
 use tomestone_sqpack::{Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2};
 
@@ -57,6 +57,64 @@ fn print_hex_dump(data: &[u8]) {
     }
 }
 
+fn parse_repository_path(path: Option<&str>) -> Option<(Category, Expansion)> {
+    if let Some(path) = path {
+        let segments: Vec<_> = path.split('/').collect();
+        match segments.len() {
+            0 => unreachable!(),
+            1 => {
+                // one segment, category only, assume it's from the base game
+                if let Ok(category) = Category::parse_name(segments[0]) {
+                    Some((category, Expansion::Base))
+                } else {
+                    eprintln!("error: invalid category {:?}", segments[0]);
+                    process::exit(1);
+                }
+            }
+            2 => {
+                if let Ok(category) = Category::parse_name(segments[0]) {
+                    if let Ok(expansion) = Expansion::parse_name(segments[1]) {
+                        Some((category, expansion))
+                    } else {
+                        eprintln!("error: invalid expansion {:?}", segments[1]);
+                        process::exit(1);
+                    }
+                } else {
+                    eprintln!("error: invalid category {:?}", segments[0]);
+                    process::exit(1);
+                }
+            }
+            _ => {
+                eprintln!("error: only up to two path segments are supported");
+                process::exit(1);
+            }
+        }
+    } else {
+        None
+    }
+}
+
+fn do_grep(
+    game_data: &GameData,
+    category: Category,
+    expansion: Expansion,
+    re: &BytesRegex,
+) -> Result<(), Error> {
+    for pack_id in game_data.iter_packs_category_expansion(category, expansion) {
+        let index = game_data.get_index_1(&pack_id).unwrap()?;
+        for res in game_data.iter_files(pack_id, &index)? {
+            let (hash, file) = res?;
+            if re.is_match(&file) {
+                println!(
+                    "File {:08x} {:08x} matches",
+                    hash.folder_crc, hash.filename_crc
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     dotenv::dotenv().ok();
     let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
@@ -99,6 +157,11 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("list").arg(Arg::with_name("path").required(false).index(1)),
+        )
+        .subcommand(
+            SubCommand::with_name("grep")
+                .arg(Arg::with_name("pattern").required(true).index(1))
+                .arg(Arg::with_name("path").required(false).index(2)),
         );
     let app_matches = app.get_matches();
     match app_matches.subcommand() {
@@ -130,57 +193,44 @@ fn main() {
                 }
             }
         }
-        ("list", Some(matches)) => {
-            if let Some(path) = matches.value_of("path") {
-                let segments: Vec<_> = path.split('/').collect();
-                match segments.len() {
-                    0 => unreachable!(),
-                    1 => {
-                        // one segment, category only, assume it's from the base game
-                        if let Ok(category) = Category::parse_name(segments[0]) {
-                            match list_files(&game_data, category, Expansion::Base) {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    eprintln!("error: couldn't read indices, {}", e);
-                                    process::exit(1);
-                                }
-                            }
-                        } else {
-                            eprintln!("error: invalid category {:?}", segments[0]);
+        ("list", Some(matches)) => match parse_repository_path(matches.value_of("path")) {
+            Some((category, expansion)) => {
+                if let Err(e) = list_files(&game_data, category, expansion) {
+                    eprintln!("error: couldn't read indices, {}", e);
+                    process::exit(1);
+                }
+            }
+            None => {
+                for category in Category::iter_all() {
+                    for expansion in Expansion::iter_all() {
+                        if let Err(e) = list_files(&game_data, *category, *expansion) {
+                            eprintln!("error: couldn't read indices, {}", e);
                             process::exit(1);
                         }
                     }
-                    2 => {
-                        if let Ok(category) = Category::parse_name(segments[0]) {
-                            if let Ok(expansion) = Expansion::parse_name(segments[1]) {
-                                match list_files(&game_data, category, expansion) {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        eprintln!("error: couldn't read indices, {}", e);
-                                        process::exit(1);
-                                    }
-                                }
-                            } else {
-                                eprintln!("error: invalid expansion {:?}", segments[1]);
-                                process::exit(1);
-                            }
-                        } else {
-                            eprintln!("error: invalid category {:?}", segments[0]);
-                            process::exit(1);
-                        }
-                    }
-                    _ => {
-                        eprintln!("error: list only supports up to two path segments");
+                }
+            }
+        },
+        ("grep", Some(matches)) => {
+            let re = match BytesRegex::new(matches.value_of("pattern").unwrap()) {
+                Ok(re) => re,
+                Err(e) => {
+                    eprintln!("error: invalid regular expression, {}", e);
+                    process::exit(1);
+                }
+            };
+            match parse_repository_path(matches.value_of("path")) {
+                Some((category, expansion)) => {
+                    if let Err(e) = do_grep(&game_data, category, expansion, &re) {
+                        eprintln!("error: couldn't read files, {}", e);
                         process::exit(1);
                     }
                 }
-            } else {
-                for expansion in Expansion::iter_all() {
+                None => {
                     for category in Category::iter_all() {
-                        match list_files(&game_data, *category, *expansion) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                eprintln!("error: couldn't read indices, {}", e);
+                        for expansion in Expansion::iter_all() {
+                            if let Err(e) = do_grep(&game_data, *category, *expansion, &re) {
+                                eprintln!("error: couldn't read files, {}", e);
                                 process::exit(1);
                             }
                         }

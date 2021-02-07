@@ -539,6 +539,32 @@ impl GameData {
         decompress_file(&mut file, data_locator.offset)
     }
 
+    pub fn iter_files<'a, I: IndexEntry>(
+        &'a self,
+        pack_id: SqPackId,
+        index: &'a Index<I>,
+    ) -> Result<impl Iterator<Item = Result<(I::Hash, Vec<u8>), Error>> + 'a, Error> {
+        let mut files = Vec::new();
+        for i in 0.. {
+            let path = self.build_data_path(pack_id, i);
+            if path.is_file() {
+                files.push(File::open(path)?);
+            } else {
+                break;
+            }
+        }
+        Ok(index.iter().map(move |entry| {
+            let locator = entry.data_location();
+            Ok((
+                entry.hash(),
+                decompress_file(
+                    &mut files[TryInto::<usize>::try_into(locator.data_file_id).unwrap()],
+                    locator.offset,
+                )?,
+            ))
+        }))
+    }
+
     pub fn lookup_path(&self, path: &str) -> Result<Option<Vec<u8>>, Error> {
         let segments: Vec<_> = path.splitn(3, '/').collect();
         let category = if let Ok(category) = Category::parse_name(segments[0]) {
