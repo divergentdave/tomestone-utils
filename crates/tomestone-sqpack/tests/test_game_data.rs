@@ -6,8 +6,6 @@ use std::{
     path::PathBuf,
 };
 
-use sha1::{Digest, Sha1};
-
 use tomestone_sqpack::{
     compression::decompress_sqpack_block,
     parser::{
@@ -15,7 +13,7 @@ use tomestone_sqpack::{
         index_entry_2, index_segment_headers, load_index_reader, sqpack_header_outer,
         GrowableBufReader,
     },
-    Expansion, Index, IndexEntry,
+    Expansion, GameData, Index, IndexEntry, IndexHash, IndexHash1, IndexHash2,
 };
 
 fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + RefUnwindSafe) {
@@ -67,32 +65,6 @@ fn parse_game_data() {
                     .unwrap();
                     println!("{:?}", parsed);
                 }
-            }
-        }
-        _ => {}
-    });
-}
-
-#[test]
-fn check_index_hashes() {
-    forall_sqpack(|path, mut bufreader| match path.extension() {
-        Some(ext) if ext == "index" || ext == "index2" => {
-            let parsed = drive_streaming_parser(&mut bufreader, sqpack_header_outer).unwrap();
-            let size = parsed.1;
-            bufreader.seek(SeekFrom::Start(size.into())).unwrap();
-            let parsed = drive_streaming_parser(&mut bufreader, index_segment_headers).unwrap();
-            for header in &parsed.1 {
-                if header.size == 0 {
-                    continue;
-                }
-                bufreader
-                    .seek(SeekFrom::Start(header.offset.into()))
-                    .unwrap();
-                let mut buf = vec![0; header.size.try_into().unwrap()];
-                bufreader.read_exact(&mut buf).unwrap();
-                let mut hash = Sha1::new();
-                hash.update(&buf);
-                assert_eq!(*hash.finalize(), header.hash);
             }
         }
         _ => {}
@@ -170,4 +142,32 @@ fn decompress_blocks() {
             }
         }
     });
+}
+
+#[test]
+fn game_data() {
+    dotenv::dotenv().ok();
+    // Don't test anything if the game directory isn't provided
+    let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+        root
+    } else {
+        return;
+    };
+    let game_data = GameData::new(root).unwrap();
+    const SCD_PATH: &str = "music/ffxiv/BGM_System_Title.scd";
+
+    let scd_data = game_data.lookup_path(SCD_PATH).unwrap().unwrap();
+    assert_eq!(&scd_data[..8], b"SEDBSSCF");
+
+    let scd_data = game_data
+        .lookup_hash_1(&IndexHash1::hash(SCD_PATH))
+        .unwrap()
+        .unwrap();
+    assert_eq!(&scd_data[..8], b"SEDBSSCF");
+
+    let scd_data = game_data
+        .lookup_hash_2(&IndexHash2::hash(SCD_PATH))
+        .unwrap()
+        .unwrap();
+    assert_eq!(&scd_data[..8], b"SEDBSSCF");
 }

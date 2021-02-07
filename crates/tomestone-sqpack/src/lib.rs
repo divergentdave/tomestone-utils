@@ -162,7 +162,8 @@ impl IndexHash1 {
 impl IndexHash for IndexHash1 {
     fn hash(path: &str) -> Self {
         let (folder, filename) = if let Some(last_separator_pos) = path.rfind('/') {
-            let (folder_slice, filename_slice) = path.split_at(last_separator_pos + 1);
+            let folder_slice = &path[..last_separator_pos];
+            let filename_slice = &path[last_separator_pos + 1..];
             (folder_slice.to_lowercase(), filename_slice.to_lowercase())
         } else {
             ("".to_string(), path.to_lowercase())
