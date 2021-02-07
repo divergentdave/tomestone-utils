@@ -479,8 +479,8 @@ pub struct DataLocator {
 impl DataLocator {
     fn from_u32(packed: u32) -> DataLocator {
         DataLocator {
-            data_file_id: ((packed & 7) >> 1).try_into().unwrap(),
-            offset: (packed & !7) << 3,
+            data_file_id: ((packed & 0xf) >> 1).try_into().unwrap(),
+            offset: (packed & !0xf) << 3,
         }
     }
 }
