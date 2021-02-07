@@ -19,8 +19,9 @@ use nom::{
 use sha1::{Digest, Sha1};
 
 use crate::{
-    DataBlocks, DataHeader, Error, Index, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1,
-    IndexHash2, IndexSegmentHeader, IndexType, PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
+    compression::decompress_sqpack_block, DataBlocks, DataHeader, DataLocator, Error, Index,
+    IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader, IndexType,
+    PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
 };
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
@@ -185,9 +186,7 @@ pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegment
     )
 }
 
-pub fn data_header(
-    start_position: usize,
-) -> impl FnMut(&[u8]) -> IResult<&[u8], (usize, DataHeader)> {
+pub fn data_header(start_position: u32) -> impl FnMut(&[u8]) -> IResult<&[u8], (u32, DataHeader)> {
     move |input: &[u8]| {
         integrity_checked_header(
             input,
@@ -205,9 +204,9 @@ pub fn data_header(
                 )),
                 |(length, _, _, data_size, spanned_dat, _, max_file_size, _)| {
                     (
-                        start_position + TryInto::<usize>::try_into(length).unwrap(),
+                        start_position + length,
                         DataHeader {
-                            data_size: TryInto::<u64>::try_into(data_size).unwrap() * 8,
+                            data_size: Into::<u64>::into(data_size) * 8,
                             spanned_dat,
                             max_file_size,
                         },
@@ -323,14 +322,12 @@ fn type_4_block_table<'a>(
     }
 }
 
-pub fn data_entry_headers(
-    start_position: usize,
-) -> impl FnMut(&[u8]) -> IResult<&[u8], DataBlocks> {
+pub fn data_entry_headers(start_position: u32) -> impl FnMut(&[u8]) -> IResult<&[u8], DataBlocks> {
     move |input: &[u8]| {
         let (_, (header_length, header_common)) = data_entry_header_common(input)?;
         let (input, header_data) = take(TryInto::<usize>::try_into(header_length).unwrap())(input)?;
         let (header_data, _) = complete(data_entry_header_common)(header_data)?;
-        let base_position = start_position + TryInto::<usize>::try_into(header_length).unwrap();
+        let base_position = start_position + header_length;
         let blocks = match header_common.content_type {
             DataContentType::Empty => DataBlocks::Empty,
             DataContentType::Unsupported => DataBlocks::Unsupported,
@@ -373,8 +370,7 @@ pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
         tuple((le_u32, le_u32, le_u32, null_padding(4))),
         |(filename_crc, folder_crc, packed, _)| IndexEntry1 {
             hash: IndexHash1::new(folder_crc, filename_crc),
-            data_file_id: ((packed & 7) >> 1).try_into().unwrap(),
-            offset: (packed & !7) << 3,
+            data_locator: DataLocator::from_u32(packed),
         },
     )(input)
 }
@@ -382,8 +378,7 @@ pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
 pub fn index_entry_2(input: &[u8]) -> IResult<&[u8], IndexEntry2> {
     map(tuple((le_u32, le_u32)), |(path_crc, packed)| IndexEntry2 {
         hash: IndexHash2::new(path_crc),
-        data_file_id: (packed & 7).try_into().unwrap(),
-        offset: packed & !7,
+        data_locator: DataLocator::from_u32(packed),
     })(input)
 }
 
@@ -484,7 +479,7 @@ impl<R: Read> BufRead for GrowableBufReader<R> {
     }
 }
 
-pub fn drive_streaming_parser<R, F, O, E>(
+pub fn drive_streaming_parser<R, F, O>(
     reader: &mut GrowableBufReader<R>,
     mut parser: F,
 ) -> Result<O, Error>
@@ -492,6 +487,7 @@ where
     R: Read,
     F: FnMut(&[u8]) -> IResult<&[u8], O, nom::error::Error<&[u8]>>,
 {
+    let mut eof_flag = false;
     loop {
         let data = reader.fill_buf()?;
         match parser(data) {
@@ -502,16 +498,57 @@ where
                 return Ok(output);
             }
             Err(Err::Incomplete(Needed::Unknown)) => {
-                let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + 1024)?;
-                if eof {
+                if eof_flag {
                     Err(ErrorKind::Eof)?
                 }
+                let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + 1024)?;
+                eof_flag |= eof;
             }
             Err(Err::Incomplete(Needed::Size(needed))) => {
-                let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + needed.get())?;
-                if eof {
+                if eof_flag {
                     Err(ErrorKind::Eof)?
                 }
+                let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + needed.get())?;
+                eof_flag |= eof;
+            }
+            Err(Err::Error(e)) | Err(Err::Failure(e)) => Err(e.code)?,
+        }
+    }
+}
+
+pub fn drive_streaming_parser_smaller<RS, F, O>(mut reader: RS, mut parser: F) -> Result<O, Error>
+where
+    RS: Read + Seek,
+    F: FnMut(&[u8]) -> IResult<&[u8], O, nom::error::Error<&[u8]>>,
+{
+    let mut buf = Vec::with_capacity(4);
+    loop {
+        let expected_length = buf.capacity();
+        let read_length = buf.capacity() - buf.len();
+        let mut take = reader.take(read_length.try_into().unwrap());
+        take.read_to_end(&mut buf)?;
+        let at_eof = buf.len() < expected_length;
+        reader = take.into_inner();
+        match parser(&buf) {
+            Ok((rest, output)) => {
+                if !rest.is_empty() {
+                    reader.seek(SeekFrom::Current(
+                        -TryInto::<i64>::try_into(rest.len()).unwrap(),
+                    ))?;
+                }
+                return Ok(output);
+            }
+            Err(Err::Incomplete(Needed::Unknown)) => {
+                if at_eof {
+                    Err(ErrorKind::Eof)?
+                }
+                buf.reserve(256);
+            }
+            Err(Err::Incomplete(Needed::Size(needed))) => {
+                if at_eof {
+                    Err(ErrorKind::Eof)?
+                }
+                buf.reserve(needed.get());
             }
             Err(Err::Error(e)) | Err(Err::Failure(e)) => Err(e.code)?,
         }
@@ -522,25 +559,18 @@ pub fn load_index_reader<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
     bufreader: &mut GrowableBufReader<File>,
     parser: P,
 ) -> Result<Index<I>, Error> {
-    let file_header = drive_streaming_parser::<_, _, _, nom::error::Error<&[u8]>>(
-        bufreader,
-        sqpack_header_outer,
-    )?;
+    let file_header = drive_streaming_parser(bufreader, sqpack_header_outer)?;
     let size = file_header.1;
 
     bufreader.seek(SeekFrom::Start(size.into()))?;
-    let index_header = drive_streaming_parser::<_, _, _, nom::error::Error<&[u8]>>(
-        bufreader,
-        index_segment_headers,
-    )?;
+    let index_header = drive_streaming_parser(bufreader, index_segment_headers)?;
     let first_segment_header = &index_header.1[0];
 
     bufreader.seek(SeekFrom::Start(first_segment_header.offset.into()))?;
     let entry_count = first_segment_header.size / I::SIZE;
     let mut entries = Vec::with_capacity(entry_count.try_into().unwrap());
     for _ in 0..entry_count {
-        let index_entry =
-            drive_streaming_parser::<_, _, _, nom::error::Error<&[u8]>>(bufreader, &parser)?;
+        let index_entry = drive_streaming_parser(bufreader, &parser)?;
         entries.push(index_entry);
     }
     Ok(Index::new(entries))
@@ -556,6 +586,34 @@ pub fn load_index_2(path: PathBuf) -> Result<Index<IndexEntry2>, Error> {
     let file = File::open(path)?;
     let mut bufreader = GrowableBufReader::new(file);
     load_index_reader(&mut bufreader, index_entry_2)
+}
+
+pub fn decompress_file(mut file: &mut File, data_entry_offset: u32) -> Result<Vec<u8>, Error> {
+    // Note that file decompression could be parallelized by splitting different blocks across
+    // threads. This is probably why the file format has multiple blocks per entry.
+    file.seek(SeekFrom::Start(data_entry_offset.into()))?;
+    let blocks = drive_streaming_parser_smaller(&mut *file, data_entry_headers(data_entry_offset))?;
+    let mut compressed = Vec::new();
+    let mut decompressed = Vec::new();
+    for block_offset in blocks.all_blocks() {
+        file.seek(SeekFrom::Start(block_offset.into()))?;
+        let (compressed_length, decompressed_length) =
+            drive_streaming_parser_smaller(&mut *file, block_header)?;
+        if compressed_length == 32000 {
+            let mut take = file.take(decompressed_length.try_into().unwrap());
+            take.read_to_end(&mut decompressed)?;
+            file = take.into_inner();
+        } else {
+            let mut take = file.take(compressed_length.try_into().unwrap());
+            take.read_to_end(&mut compressed)?;
+            let block_decompressed =
+                decompress_sqpack_block(&compressed, decompressed_length.try_into().unwrap())?;
+            decompressed.extend_from_slice(&block_decompressed);
+            compressed.clear();
+            file = take.into_inner();
+        }
+    }
+    Ok(decompressed)
 }
 
 #[cfg(test)]

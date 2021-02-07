@@ -51,6 +51,14 @@ fn list_files(game_data: &GameData, category: Category, expansion: Expansion) ->
     Ok(())
 }
 
+fn print_hex_dump(data: &[u8]) {
+    let mut buf = [0u8; 32];
+    for chunk in data.chunks(16) {
+        hex::encode_to_slice(chunk, &mut buf[..chunk.len() * 2]).unwrap();
+        println!("{}", std::str::from_utf8(&buf[..chunk.len() * 2]).unwrap());
+    }
+}
+
 fn main() {
     dotenv::dotenv().ok();
     let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
@@ -113,19 +121,13 @@ fn main() {
         }
         ("hex", Some(matches)) => {
             match lookup(&game_data, matches.values_of("path_or_crc").unwrap()) {
-                Ok(Some(data)) => {
-                    let mut buf = [0u8; 32];
-                    for chunk in data.chunks(16) {
-                        hex::decode_to_slice(chunk, &mut buf).unwrap();
-                        println!("{}", std::str::from_utf8(&buf[chunk.len() * 2..]).unwrap());
-                    }
-                }
+                Ok(Some(data)) => print_hex_dump(&data),
                 Ok(None) => {
                     eprintln!("error: file not found");
                     process::exit(1);
                 }
                 Err(e) => {
-                    eprintln!("error: {}", e);
+                    eprintln!("{}", e);
                     process::exit(1);
                 }
             }

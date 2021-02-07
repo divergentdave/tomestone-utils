@@ -1,12 +1,14 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryInto,
-    fmt, io,
+    fmt,
+    fs::File,
+    io,
     path::{Path, PathBuf},
 };
 
 use once_cell::sync::{Lazy, OnceCell};
-use parser::{load_index_1, load_index_2};
+use parser::{decompress_file, load_index_1, load_index_2};
 use regex::Regex;
 
 pub mod compression;
@@ -18,6 +20,7 @@ pub(crate) const SHA1_OUTPUT_SIZE: usize = 20;
 pub enum Error {
     Io(io::Error),
     Nom(nom::error::ErrorKind),
+    Inflate(miniz_oxide::inflate::TINFLStatus),
 }
 
 impl fmt::Display for Error {
@@ -25,6 +28,7 @@ impl fmt::Display for Error {
         match self {
             Error::Io(e) => e.fmt(f),
             Error::Nom(e) => write!(f, "error: {:?}", e),
+            Error::Inflate(e) => write!(f, "error: {:?}", e),
         }
     }
 }
@@ -40,6 +44,12 @@ impl From<io::Error> for Error {
 impl From<nom::error::ErrorKind> for Error {
     fn from(e: nom::error::ErrorKind) -> Error {
         Error::Nom(e)
+    }
+}
+
+impl From<miniz_oxide::inflate::TINFLStatus> for Error {
+    fn from(e: miniz_oxide::inflate::TINFLStatus) -> Error {
+        Error::Inflate(e)
     }
 }
 
@@ -188,14 +198,13 @@ pub trait IndexEntry {
     const SIZE: u32;
     const FILE_EXTENSION: &'static str;
     fn hash(&self) -> Self::Hash;
-    fn data_location(&self) -> (u8, u32);
+    fn data_location(&self) -> DataLocator;
 }
 
 #[derive(Debug)]
 pub struct IndexEntry1 {
     hash: IndexHash1,
-    data_file_id: u8,
-    offset: u32,
+    data_locator: DataLocator,
 }
 
 impl IndexEntry for IndexEntry1 {
@@ -207,16 +216,15 @@ impl IndexEntry for IndexEntry1 {
         self.hash
     }
 
-    fn data_location(&self) -> (u8, u32) {
-        (self.data_file_id, self.offset)
+    fn data_location(&self) -> DataLocator {
+        self.data_locator
     }
 }
 
 #[derive(Debug)]
 pub struct IndexEntry2 {
     hash: IndexHash2,
-    data_file_id: u8,
-    offset: u32,
+    data_locator: DataLocator,
 }
 
 impl IndexEntry for IndexEntry2 {
@@ -228,8 +236,8 @@ impl IndexEntry for IndexEntry2 {
         self.hash
     }
 
-    fn data_location(&self) -> (u8, u32) {
-        (self.data_file_id, self.offset)
+    fn data_location(&self) -> DataLocator {
+        self.data_locator
     }
 }
 
@@ -401,7 +409,7 @@ pub enum DataBlocks {
     Empty,
     Unsupported,
     Binary {
-        base_position: usize,
+        base_position: u32,
         blocks: Vec<(u32, u16, u16)>,
     },
     Model(),
@@ -409,7 +417,7 @@ pub enum DataBlocks {
 }
 
 impl DataBlocks {
-    pub fn all_blocks<'a>(&'a self) -> Box<dyn Iterator<Item = usize> + 'a> {
+    pub fn all_blocks<'a>(&'a self) -> Box<dyn Iterator<Item = u32> + 'a> {
         match self {
             DataBlocks::Binary {
                 base_position,
@@ -417,12 +425,10 @@ impl DataBlocks {
             } => {
                 let base_position = *base_position;
                 Box::new(blocks.iter().map(
-                    move |(offset, _block_size, _decompressed_data_size)| {
-                        base_position + TryInto::<usize>::try_into(*offset).unwrap()
-                    },
+                    move |(offset, _block_size, _decompressed_data_size)| base_position + *offset,
                 ))
             }
-            _ => Box::new(vec![].into_iter()),
+            _ => Box::new(vec![].into_iter()), // TODO!
         }
     }
 }
@@ -463,11 +469,25 @@ fn list_packs(root_path: &Path) -> io::Result<BTreeSet<SqPackId>> {
     Ok(ids)
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct DataLocator {
+    pub data_file_id: u8,
+    pub offset: u32,
+}
+
+impl DataLocator {
+    fn from_u32(packed: u32) -> DataLocator {
+        DataLocator {
+            data_file_id: ((packed & 7) >> 1).try_into().unwrap(),
+            offset: (packed & !7) << 3,
+        }
+    }
+}
+
 pub struct GameData {
     root_path: PathBuf,
     index_map_1: BTreeMap<SqPackId, OnceCell<Index<IndexEntry1>>>,
     index_map_2: BTreeMap<SqPackId, OnceCell<Index<IndexEntry2>>>,
-    decompressed_map: BTreeMap<SqPackId, OnceCell<()>>,
 }
 
 impl GameData {
@@ -476,17 +496,14 @@ impl GameData {
         let ids = list_packs(&root_path)?;
         let mut index_map_1 = BTreeMap::new();
         let mut index_map_2 = BTreeMap::new();
-        let mut decompressed_map = BTreeMap::new();
         for id in ids {
             index_map_1.insert(id.clone(), OnceCell::new());
             index_map_2.insert(id.clone(), OnceCell::new());
-            decompressed_map.insert(id.clone(), OnceCell::new());
         }
         Ok(GameData {
             root_path,
             index_map_1,
             index_map_2,
-            decompressed_map,
         })
     }
 
@@ -515,8 +532,11 @@ impl GameData {
             ))
     }
 
-    fn fetch_data(&self, data_location: (u8, u32)) -> Result<Option<Vec<u8>>, Error> {
-        todo!()
+    fn fetch_data(&self, pack_id: SqPackId, data_locator: DataLocator) -> Result<Vec<u8>, Error> {
+        // TODO: reuse of opened files
+        let path = self.build_data_path(pack_id, data_locator.data_file_id);
+        let mut file = File::open(path)?;
+        decompress_file(&mut file, data_locator.offset)
     }
 
     pub fn lookup_path(&self, path: &str) -> Result<Option<Vec<u8>>, Error> {
@@ -541,7 +561,7 @@ impl GameData {
         for id in self.iter_packs_category_expansion(category, expansion) {
             let index = self.get_index_2(&id).unwrap()?;
             if let Some(entry) = index.get(&hash) {
-                return self.fetch_data(entry.data_location());
+                return Ok(Some(self.fetch_data(id, entry.data_location())?));
             }
         }
         Ok(None)
@@ -551,7 +571,7 @@ impl GameData {
         for id in self.iter_packs() {
             let index = self.get_index_1(&id).unwrap()?;
             if let Some(entry) = index.get(hash) {
-                return self.fetch_data(entry.data_location());
+                return Ok(Some(self.fetch_data(id, entry.data_location())?));
             }
         }
         Ok(None)
@@ -561,7 +581,7 @@ impl GameData {
         for id in self.iter_packs() {
             let index = self.get_index_2(&id).unwrap()?;
             if let Some(entry) = index.get(hash) {
-                return self.fetch_data(entry.data_location());
+                return Ok(Some(self.fetch_data(id, entry.data_location())?));
             }
         }
         Ok(None)

@@ -6,7 +6,6 @@ use std::{
     path::PathBuf,
 };
 
-use nom::error::Error;
 use sha1::{Digest, Sha1};
 
 use tomestone_sqpack::{
@@ -49,31 +48,19 @@ fn parse_game_data() {
         Some(ext)
             if ext.to_string_lossy().starts_with("dat") || ext == "index" || ext == "index2" =>
         {
-            let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
-                &mut bufreader,
-                sqpack_header_outer,
-            )
-            .unwrap();
+            let parsed = drive_streaming_parser(&mut bufreader, sqpack_header_outer).unwrap();
             println!("{:?}", parsed);
             bufreader.seek(SeekFrom::Start(1024)).unwrap();
             if ext == "index" || ext == "index2" {
-                let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
-                    &mut bufreader,
-                    index_segment_headers,
-                )
-                .unwrap();
+                let parsed = drive_streaming_parser(&mut bufreader, index_segment_headers).unwrap();
                 println!("{:?}", parsed);
             } else {
                 // dat file
                 let (next_start_position, parsed) =
-                    drive_streaming_parser::<_, _, _, Error<&[u8]>>(
-                        &mut bufreader,
-                        data_header(1024),
-                    )
-                    .unwrap();
+                    drive_streaming_parser(&mut bufreader, data_header(1024)).unwrap();
                 println!("{:?}", parsed);
                 if parsed.data_size > 0 {
-                    let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
+                    let parsed = drive_streaming_parser(
                         &mut bufreader,
                         data_entry_headers(next_start_position),
                     )
@@ -90,18 +77,10 @@ fn parse_game_data() {
 fn check_index_hashes() {
     forall_sqpack(|path, mut bufreader| match path.extension() {
         Some(ext) if ext == "index" || ext == "index2" => {
-            let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
-                &mut bufreader,
-                sqpack_header_outer,
-            )
-            .unwrap();
+            let parsed = drive_streaming_parser(&mut bufreader, sqpack_header_outer).unwrap();
             let size = parsed.1;
             bufreader.seek(SeekFrom::Start(size.into())).unwrap();
-            let parsed = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
-                &mut bufreader,
-                index_segment_headers,
-            )
-            .unwrap();
+            let parsed = drive_streaming_parser(&mut bufreader, index_segment_headers).unwrap();
             for header in &parsed.1 {
                 if header.size == 0 {
                     continue;
@@ -153,15 +132,11 @@ fn decompress_blocks() {
             if extension.to_string_lossy().starts_with("dat") {
                 bufreader.seek(SeekFrom::Start(1024)).unwrap();
                 let (next_start_position, data_header) =
-                    drive_streaming_parser::<_, _, _, Error<&[u8]>>(
-                        &mut bufreader,
-                        data_header(1024),
-                    )
-                    .unwrap();
+                    drive_streaming_parser(&mut bufreader, data_header(1024)).unwrap();
                 if data_header.data_size > 0 {
                     // the first data entry header in the file should immediately follow the data
                     // header
-                    let data_blocks = drive_streaming_parser::<_, _, _, Error<&[u8]>>(
+                    let data_blocks = drive_streaming_parser(
                         &mut bufreader,
                         data_entry_headers(next_start_position),
                     )
@@ -171,9 +146,7 @@ fn decompress_blocks() {
                     let mut compressed = Vec::new();
                     let mut is_first = true;
                     for block_offset in data_blocks.all_blocks() {
-                        reader
-                            .seek(SeekFrom::Start(block_offset.try_into().unwrap()))
-                            .unwrap();
+                        reader.seek(SeekFrom::Start(block_offset.into())).unwrap();
                         reader.read_exact(&mut header_buffer).unwrap();
                         let (_, (compressed_length, decompressed_length)) =
                             block_header(&header_buffer).unwrap();
