@@ -27,16 +27,14 @@ fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Ve
             eprintln!("error: invalid CRC-32 hashes or multiple paths provided");
             process::exit(1);
         }
+    } else if CRC_RE.is_match(first_arg) {
+        // one CRC-32
+        let crc = u32::from_str_radix(first_arg, 16).unwrap();
+        let hash = IndexHash2::new(crc);
+        game_data.lookup_hash_2(&hash)
     } else {
-        if CRC_RE.is_match(first_arg) {
-            // one CRC-32
-            let crc = u32::from_str_radix(first_arg, 16).unwrap();
-            let hash = IndexHash2::new(crc);
-            game_data.lookup_hash_2(&hash)
-        } else {
-            // path
-            game_data.lookup_path(first_arg)
-        }
+        // path
+        game_data.lookup_path(first_arg)
     }
 }
 
@@ -107,7 +105,7 @@ fn main() {
         ("raw", Some(matches)) => {
             match lookup(&game_data, matches.values_of("path_or_crc").unwrap()) {
                 Ok(Some(data)) => {
-                    stdout().write(&data).unwrap();
+                    stdout().write_all(&data).unwrap();
                 }
                 Ok(None) => {
                     eprintln!("error: file not found");
@@ -134,14 +132,13 @@ fn main() {
         }
         ("list", Some(matches)) => {
             if let Some(path) = matches.value_of("path") {
-                let segments: Vec<_> = path.split("/").collect();
-                if segments.len() > 2 {
-                    eprintln!("error: list only supports up to two path segments");
-                    process::exit(1);
-                } else if segments.len() == 2 {
-                    if let Ok(category) = Category::parse_name(segments[0]) {
-                        if let Ok(expansion) = Expansion::parse_name(segments[1]) {
-                            match list_files(&game_data, category, expansion) {
+                let segments: Vec<_> = path.split('/').collect();
+                match segments.len() {
+                    0 => unreachable!(),
+                    1 => {
+                        // one segment, category only, assume it's from the base game
+                        if let Ok(category) = Category::parse_name(segments[0]) {
+                            match list_files(&game_data, category, Expansion::Base) {
                                 Ok(_) => {}
                                 Err(e) => {
                                     eprintln!("error: couldn't read indices, {}", e);
@@ -149,25 +146,31 @@ fn main() {
                                 }
                             }
                         } else {
-                            eprintln!("error: invalid expansion {:?}", segments[1]);
+                            eprintln!("error: invalid category {:?}", segments[0]);
                             process::exit(1);
                         }
-                    } else {
-                        eprintln!("error: invalid category {:?}", segments[0]);
-                        process::exit(1);
                     }
-                } else {
-                    // one segment, category only, assume it's from the base game
-                    if let Ok(category) = Category::parse_name(segments[0]) {
-                        match list_files(&game_data, category, Expansion::Base) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                eprintln!("error: couldn't read indices, {}", e);
+                    2 => {
+                        if let Ok(category) = Category::parse_name(segments[0]) {
+                            if let Ok(expansion) = Expansion::parse_name(segments[1]) {
+                                match list_files(&game_data, category, expansion) {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        eprintln!("error: couldn't read indices, {}", e);
+                                        process::exit(1);
+                                    }
+                                }
+                            } else {
+                                eprintln!("error: invalid expansion {:?}", segments[1]);
                                 process::exit(1);
                             }
+                        } else {
+                            eprintln!("error: invalid category {:?}", segments[0]);
+                            process::exit(1);
                         }
-                    } else {
-                        eprintln!("error: invalid category {:?}", segments[0]);
+                    }
+                    _ => {
+                        eprintln!("error: list only supports up to two path segments");
                         process::exit(1);
                     }
                 }

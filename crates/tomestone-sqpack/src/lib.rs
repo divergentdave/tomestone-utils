@@ -497,8 +497,8 @@ impl GameData {
         let mut index_map_1 = BTreeMap::new();
         let mut index_map_2 = BTreeMap::new();
         for id in ids {
-            index_map_1.insert(id.clone(), OnceCell::new());
-            index_map_2.insert(id.clone(), OnceCell::new());
+            index_map_1.insert(id, OnceCell::new());
+            index_map_2.insert(id, OnceCell::new());
         }
         Ok(GameData {
             root_path,

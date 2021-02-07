@@ -57,11 +57,11 @@ where
 struct PlatformIdParseError;
 
 fn platform_id(input: &[u8]) -> IResult<&[u8], PlatformId> {
-    map_res(le_u8, |byte: u8| PlatformId::from_u8(byte))(input)
+    map_res(le_u8, PlatformId::from_u8)(input)
 }
 
 fn sqpack_type(input: &[u8]) -> IResult<&[u8], SqPackType> {
-    map_res(le_u32, |value| SqPackType::from_u32(value))(input)
+    map_res(le_u32, SqPackType::from_u32)(input)
 }
 
 fn sqpack_header_inner(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
@@ -133,7 +133,7 @@ pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32
 fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
     map(
         tuple((
-            map_opt(le_u32, |value| IndexType::parse(value)),
+            map_opt(le_u32, IndexType::parse),
             le_u32,
             le_u32,
             take(SHA1_OUTPUT_SIZE),
@@ -395,7 +395,7 @@ impl<R: Read> GrowableBufReader<R> {
         buf.resize(buf.capacity(), 0);
         GrowableBufReader {
             inner,
-            buf: buf,
+            buf,
             pos: 0,
             cap: 0,
         }
@@ -451,11 +451,8 @@ impl<R: Read> Read for GrowableBufReader<R> {
 
 impl<R: Read + Seek> Seek for GrowableBufReader<R> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, io::Error> {
-        match pos {
-            SeekFrom::Current(_) => {
-                panic!("Seeking from the current position is unsupported for GrowableBufReader")
-            }
-            _ => {}
+        if let SeekFrom::Current(_) = pos {
+            panic!("Seeking from the current position is unsupported for GrowableBufReader")
         }
         // throw away the entire buffer, no optimizations
         self.pos = 0;
@@ -499,19 +496,19 @@ where
             }
             Err(Err::Incomplete(Needed::Unknown)) => {
                 if eof_flag {
-                    Err(ErrorKind::Eof)?
+                    return Err(ErrorKind::Eof.into());
                 }
                 let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + 1024)?;
                 eof_flag |= eof;
             }
             Err(Err::Incomplete(Needed::Size(needed))) => {
                 if eof_flag {
-                    Err(ErrorKind::Eof)?
+                    return Err(ErrorKind::Eof.into());
                 }
                 let (_, eof) = reader.fill_buf_required(reader.buffer_capacity() + needed.get())?;
                 eof_flag |= eof;
             }
-            Err(Err::Error(e)) | Err(Err::Failure(e)) => Err(e.code)?,
+            Err(Err::Error(e)) | Err(Err::Failure(e)) => return Err(e.code.into()),
         }
     }
 }
@@ -540,17 +537,17 @@ where
             }
             Err(Err::Incomplete(Needed::Unknown)) => {
                 if at_eof {
-                    Err(ErrorKind::Eof)?
+                    return Err(ErrorKind::Eof.into());
                 }
                 buf.reserve(256);
             }
             Err(Err::Incomplete(Needed::Size(needed))) => {
                 if at_eof {
-                    Err(ErrorKind::Eof)?
+                    return Err(ErrorKind::Eof.into());
                 }
                 buf.reserve(needed.get());
             }
-            Err(Err::Error(e)) | Err(Err::Failure(e)) => Err(e.code)?,
+            Err(Err::Error(e)) | Err(Err::Failure(e)) => return Err(e.code.into()),
         }
     }
 }

@@ -9,8 +9,7 @@ pub fn decompress_sqpack_block(
     input: &[u8],
     decompressed_size: usize,
 ) -> Result<Vec<u8>, TINFLStatus> {
-    let mut decompressed = Vec::with_capacity(decompressed_size);
-    decompressed.resize(decompressed_size, 0);
+    let mut decompressed = vec![0; decompressed_size];
     let mut decompressor = DecompressorOxide::new();
     let (status, _in_count, _out_count) = decompress(
         &mut decompressor,
