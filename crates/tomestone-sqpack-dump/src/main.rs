@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     io::{stdout, Write},
     process,
 };
@@ -22,7 +23,7 @@ fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Ve
             let folder_crc = u32::from_str_radix(first_arg, 16).unwrap();
             let file_crc = u32::from_str_radix(second_arg, 16).unwrap();
             let hash = IndexHash1::new(folder_crc, file_crc);
-            game_data.lookup_hash_1(&hash)
+            game_data.lookup_hash_1_data(&hash)
         } else {
             eprintln!("error: invalid CRC-32 hashes or multiple paths provided");
             process::exit(1);
@@ -31,10 +32,10 @@ fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Ve
         // one CRC-32
         let crc = u32::from_str_radix(first_arg, 16).unwrap();
         let hash = IndexHash2::new(crc);
-        game_data.lookup_hash_2(&hash)
+        game_data.lookup_hash_2_data(&hash)
     } else {
         // path
-        game_data.lookup_path(first_arg)
+        game_data.lookup_path_data(first_arg)
     }
 }
 
@@ -115,6 +116,41 @@ fn do_grep(
     Ok(())
 }
 
+static PATH_DISCOVERY_RE: Lazy<BytesRegex> = Lazy::new(|| {
+    BytesRegex::new(
+        "((?:common|bgcommon|bg|cut|chara|shader|ui|sound|vfx|ui_script|exd|game_script|music|\
+    sqpack_test|debug)/[-a-zA-Z0-9_./]+)\\x00",
+    )
+    .unwrap()
+});
+
+fn discover_paths(game_data: &GameData) -> Result<(), Error> {
+    let mut indices = BTreeMap::new();
+    for category in Category::iter_all() {
+        for expansion in Expansion::iter_all() {
+            for pack_id in game_data.iter_packs_category_expansion(*category, *expansion) {
+                let index = game_data.get_index_1(&pack_id).unwrap()?;
+                indices.insert(pack_id, index);
+            }
+        }
+    }
+    for (pack_id, index) in indices.iter() {
+        for res in game_data.iter_files(*pack_id, &index)? {
+            let (hash, file) = res?;
+            if let Some(caps) = PATH_DISCOVERY_RE.captures(&file) {
+                let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
+                if game_data.lookup_path_locator(discovered_path)?.is_some() {
+                    println!(
+                        "{:?} {:08x} {:08x} {}",
+                        pack_id, hash.folder_crc, hash.filename_crc, discovered_path,
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     dotenv::dotenv().ok();
     let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
@@ -162,7 +198,8 @@ fn main() {
             SubCommand::with_name("grep")
                 .arg(Arg::with_name("pattern").required(true).index(1))
                 .arg(Arg::with_name("path").required(false).index(2)),
-        );
+        )
+        .subcommand(SubCommand::with_name("discover_paths"));
     let app_matches = app.get_matches();
     match app_matches.subcommand() {
         ("raw", Some(matches)) => {
@@ -238,9 +275,39 @@ fn main() {
                 }
             }
         }
+        ("discover_paths", Some(_matches)) => {
+            if let Err(e) = discover_paths(&game_data) {
+                eprintln!("error: couldn't read files, {}", e);
+                process::exit(1);
+            }
+        }
         _ => {
             eprintln!("{}", app_matches.usage());
             process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::PATH_DISCOVERY_RE;
+
+    #[test]
+    fn path_discovery_regex() {
+        let mut it = PATH_DISCOVERY_RE.captures_iter(
+            b"\x00\x00\x00\x00bg/ffxiv/wil_w1/hou/w1h1/texture/w1h1_w1_art2_n.tex\x00\
+            exd/AirshipExplorationLevel_0.exd\x00\x00",
+        );
+        let captures = it.next().unwrap();
+        assert_eq!(
+            captures.get(1).unwrap().as_bytes(),
+            b"bg/ffxiv/wil_w1/hou/w1h1/texture/w1h1_w1_art2_n.tex"
+        );
+        let captures = it.next().unwrap();
+        assert_eq!(
+            captures.get(1).unwrap().as_bytes(),
+            b"exd/AirshipExplorationLevel_0.exd"
+        );
+        assert!(it.next().is_none());
     }
 }

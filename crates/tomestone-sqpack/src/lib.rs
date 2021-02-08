@@ -566,7 +566,10 @@ impl GameData {
         }))
     }
 
-    pub fn lookup_path(&self, path: &str) -> Result<Option<Vec<u8>>, Error> {
+    pub fn lookup_path_locator(
+        &self,
+        path: &str,
+    ) -> Result<Option<(SqPackId, DataLocator)>, Error> {
         let segments: Vec<_> = path.splitn(3, '/').collect();
         let category = if let Ok(category) = Category::parse_name(segments[0]) {
             category
@@ -588,13 +591,21 @@ impl GameData {
         for id in self.iter_packs_category_expansion(category, expansion) {
             let index = self.get_index_2(&id).unwrap()?;
             if let Some(entry) = index.get(&hash) {
-                return Ok(Some(self.fetch_data(id, entry.data_location())?));
+                return Ok(Some((id, entry.data_location())));
             }
         }
         Ok(None)
     }
 
-    pub fn lookup_hash_1(&self, hash: &IndexHash1) -> Result<Option<Vec<u8>>, Error> {
+    pub fn lookup_path_data(&self, path: &str) -> Result<Option<Vec<u8>>, Error> {
+        if let Some((pack_id, data_locator)) = self.lookup_path_locator(path)? {
+            Ok(Some(self.fetch_data(pack_id, data_locator)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn lookup_hash_1_data(&self, hash: &IndexHash1) -> Result<Option<Vec<u8>>, Error> {
         for id in self.iter_packs() {
             let index = self.get_index_1(&id).unwrap()?;
             if let Some(entry) = index.get(hash) {
@@ -604,7 +615,7 @@ impl GameData {
         Ok(None)
     }
 
-    pub fn lookup_hash_2(&self, hash: &IndexHash2) -> Result<Option<Vec<u8>>, Error> {
+    pub fn lookup_hash_2_data(&self, hash: &IndexHash2) -> Result<Option<Vec<u8>>, Error> {
         for id in self.iter_packs() {
             let index = self.get_index_2(&id).unwrap()?;
             if let Some(entry) = index.get(hash) {

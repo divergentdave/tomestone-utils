@@ -156,17 +156,17 @@ fn game_data() {
     let game_data = GameData::new(root).unwrap();
     const SCD_PATH: &str = "music/ffxiv/BGM_System_Title.scd";
 
-    let scd_data = game_data.lookup_path(SCD_PATH).unwrap().unwrap();
+    let scd_data = game_data.lookup_path_data(SCD_PATH).unwrap().unwrap();
     assert_eq!(&scd_data[..8], b"SEDBSSCF");
 
     let scd_data = game_data
-        .lookup_hash_1(&IndexHash1::hash(SCD_PATH))
+        .lookup_hash_1_data(&IndexHash1::hash(SCD_PATH))
         .unwrap()
         .unwrap();
     assert_eq!(&scd_data[..8], b"SEDBSSCF");
 
     let scd_data = game_data
-        .lookup_hash_2(&IndexHash2::hash(SCD_PATH))
+        .lookup_hash_2_data(&IndexHash2::hash(SCD_PATH))
         .unwrap()
         .unwrap();
     assert_eq!(&scd_data[..8], b"SEDBSSCF");
