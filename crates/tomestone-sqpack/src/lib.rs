@@ -194,7 +194,7 @@ impl IndexHash for IndexHash2 {
     }
 }
 
-pub trait IndexEntry {
+pub trait IndexEntry: fmt::Debug + Clone {
     type Hash: PartialEq + Eq + PartialOrd + Ord;
     const SIZE: u32;
     const FILE_EXTENSION: &'static str;
@@ -202,7 +202,7 @@ pub trait IndexEntry {
     fn data_location(&self) -> DataLocator;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IndexEntry1 {
     hash: IndexHash1,
     data_locator: DataLocator,
@@ -222,7 +222,7 @@ impl IndexEntry for IndexEntry1 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IndexEntry2 {
     hash: IndexHash2,
     data_locator: DataLocator,
@@ -470,7 +470,7 @@ fn list_packs(root_path: &Path) -> io::Result<BTreeSet<SqPackId>> {
     Ok(ids)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DataLocator {
     pub data_file_id: u8,
     pub offset: u32,
@@ -554,7 +554,9 @@ impl GameData {
                 break;
             }
         }
-        Ok(index.iter().map(move |entry| {
+        let mut entries: Vec<I> = index.iter().cloned().collect();
+        entries.sort_unstable_by_key(IndexEntry::data_location);
+        Ok(entries.into_iter().map(move |entry| {
             let locator = entry.data_location();
             Ok((
                 entry.hash(),
