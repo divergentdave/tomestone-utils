@@ -11,8 +11,8 @@ use once_cell::sync::{Lazy, OnceCell};
 use parser::{decompress_file, load_index_1, load_index_2};
 use regex::Regex;
 
-pub mod compression;
-pub mod parser;
+mod compression;
+mod parser;
 
 pub(crate) const SHA1_OUTPUT_SIZE: usize = 20;
 

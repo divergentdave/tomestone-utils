@@ -19,9 +19,9 @@ use nom::{
 use sha1::{Digest, Sha1};
 
 use crate::{
-    compression::decompress_sqpack_block, DataBlocks, DataHeader, DataLocator, Error, Index,
-    IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader, IndexType,
-    PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
+    compression::decompress_sqpack_block, DataBlocks, DataLocator, Error, Index, IndexEntry,
+    IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader, IndexType, PlatformId,
+    SqPackType, SHA1_OUTPUT_SIZE,
 };
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
@@ -126,7 +126,7 @@ pub fn integrity_checked_header<
     )(input)
 }
 
-pub fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
+fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
     integrity_checked_header(input, |_| Ok((b"", 1024usize)), sqpack_header_inner)
 }
 
@@ -147,7 +147,7 @@ fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
     )(input)
 }
 
-pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegmentHeader; 4])> {
+fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegmentHeader; 4])> {
     integrity_checked_header(
         input,
         map(le_u32, |size| size.try_into().unwrap()),
@@ -184,37 +184,6 @@ pub fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegment
             },
         ),
     )
-}
-
-pub fn data_header(start_position: u32) -> impl FnMut(&[u8]) -> IResult<&[u8], (u32, DataHeader)> {
-    move |input: &[u8]| {
-        integrity_checked_header(
-            input,
-            map(le_u32, |size| size.try_into().unwrap()),
-            map(
-                tuple((
-                    le_u32,
-                    null_padding(4),
-                    le_u32,
-                    le_u32,
-                    le_u32,
-                    null_padding(4),
-                    le_u32,
-                    null_padding(4),
-                )),
-                |(length, _, _, data_size, spanned_dat, _, max_file_size, _)| {
-                    (
-                        start_position + length,
-                        DataHeader {
-                            data_size: Into::<u64>::into(data_size) * 8,
-                            spanned_dat,
-                            max_file_size,
-                        },
-                    )
-                },
-            ),
-        )
-    }
 }
 
 #[derive(Debug)]
@@ -322,7 +291,7 @@ fn type_4_block_table<'a>(
     }
 }
 
-pub fn data_entry_headers(start_position: u32) -> impl FnMut(&[u8]) -> IResult<&[u8], DataBlocks> {
+fn data_entry_headers(start_position: u32) -> impl FnMut(&[u8]) -> IResult<&[u8], DataBlocks> {
     move |input: &[u8]| {
         let (_, (header_length, header_common)) = data_entry_header_common(input)?;
         let (input, header_data) = take(TryInto::<usize>::try_into(header_length).unwrap())(input)?;
@@ -352,7 +321,7 @@ pub fn data_entry_headers(start_position: u32) -> impl FnMut(&[u8]) -> IResult<&
     }
 }
 
-pub fn block_header(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
+fn block_header(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
     let (_, header_length) = le_u32(input)?;
     map_parser(
         take(TryInto::<usize>::try_into(header_length).unwrap()),
@@ -365,7 +334,7 @@ pub fn block_header(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
     )(input)
 }
 
-pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
+fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
     map(
         tuple((le_u32, le_u32, le_u32, null_padding(4))),
         |(filename_crc, folder_crc, packed, _)| IndexEntry1 {
@@ -375,7 +344,7 @@ pub fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
     )(input)
 }
 
-pub fn index_entry_2(input: &[u8]) -> IResult<&[u8], IndexEntry2> {
+fn index_entry_2(input: &[u8]) -> IResult<&[u8], IndexEntry2> {
     map(tuple((le_u32, le_u32)), |(path_crc, packed)| IndexEntry2 {
         hash: IndexHash2::new(path_crc),
         data_locator: DataLocator::from_u32(packed),
@@ -431,10 +400,6 @@ impl<R: Read> GrowableBufReader<R> {
             }
         }
         Ok((&self.buf[self.pos..self.cap], eof))
-    }
-
-    pub fn into_inner(self) -> R {
-        self.inner
     }
 }
 
@@ -552,7 +517,7 @@ where
     }
 }
 
-pub fn load_index_reader<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
+fn load_index_reader<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
     bufreader: &mut GrowableBufReader<File>,
     parser: P,
 ) -> Result<Index<I>, Error> {
@@ -680,3 +645,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod tests_game_data;
