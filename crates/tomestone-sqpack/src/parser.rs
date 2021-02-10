@@ -53,9 +53,6 @@ where
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct PlatformIdParseError;
-
 fn platform_id(input: &[u8]) -> IResult<&[u8], PlatformId> {
     map_res(le_u8, PlatformId::from_u8)(input)
 }
