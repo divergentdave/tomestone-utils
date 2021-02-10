@@ -126,7 +126,15 @@ static PATH_DISCOVERY_RE: Lazy<BytesRegex> = Lazy::new(|| {
 
 fn discover_paths(game_data: &GameData) -> Result<(), Error> {
     let mut indices = BTreeMap::new();
-    for category in Category::iter_all() {
+    for category in &[
+        Category::BgCommon,
+        Category::Bg,
+        Category::Cut,
+        Category::Chara,
+        Category::Ui,
+        Category::Vfx,
+        Category::Exd,
+    ] {
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(*category, *expansion) {
                 let index = game_data.get_index_1(&pack_id).unwrap()?;
@@ -136,14 +144,11 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
     }
     for (pack_id, index) in indices.iter() {
         for res in game_data.iter_files(*pack_id, &index)? {
-            let (hash, file) = res?;
+            let (_hash, file) = res?;
             if let Some(caps) = PATH_DISCOVERY_RE.captures(&file) {
                 let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
                 if game_data.lookup_path_locator(discovered_path)?.is_some() {
-                    println!(
-                        "{:?} {:08x} {:08x} {}",
-                        pack_id, hash.folder_crc, hash.filename_crc, discovered_path,
-                    );
+                    println!("{}", discovered_path);
                 }
             }
         }
