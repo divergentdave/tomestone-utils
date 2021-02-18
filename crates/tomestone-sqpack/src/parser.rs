@@ -9,9 +9,9 @@ use std::{
 use nom::{
     branch::alt,
     bytes::streaming::{tag, take},
-    combinator::{complete, map, map_opt, map_parser, map_res, verify},
+    combinator::{complete, map, map_opt, map_parser, map_res, peek, verify},
     error::{ErrorKind, ParseError},
-    multi::count,
+    multi::{count, length_value},
     number::streaming::{le_u16, le_u32, le_u8},
     sequence::tuple,
     Err, IResult, InputLength, InputTake, Needed,
@@ -53,6 +53,17 @@ where
     }
 }
 
+fn null_padding_greedy<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], (), E>
+where
+    E: ParseError<&'a [u8]>,
+{
+    if input.iter().all(|byte| *byte == 0) {
+        Ok((b"", ()))
+    } else {
+        Err(Err::Error(E::from_error_kind(input, ErrorKind::Count)))
+    }
+}
+
 fn platform_id(input: &[u8]) -> IResult<&[u8], PlatformId> {
     map_res(le_u8, PlatformId::from_u8)(input)
 }
@@ -88,7 +99,7 @@ pub fn integrity_checked_header<
     O,
 >(
     input: &'a [u8],
-    mut length_parser: LP,
+    length_parser: LP,
     contents_parser: CP,
 ) -> IResult<&[u8], O> {
     const HASH_OFFSET: usize = 0x3c0;
@@ -96,22 +107,16 @@ pub fn integrity_checked_header<
     map_parser(
         map(
             verify(
-                |input: &'a [u8]| -> IResult<&[u8], (&[u8], &[u8; SHA1_OUTPUT_SIZE])> {
-                    let (_, length) = length_parser(input)?;
-                    if length < HASH_OFFSET + SHA1_OUTPUT_SIZE {
-                        return Err(Err::Error(nom::error::Error::from_error_kind(
-                            input,
-                            ErrorKind::Eof,
-                        )));
-                    }
-                    let (input, (header_input, hash_input, ())) = tuple((
-                        take(HASH_OFFSET),
-                        take(SHA1_OUTPUT_SIZE),
-                        null_padding(length - (HASH_OFFSET + SHA1_OUTPUT_SIZE)),
-                    ))(input)?;
-                    Ok((input, (header_input, hash_input.try_into().unwrap())))
-                },
-                |(header_input, header_hash)| {
+                length_value(
+                    peek(length_parser),
+                    map(
+                        tuple((take(HASH_OFFSET), take(SHA1_OUTPUT_SIZE), null_padding_greedy)),
+                        |(header_input, hash_input, ()): (&[u8], &[u8], ())| -> (&[u8], &[u8; SHA1_OUTPUT_SIZE]) {
+                            (header_input, hash_input.try_into().unwrap())
+                        },
+                    ),
+                ),
+                |(header_input, header_hash): &(&[u8], &[u8; SHA1_OUTPUT_SIZE])| {
                     let mut hash = Sha1::new();
                     hash.update(header_input);
                     &*hash.finalize() == *header_hash
