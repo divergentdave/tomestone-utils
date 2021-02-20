@@ -51,10 +51,30 @@ fn list_files(game_data: &GameData, category: Category, expansion: Expansion) ->
 }
 
 fn print_hex_dump(data: &[u8]) {
-    let mut buf = [0u8; 32];
+    let mut hex_buf = [0u8; 32];
+    let mut line_buf = [0u8; 50];
+    line_buf[32] = b' ';
+    line_buf[49] = b'\n';
     for chunk in data.chunks(16) {
-        hex::encode_to_slice(chunk, &mut buf[..chunk.len() * 2]).unwrap();
-        println!("{}", std::str::from_utf8(&buf[..chunk.len() * 2]).unwrap());
+        hex::encode_to_slice(chunk, &mut hex_buf[..chunk.len() * 2]).unwrap();
+
+        line_buf[..chunk.len() * 2].copy_from_slice(&hex_buf[..chunk.len() * 2]);
+        for byte in line_buf[chunk.len() * 2..32].iter_mut() {
+            *byte = b' ';
+        }
+
+        for (src, dest) in chunk.iter().zip(line_buf[33..33 + chunk.len()].iter_mut()) {
+            if *src >= 0x20 && *src < 0x7f {
+                *dest = *src;
+            } else {
+                *dest = b'.';
+            }
+        }
+        for byte in line_buf[33 + chunk.len()..49].iter_mut() {
+            *byte = b' ';
+        }
+
+        print!("{}", std::str::from_utf8(&line_buf).unwrap());
     }
 }
 
