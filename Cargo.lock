@@ -435,7 +435,9 @@ dependencies = [
 name = "tomestone-exdf"
 version = "0.1.0"
 dependencies = [
+ "dotenv",
  "nom",
+ "tomestone-sqpack",
 ]
 
 [[package]]
