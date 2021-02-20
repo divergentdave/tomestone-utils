@@ -40,11 +40,13 @@ fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Ve
 }
 
 fn list_files(game_data: &GameData, category: Category, expansion: Expansion) -> Result<(), Error> {
+    let stdout = stdout();
+    let mut locked = stdout.lock();
     for id in game_data.iter_packs_category_expansion(category, expansion) {
         let index = game_data.get_index_1(&id).unwrap()?;
         for entry in index.iter() {
             let hash = entry.hash();
-            println!("{:08x} {:08x}", hash.folder_crc, hash.filename_crc);
+            write!(locked, "{:08x} {:08x}", hash.folder_crc, hash.filename_crc).unwrap();
         }
     }
     Ok(())
@@ -160,15 +162,19 @@ fn do_grep(
     expansion: Expansion,
     re: &BytesRegex,
 ) -> Result<(), Error> {
+    let stdout = stdout();
+    let mut locked = stdout.lock();
     for pack_id in game_data.iter_packs_category_expansion(category, expansion) {
         let index = game_data.get_index_1(&pack_id).unwrap()?;
         for res in game_data.iter_files(pack_id, &index)? {
             let (hash, file) = res?;
             if re.is_match(&file) {
-                println!(
+                write!(
+                    locked,
                     "File {:08x} {:08x} matches",
                     hash.folder_crc, hash.filename_crc
-                );
+                )
+                .unwrap();
             }
         }
     }
@@ -201,13 +207,15 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
             }
         }
     }
+    let stdout = stdout();
+    let mut locked = stdout.lock();
     for (pack_id, index) in indices.iter() {
         for res in game_data.iter_files(*pack_id, &index)? {
             let (_hash, file) = res?;
             if let Some(caps) = PATH_DISCOVERY_RE.captures(&file) {
                 let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
                 if game_data.lookup_path_locator(discovered_path)?.is_some() {
-                    println!("{}", discovered_path);
+                    write!(locked, "{}", discovered_path).unwrap();
                 }
             }
         }
