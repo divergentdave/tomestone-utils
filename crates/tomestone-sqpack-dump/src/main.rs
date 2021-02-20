@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    io::{stdout, Write},
+    io::{self, stdout, Write},
     process,
 };
 
@@ -50,32 +50,71 @@ fn list_files(game_data: &GameData, category: Category, expansion: Expansion) ->
     Ok(())
 }
 
-fn print_hex_dump(data: &[u8]) {
+fn write_hex_dump<W: Write>(data: &[u8], mut writer: W) -> io::Result<()> {
     let mut hex_buf = [0u8; 32];
-    let mut line_buf = [0u8; 50];
-    line_buf[32] = b' ';
-    line_buf[49] = b'\n';
+    let mut line_buf = [0u8; 54];
+    line_buf[8] = b' ';
+    line_buf[17] = b' ';
+    line_buf[26] = b' ';
+    line_buf[35] = b' ';
+    line_buf[36] = b' ';
+    line_buf[53] = b'\n';
     for chunk in data.chunks(16) {
         hex::encode_to_slice(chunk, &mut hex_buf[..chunk.len() * 2]).unwrap();
 
-        line_buf[..chunk.len() * 2].copy_from_slice(&hex_buf[..chunk.len() * 2]);
-        for byte in line_buf[chunk.len() * 2..32].iter_mut() {
-            *byte = b' ';
+        line_buf[..std::cmp::min(chunk.len() * 2, 8)]
+            .copy_from_slice(&hex_buf[..std::cmp::min(chunk.len() * 2, 8)]);
+        if chunk.len() <= 4 {
+            line_buf[chunk.len() * 2..8].fill(b' ');
         }
 
-        for (src, dest) in chunk.iter().zip(line_buf[33..33 + chunk.len()].iter_mut()) {
+        if chunk.len() > 4 {
+            line_buf[9..1 + std::cmp::min(chunk.len() * 2, 16)]
+                .copy_from_slice(&hex_buf[8..std::cmp::min(chunk.len() * 2, 16)]);
+            if chunk.len() <= 8 {
+                line_buf[1 + chunk.len() * 2..17].fill(b' ');
+            }
+        } else {
+            line_buf[9..17].fill(b' ');
+        }
+
+        if chunk.len() > 8 {
+            line_buf[18..2 + std::cmp::min(chunk.len() * 2, 24)]
+                .copy_from_slice(&hex_buf[16..std::cmp::min(chunk.len() * 2, 24)]);
+            if chunk.len() <= 12 {
+                line_buf[2 + chunk.len() * 2..26].fill(b' ');
+            }
+        } else {
+            line_buf[18..26].fill(b' ');
+        }
+
+        if chunk.len() > 12 {
+            line_buf[27..3 + chunk.len() * 2].copy_from_slice(&hex_buf[24..chunk.len() * 2]);
+            line_buf[3 + chunk.len() * 2..35].fill(b' ');
+        } else {
+            line_buf[27..35].fill(b' ');
+        }
+
+        for (src, dest) in chunk.iter().zip(line_buf[37..37 + chunk.len()].iter_mut()) {
             if *src >= 0x20 && *src < 0x7f {
                 *dest = *src;
             } else {
                 *dest = b'.';
             }
         }
-        for byte in line_buf[33 + chunk.len()..49].iter_mut() {
+        for byte in line_buf[37 + chunk.len()..53].iter_mut() {
             *byte = b' ';
         }
 
-        print!("{}", std::str::from_utf8(&line_buf).unwrap());
+        writer.write_all(&line_buf)?;
     }
+    Ok(())
+}
+
+fn print_hex_dump(data: &[u8]) {
+    let stdout = stdout();
+    let locked = stdout.lock();
+    write_hex_dump(data, locked).unwrap();
 }
 
 fn parse_repository_path(path: Option<&str>) -> Option<(Category, Expansion)> {
@@ -315,7 +354,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use crate::PATH_DISCOVERY_RE;
+    use crate::{write_hex_dump, PATH_DISCOVERY_RE};
 
     #[test]
     fn path_discovery_regex() {
@@ -334,5 +373,104 @@ mod tests {
             b"exd/AirshipExplorationLevel_0.exd"
         );
         assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn hex_dump() {
+        fn reftest(data: &[u8], reference: &[u8]) {
+            let mut buf: Vec<u8> = Vec::new();
+            write_hex_dump(data, &mut buf).unwrap();
+            assert_eq!(&buf, reference);
+        }
+
+        reftest(b"", b"");
+        reftest(
+            b"\x7f\n",
+            b"7f0a                                 ..              \n",
+        );
+        reftest(
+            b"ABC",
+            b"414243                               ABC             \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA0",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30                                   0               \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA01",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            3031                                 01              \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA012",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            303132                               012             \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA0123",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233                             0123            \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA01234",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34                          01234           \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA012345",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 3435                        012345          \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA0123456",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 343536                      0123456         \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA01234567",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34353637                    01234567        \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA012345678",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34353637 38                 012345678       \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA0123456789",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34353637 3839               0123456789      \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA01234567890",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34353637 383930             01234567890     \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA012345678901",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34353637 38393031           012345678901    \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA0123456789012",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34353637 38393031 32        0123456789012   \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA01234567890123",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34353637 38393031 3233      01234567890123  \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA012345678901234",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34353637 38393031 323334    012345678901234 \n",
+        );
+        reftest(
+            b"AAAAAAAAAAAAAAAA0123456789012345",
+            b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
+            30313233 34353637 38393031 32333435  0123456789012345\n",
+        );
     }
 }
