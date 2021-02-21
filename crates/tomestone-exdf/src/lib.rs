@@ -31,6 +31,41 @@ impl Language {
     }
 }
 
+#[derive(Debug)]
+pub enum ColumnFormat {
+    String,
+    Bool,
+    I8,
+    U8,
+    I16,
+    U16,
+    I32,
+    U32,
+    Float,
+    I16x4,
+    Bitflag(u8),
+}
+
+impl ColumnFormat {
+    pub fn from_u16(value: u16) -> Result<ColumnFormat, EnumParseError> {
+        match value {
+            0 => Ok(ColumnFormat::String),
+            1 => Ok(ColumnFormat::Bool),
+            2 => Ok(ColumnFormat::I8),
+            3 => Ok(ColumnFormat::U8),
+            4 => Ok(ColumnFormat::I16),
+            5 => Ok(ColumnFormat::U16),
+            6 => Ok(ColumnFormat::I32),
+            7 => Ok(ColumnFormat::U32),
+            9 => Ok(ColumnFormat::Float),
+            value if value >= 0x19 && value <= 0x20 => {
+                Ok(ColumnFormat::Bitflag((value - 0x19) as u8))
+            }
+            _ => Err(EnumParseError),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{EnumParseError, Language};

@@ -10,7 +10,7 @@ use nom::{
 };
 
 use super::null_padding;
-use crate::Language;
+use crate::{ColumnFormat, Language};
 
 #[derive(Debug, Clone)]
 struct ExhfHeader {
@@ -24,7 +24,7 @@ struct ExhfHeader {
 #[derive(Debug)]
 pub struct Exhf {
     header: ExhfHeader,
-    column_definitions: Vec<(u16, u16)>,
+    column_definitions: Vec<(ColumnFormat, u16)>,
     pages: Vec<(u32, u32)>,
     languages: Vec<Language>,
 }
@@ -55,8 +55,8 @@ fn exhf_header(input: &[u8]) -> IResult<&[u8], ExhfHeader> {
     )(input)
 }
 
-fn column_entry(input: &[u8]) -> IResult<&[u8], (u16, u16)> {
-    pair(be_u16, be_u16)(input)
+fn column_entry(input: &[u8]) -> IResult<&[u8], (ColumnFormat, u16)> {
+    pair(map_res(be_u16, ColumnFormat::from_u16), be_u16)(input)
 }
 
 fn page_entry(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
