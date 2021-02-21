@@ -1,9 +1,9 @@
 use std::convert::TryInto;
 
 use nom::{
-    bytes::streaming::{tag, take},
+    bytes::streaming::tag,
     combinator::{complete, map},
-    multi::count,
+    multi::{count, length_data},
     number::streaming::{be_u16, be_u32},
     sequence::{pair, tuple},
     IResult,
@@ -111,10 +111,7 @@ fn offset_entry(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
 }
 
 fn data_row(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    let (input, length) = be_u32(input)?;
-    let (input, _) = be_u16(input)?;
-    let (input, data) = take(length)(input)?;
-    Ok((input, data))
+    length_data(map(pair(be_u32, be_u16), |(length, _)| length))(input)
 }
 
 #[cfg(test)]
