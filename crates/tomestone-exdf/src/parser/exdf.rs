@@ -116,6 +116,8 @@ fn data_row(input: &[u8]) -> IResult<&[u8], &[u8]> {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryInto;
+
     use nom::combinator::complete;
 
     use tomestone_sqpack::{Category, Expansion, GameData};
@@ -168,6 +170,35 @@ mod tests {
                             }
                             last_row_number = Some(row)
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "slow test"]
+    fn check_exdf_file_size() {
+        dotenv::dotenv().ok();
+        // Don't test anything if the game directory isn't provided
+        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+            root
+        } else {
+            return;
+        };
+        let game_data = GameData::new(root).unwrap();
+        for expansion in Expansion::iter_all() {
+            for pack_id in game_data.iter_packs_category_expansion(Category::Exd, *expansion) {
+                let index = game_data.get_index_2(&pack_id).unwrap().unwrap();
+                for res in game_data.iter_files(pack_id, &index).unwrap() {
+                    let file = res.unwrap().1;
+                    if file.len() > 32 && &file[..4] == b"EXDF" {
+                        let header = complete(exdf_header)(&file).unwrap().1;
+                        let expected_len =
+                            (32 + header.offset_table_size + header.data_section_size)
+                                .try_into()
+                                .unwrap();
+                        assert_eq!(file.len(), expected_len);
                     }
                 }
             }
