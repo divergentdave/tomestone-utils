@@ -2,9 +2,9 @@ use std::convert::TryInto;
 
 use nom::{
     bytes::streaming::tag,
-    combinator::{complete, map},
+    combinator::map,
     multi::{count, length_data},
-    number::streaming::{be_u16, be_u32},
+    number::complete::{be_u16, be_u32},
     sequence::{pair, tuple},
     IResult,
 };
@@ -33,13 +33,13 @@ pub struct Exdf<'a> {
 impl<'a> Exdf<'a> {
     pub fn new(data: &[u8]) -> Result<Exdf, nom::error::Error<&[u8]>> {
         let input = data;
-        let (input, header) = match complete(exdf_header)(input) {
+        let (input, header) = match exdf_header(input) {
             Ok((input, header)) => (input, header),
             Err(nom::Err::Incomplete(_)) => unreachable!(),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => return Err(e),
         };
         let offset_entry_count = TryInto::<usize>::try_into(header.offset_table_size / 8).unwrap();
-        let (_input, offsets) = match complete(count(offset_entry, offset_entry_count))(input) {
+        let (_input, offsets) = match count(offset_entry, offset_entry_count)(input) {
             Ok((input, offsets)) => (input, offsets),
             Err(nom::Err::Incomplete(_)) => unreachable!(),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => return Err(e),
@@ -59,7 +59,7 @@ impl<'a> Exdf<'a> {
             Ok(offset_idx) => {
                 let offset =
                     TryInto::<usize>::try_into(self.offsets[offset_idx].data_offset).unwrap();
-                match complete(data_row)(&self.data[offset..]) {
+                match data_row(&self.data[offset..]) {
                     Ok((_, row_contents)) => Some(Ok(row_contents)),
                     Err(nom::Err::Incomplete(_)) => unreachable!(),
                     Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Some(Err(e)),
@@ -88,7 +88,7 @@ impl<'a, 'b> Iterator for ExdfIterator<'a, 'b> {
     fn next(&mut self) -> Option<Result<(u32, &'a [u8]), nom::error::Error<&'a [u8]>>> {
         let entry = self.offsets.next()?;
         let offset = TryInto::<usize>::try_into(entry.data_offset).unwrap();
-        match complete(data_row)(&self.data[offset..]) {
+        match data_row(&self.data[offset..]) {
             Ok((_, row_contents)) => Some(Ok((entry.row_number, row_contents))),
             Err(nom::Err::Incomplete(_)) => unreachable!(),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Some(Err(e)),
@@ -130,8 +130,6 @@ fn data_row(input: &[u8]) -> IResult<&[u8], &[u8]> {
 mod tests {
     use std::convert::TryInto;
 
-    use nom::combinator::complete;
-
     use tomestone_sqpack::{Category, Expansion, GameData};
 
     use super::{exdf_header, Exdf};
@@ -151,10 +149,10 @@ mod tests {
         const EXD_PATH: &str = "exd/fcauthority_0_en.exd";
 
         let exh_data = game_data.lookup_path_data(&EXH_PATH).unwrap().unwrap();
-        let _exhf = complete(parse_exhf)(&exh_data).unwrap().1;
+        let _exhf = parse_exhf(&exh_data).unwrap().1;
 
         let exd_data = game_data.lookup_path_data(&EXD_PATH).unwrap().unwrap();
-        complete(exdf_header)(&exd_data).unwrap();
+        exdf_header(&exd_data).unwrap();
     }
 
     #[test]
@@ -205,7 +203,7 @@ mod tests {
                 for res in game_data.iter_files(pack_id, &index).unwrap() {
                     let file = res.unwrap().1;
                     if file.len() > 32 && &file[..4] == b"EXDF" {
-                        let header = complete(exdf_header)(&file).unwrap().1;
+                        let header = exdf_header(&file).unwrap().1;
                         let expected_len =
                             (32 + header.offset_table_size + header.data_section_size)
                                 .try_into()

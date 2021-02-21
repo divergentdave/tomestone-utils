@@ -4,7 +4,7 @@ use nom::{
     bytes::streaming::tag,
     combinator::{map, map_res},
     multi::count,
-    number::streaming::{be_u16, be_u32, le_u16},
+    number::complete::{be_u16, be_u32, le_u16},
     sequence::{pair, tuple},
     IResult,
 };
@@ -92,8 +92,6 @@ pub fn parse_exhf(input: &[u8]) -> IResult<&[u8], Exhf> {
 
 #[cfg(test)]
 mod tests {
-    use nom::combinator::complete;
-
     use tomestone_sqpack::GameData;
 
     use super::{exhf_header, parse_exhf};
@@ -111,7 +109,7 @@ mod tests {
         const EXH_PATH: &str = "exd/fcauthority.exh";
 
         let exh_data = game_data.lookup_path_data(EXH_PATH).unwrap().unwrap();
-        complete(exhf_header)(&exh_data).unwrap();
-        complete(parse_exhf)(&exh_data).unwrap();
+        exhf_header(&exh_data).unwrap();
+        parse_exhf(&exh_data).unwrap();
     }
 }
