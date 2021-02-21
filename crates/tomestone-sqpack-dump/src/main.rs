@@ -10,7 +10,7 @@ use clap::{
 use once_cell::sync::Lazy;
 use regex::{bytes::Regex as BytesRegex, Regex};
 
-use tomestone_exdf::parser::{exdf::Exdf, exhf::parse_exhf};
+use tomestone_exdf::parser::{exdf::Exdf, exhf::parse_exhf, parse_row};
 use tomestone_sqpack::{Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2};
 
 fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Vec<u8>>, Error> {
@@ -403,7 +403,22 @@ fn main() {
                     process::exit(1);
                 }
             };
-            println!("{:?}", exdf.iter().next().unwrap().unwrap().1);
+            for res in exdf.iter() {
+                let (_row_number, row_data) = match res {
+                    Ok(row) => row,
+                    Err(e) => {
+                        eprintln!("{:?}", e.code);
+                        process::exit(1);
+                    }
+                };
+                match parse_row(row_data, &exhf) {
+                    Ok(parsed) => println!("{:?}", parsed),
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        process::exit(1);
+                    }
+                }
+            }
         }
         _ => {
             eprintln!("{}", app_matches.usage());

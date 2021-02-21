@@ -1,3 +1,5 @@
+use std::fmt;
+
 pub mod parser;
 
 #[derive(Debug)]
@@ -31,7 +33,7 @@ impl Language {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum ColumnFormat {
     String,
     Bool,
@@ -62,6 +64,38 @@ impl ColumnFormat {
                 Ok(ColumnFormat::Bitflag((value - 0x19) as u8))
             }
             _ => Err(EnumParseError),
+        }
+    }
+}
+
+pub enum Value<'a> {
+    String(&'a [u8]),
+    Bool(bool),
+    I8(i8),
+    U8(u8),
+    I16(i16),
+    U16(u16),
+    I32(i32),
+    U32(u32),
+    Float(()), // TODO: single or double precision? look at column offsets of a file where it's used
+    I16x4([i16; 4]),
+    Bitflag(bool), // TODO: will have to figure out details of flag packing
+}
+
+impl<'a> fmt::Debug for Value<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::String(value) => String::from_utf8_lossy(value).fmt(f),
+            Value::Bool(value) => value.fmt(f),
+            Value::I8(value) => value.fmt(f),
+            Value::U8(value) => value.fmt(f),
+            Value::I16(value) => value.fmt(f),
+            Value::U16(value) => value.fmt(f),
+            Value::I32(value) => value.fmt(f),
+            Value::U32(value) => value.fmt(f),
+            Value::Float(value) => value.fmt(f),
+            Value::I16x4(value) => value.fmt(f),
+            Value::Bitflag(value) => value.fmt(f),
         }
     }
 }

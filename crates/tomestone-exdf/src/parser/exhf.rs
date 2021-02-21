@@ -23,10 +23,42 @@ struct ExhfHeader {
 
 #[derive(Debug)]
 pub struct Exhf {
-    header: ExhfHeader,
+    row_size: u16,
     column_definitions: Vec<(ColumnFormat, u16)>,
     pages: Vec<(u32, u32)>,
     languages: Vec<Language>,
+}
+
+impl Exhf {
+    fn new(
+        header: ExhfHeader,
+        column_definitions: Vec<(ColumnFormat, u16)>,
+        pages: Vec<(u32, u32)>,
+        languages: Vec<Language>,
+    ) -> Exhf {
+        Exhf {
+            row_size: header.row_size,
+            column_definitions,
+            pages,
+            languages,
+        }
+    }
+
+    pub fn column_definitions(&self) -> &[(ColumnFormat, u16)] {
+        &self.column_definitions
+    }
+
+    pub fn pages(&self) -> &[(u32, u32)] {
+        &self.pages
+    }
+
+    pub fn languages(&self) -> &[Language] {
+        &self.languages
+    }
+
+    pub fn row_size(&self) -> u16 {
+        self.row_size
+    }
 }
 
 fn exhf_header(input: &[u8]) -> IResult<&[u8], ExhfHeader> {
@@ -80,12 +112,7 @@ pub fn parse_exhf(input: &[u8]) -> IResult<&[u8], Exhf> {
         )),
         move |(column_definitions, pages, languages)| {
             let header = header.clone();
-            Exhf {
-                header,
-                column_definitions,
-                pages,
-                languages,
-            }
+            Exhf::new(header, column_definitions, pages, languages)
         },
     )(input)
 }
