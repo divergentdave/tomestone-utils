@@ -432,6 +432,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tomestone-dump"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "dotenv",
+ "hex",
+ "once_cell",
+ "regex",
+ "tomestone-exdf",
+ "tomestone-sqpack",
+]
+
+[[package]]
 name = "tomestone-exdf"
 version = "0.1.0"
 dependencies = [
@@ -458,19 +471,6 @@ dependencies = [
  "once_cell",
  "regex",
  "sha-1",
-]
-
-[[package]]
-name = "tomestone-sqpack-dump"
-version = "0.1.0"
-dependencies = [
- "clap",
- "dotenv",
- "hex",
- "once_cell",
- "regex",
- "tomestone-exdf",
- "tomestone-sqpack",
 ]
 
 [[package]]
