@@ -1,11 +1,9 @@
-use std::{convert::TryInto, num::NonZeroUsize};
+use std::convert::TryInto;
 
 use nom::{
     combinator::map,
-    error::{ErrorKind, ParseError},
     number::complete::{be_i16, be_i32, be_i8, be_u16, be_u32, be_u8},
     sequence::tuple,
-    Err, IResult, InputLength, InputTake, Needed,
 };
 
 use crate::{ColumnFormat, Value};
@@ -14,28 +12,6 @@ use self::exhf::Exhf;
 
 pub mod exdf;
 pub mod exhf;
-
-// copied from tomestone-sqpack crate
-fn null_padding<'a, E>(length: usize) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (), E>
-where
-    E: ParseError<&'a [u8]>,
-{
-    move |input: &'a [u8]| {
-        if let Some(needed) = length
-            .checked_sub(input.input_len())
-            .and_then(NonZeroUsize::new)
-        {
-            Err(Err::Incomplete(Needed::Size(needed)))
-        } else {
-            let (rest, padding) = input.take_split(length);
-            if padding.iter().all(|byte| *byte == 0) {
-                Ok((rest, ()))
-            } else {
-                Err(Err::Error(E::from_error_kind(padding, ErrorKind::Count)))
-            }
-        }
-    }
-}
 
 pub fn parse_row<'a>(
     data: &'a [u8],

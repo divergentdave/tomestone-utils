@@ -432,6 +432,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tomestone-common"
+version = "0.1.0"
+dependencies = [
+ "nom",
+]
+
+[[package]]
 name = "tomestone-dump"
 version = "0.1.0"
 dependencies = [
@@ -450,6 +457,7 @@ version = "0.1.0"
 dependencies = [
  "dotenv",
  "nom",
+ "tomestone-common",
  "tomestone-sqpack",
 ]
 
@@ -471,6 +479,7 @@ dependencies = [
  "once_cell",
  "regex",
  "sha-1",
+ "tomestone-common",
 ]
 
 [[package]]

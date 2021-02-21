@@ -1,0 +1,8 @@
+[package]
+name = "tomestone-common"
+version = "0.1.0"
+authors = ["David Cook <divergentdave@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+nom = "6.0.1"

@@ -9,7 +9,8 @@ use nom::{
     IResult,
 };
 
-use super::null_padding;
+use tomestone_common::null_padding;
+
 use crate::{ColumnFormat, Language};
 
 #[derive(Debug, Clone)]

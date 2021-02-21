@@ -2,7 +2,6 @@ use std::{
     convert::TryInto,
     fs::File,
     io::{self, BufRead, Read, Seek, SeekFrom},
-    num::NonZeroUsize,
     path::PathBuf,
 };
 
@@ -14,9 +13,11 @@ use nom::{
     multi::{count, length_value},
     number::streaming::{le_u16, le_u32, le_u8},
     sequence::tuple,
-    Err, IResult, InputLength, InputTake, Needed,
+    Err, IResult, Needed,
 };
 use sha1::{Digest, Sha1};
+
+use tomestone_common::null_padding;
 
 use crate::{
     compression::decompress_sqpack_block, DataBlocks, DataLocator, Error, Index, IndexEntry,
@@ -30,27 +31,6 @@ fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
 
 fn alternate_dat_magic(input: &[u8]) -> IResult<&[u8], ()> {
     map(tag(b"\x80\x00\x00\x00\x00\x00\x00\x00"), |_| ())(input)
-}
-
-fn null_padding<'a, E>(length: usize) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (), E>
-where
-    E: ParseError<&'a [u8]>,
-{
-    move |input: &'a [u8]| {
-        if let Some(needed) = length
-            .checked_sub(input.input_len())
-            .and_then(NonZeroUsize::new)
-        {
-            Err(Err::Incomplete(Needed::Size(needed)))
-        } else {
-            let (rest, padding) = input.take_split(length);
-            if padding.iter().all(|byte| *byte == 0) {
-                Ok((rest, ()))
-            } else {
-                Err(Err::Error(E::from_error_kind(padding, ErrorKind::Count)))
-            }
-        }
-    }
 }
 
 fn null_padding_greedy<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], (), E>

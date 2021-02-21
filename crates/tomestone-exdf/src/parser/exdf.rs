@@ -9,7 +9,7 @@ use nom::{
     IResult,
 };
 
-use super::null_padding;
+use tomestone_common::null_padding;
 
 #[derive(Debug)]
 struct ExdfHeader {
