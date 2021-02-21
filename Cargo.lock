@@ -469,6 +469,7 @@ dependencies = [
  "hex",
  "once_cell",
  "regex",
+ "tomestone-exdf",
  "tomestone-sqpack",
 ]
 

@@ -10,6 +10,7 @@ use clap::{
 use once_cell::sync::Lazy;
 use regex::{bytes::Regex as BytesRegex, Regex};
 
+use tomestone_exdf::parser::{exdf::Exdf, exhf::parse_exhf};
 use tomestone_sqpack::{Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2};
 
 fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Vec<u8>>, Error> {
@@ -271,7 +272,10 @@ fn main() {
                 .arg(Arg::with_name("pattern").required(true).index(1))
                 .arg(Arg::with_name("path").required(false).index(2)),
         )
-        .subcommand(SubCommand::with_name("discover_paths"));
+        .subcommand(SubCommand::with_name("discover_paths"))
+        .subcommand(
+            SubCommand::with_name("exd").arg(Arg::with_name("path").required(true).index(1)),
+        );
     let app_matches = app.get_matches();
     match app_matches.subcommand() {
         ("raw", Some(matches)) => {
@@ -352,6 +356,54 @@ fn main() {
                 eprintln!("error: couldn't read files, {}", e);
                 process::exit(1);
             }
+        }
+        ("exd", Some(matches)) => {
+            let original_path = matches.value_of("path").unwrap();
+            let (exh_path, path_base) = if let Some(dot_position) = original_path.rfind('.') {
+                (original_path.to_string(), &original_path[..dot_position])
+            } else {
+                (format!("{}.exh", original_path), original_path)
+            };
+            let exh_data = match game_data.lookup_path_data(&exh_path) {
+                Ok(Some(exh_data)) => exh_data,
+                Ok(None) => {
+                    eprintln!("error: file not found");
+                    process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("{}", e);
+                    process::exit(1);
+                }
+            };
+            let exhf = match parse_exhf(&exh_data) {
+                Ok((_, exhf)) => exhf,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    process::exit(1);
+                }
+            };
+            println!("{:?}", exhf);
+
+            let exd_path = format!("{}_0_en.exd", path_base);
+            let exd_data = match game_data.lookup_path_data(&exd_path) {
+                Ok(Some(exd_data)) => exd_data,
+                Ok(None) => {
+                    eprintln!("error: file not found");
+                    process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("{}", e);
+                    process::exit(1);
+                }
+            };
+            let exdf = match Exdf::new(&exd_data) {
+                Ok(exdf) => exdf,
+                Err(e) => {
+                    eprintln!("{:?}", e.code);
+                    process::exit(1);
+                }
+            };
+            println!("{:?}", exdf.iter().next().unwrap().unwrap().1);
         }
         _ => {
             eprintln!("{}", app_matches.usage());
