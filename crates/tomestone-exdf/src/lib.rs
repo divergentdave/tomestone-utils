@@ -79,7 +79,7 @@ pub enum Value<'a> {
     U32(u32),
     Float(()), // TODO: single or double precision? look at column offsets of a file where it's used
     I16x4([i16; 4]),
-    Bitflag(bool), // TODO: will have to figure out details of flag packing
+    Bitflag(bool),
 }
 
 impl<'a> fmt::Debug for Value<'a> {

@@ -75,7 +75,7 @@ pub fn parse_row<'a>(
                         })(input)?
                         .1,
                     ),
-                    ColumnFormat::Bitflag(_bit) => todo!(),
+                    ColumnFormat::Bitflag(bit) => Value::Bitflag((be_u8(input)?.1 >> bit) & 1 != 0),
                 })
             },
         )
