@@ -18,10 +18,16 @@ struct ExdfHeader {
 }
 
 #[derive(Debug)]
+struct OffsetEntry {
+    row_number: u32,
+    data_offset: u32,
+}
+
+#[derive(Debug)]
 pub struct Exdf<'a> {
     data: &'a [u8],
     header: ExdfHeader,
-    offsets: Vec<(u32, u32)>,
+    offsets: Vec<OffsetEntry>,
 }
 
 impl<'a> Exdf<'a> {
@@ -48,10 +54,11 @@ impl<'a> Exdf<'a> {
     pub fn lookup(&self, row_number: u32) -> Option<Result<&'a [u8], nom::error::Error<&'a [u8]>>> {
         match self
             .offsets
-            .binary_search_by_key(&row_number, |(row, _)| *row)
+            .binary_search_by_key(&row_number, |entry| entry.row_number)
         {
             Ok(offset_idx) => {
-                let offset = TryInto::<usize>::try_into(self.offsets[offset_idx].1).unwrap();
+                let offset =
+                    TryInto::<usize>::try_into(self.offsets[offset_idx].data_offset).unwrap();
                 match complete(data_row)(&self.data[offset..]) {
                     Ok((_, row_contents)) => Some(Ok(row_contents)),
                     Err(nom::Err::Incomplete(_)) => unreachable!(),
@@ -72,17 +79,17 @@ impl<'a> Exdf<'a> {
 
 pub struct ExdfIterator<'a, 'b> {
     data: &'a [u8],
-    offsets: std::slice::Iter<'b, (u32, u32)>,
+    offsets: std::slice::Iter<'b, OffsetEntry>,
 }
 
 impl<'a, 'b> Iterator for ExdfIterator<'a, 'b> {
     type Item = Result<(u32, &'a [u8]), nom::error::Error<&'a [u8]>>;
 
     fn next(&mut self) -> Option<Result<(u32, &'a [u8]), nom::error::Error<&'a [u8]>>> {
-        let (row_number, offset) = self.offsets.next()?;
-        let offset = TryInto::<usize>::try_into(*offset).unwrap();
+        let entry = self.offsets.next()?;
+        let offset = TryInto::<usize>::try_into(entry.data_offset).unwrap();
         match complete(data_row)(&self.data[offset..]) {
-            Ok((_, row_contents)) => Some(Ok((*row_number, row_contents))),
+            Ok((_, row_contents)) => Some(Ok((entry.row_number, row_contents))),
             Err(nom::Err::Incomplete(_)) => unreachable!(),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Some(Err(e)),
         }
@@ -106,8 +113,13 @@ fn exdf_header(input: &[u8]) -> IResult<&[u8], ExdfHeader> {
     )(input)
 }
 
-fn offset_entry(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
-    pair(be_u32, be_u32)(input)
+fn offset_entry(input: &[u8]) -> IResult<&[u8], OffsetEntry> {
+    map(pair(be_u32, be_u32), |(row_number, data_offset)| {
+        OffsetEntry {
+            row_number,
+            data_offset,
+        }
+    })(input)
 }
 
 fn data_row(input: &[u8]) -> IResult<&[u8], &[u8]> {
@@ -164,11 +176,11 @@ mod tests {
                     if file.len() > 32 && &file[..4] == b"EXDF" {
                         let exdf = Exdf::new(&file).unwrap();
                         let mut last_row_number = None;
-                        for (row, _) in exdf.offsets.iter() {
+                        for entry in exdf.offsets.iter() {
                             if let Some(last) = last_row_number {
-                                assert!(row > last);
+                                assert!(entry.row_number > last);
                             }
-                            last_row_number = Some(row)
+                            last_row_number = Some(entry.row_number)
                         }
                     }
                 }
