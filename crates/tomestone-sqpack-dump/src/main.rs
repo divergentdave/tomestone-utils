@@ -10,7 +10,10 @@ use clap::{
 use once_cell::sync::Lazy;
 use regex::{bytes::Regex as BytesRegex, Regex};
 
-use tomestone_exdf::parser::{exdf::Exdf, exhf::parse_exhf, parse_row};
+use tomestone_exdf::{
+    parser::{exdf::Exdf, exhf::parse_exhf, parse_row},
+    Language,
+};
 use tomestone_sqpack::{Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2};
 
 fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Vec<u8>>, Error> {
@@ -384,7 +387,14 @@ fn main() {
             };
             println!("{:?}", exhf);
 
-            let exd_path = format!("{}_0_en.exd", path_base);
+            let exd_path = if exhf.languages().contains(&Language::English) {
+                format!("{}_0_en.exd", path_base)
+            } else if exhf.languages().contains(&Language::NoLanguage) {
+                format!("{}_0.exd", path_base)
+            } else {
+                eprintln!("error: no supported language");
+                process::exit(1);
+            };
             let exd_data = match game_data.lookup_path_data(&exd_path) {
                 Ok(Some(exd_data)) => exd_data,
                 Ok(None) => {

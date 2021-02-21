@@ -5,7 +5,7 @@ pub mod parser;
 #[derive(Debug)]
 pub struct EnumParseError;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Language {
     NoLanguage = 0,
     Japanese = 1,
