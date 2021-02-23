@@ -14,7 +14,9 @@ use tomestone_exdf::{
     parser::{exdf::Exdf, exhf::parse_exhf, parse_row},
     Language,
 };
-use tomestone_sqpack::{Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2};
+use tomestone_sqpack::{
+    Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2, PathDb,
+};
 
 fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Vec<u8>>, Error> {
     static CRC_RE: Lazy<Regex> = Lazy::new(|| Regex::new("^[0-9A-Fa-f]{8}$").unwrap());
@@ -199,6 +201,9 @@ static PATH_DISCOVERY_RE: Lazy<BytesRegex> = Lazy::new(|| {
 });
 
 fn discover_paths(game_data: &GameData) -> Result<(), Error> {
+    let db = PathDb::open()?;
+    let mut statements = db.prepare()?;
+
     let mut indices = BTreeMap::new();
     for category in &[
         Category::BgCommon,
@@ -216,8 +221,10 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
             }
         }
     }
+
     let stdout = stdout();
     let mut locked = stdout.lock();
+
     for (pack_id, index) in indices.iter() {
         for res in game_data.iter_files(*pack_id, &index)? {
             let (_hash, file) = res?;
@@ -225,6 +232,7 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
                 let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
                 if game_data.lookup_path_locator(discovered_path)?.is_some() {
                     write!(locked, "{}\n", discovered_path).unwrap();
+                    statements.add_path(discovered_path)?;
                 }
             }
         }
@@ -361,7 +369,7 @@ fn main() {
         }
         ("discover_paths", Some(_matches)) => {
             if let Err(e) = discover_paths(&game_data) {
-                eprintln!("error: couldn't read files, {}", e);
+                eprintln!("error: {}", e);
                 process::exit(1);
             }
         }

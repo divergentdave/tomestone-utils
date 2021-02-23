@@ -9,6 +9,7 @@ use std::{
 
 use once_cell::sync::{Lazy, OnceCell};
 use parser::{decompress_file, load_index_1, load_index_2};
+use pathdb::DbError;
 use regex::Regex;
 
 mod compression;
@@ -24,6 +25,7 @@ pub enum Error {
     Io(io::Error),
     Nom(nom::error::ErrorKind),
     Inflate(miniz_oxide::inflate::TINFLStatus),
+    Db(DbError),
 }
 
 impl fmt::Display for Error {
@@ -32,6 +34,7 @@ impl fmt::Display for Error {
             Error::Io(e) => e.fmt(f),
             Error::Nom(e) => write!(f, "error: {:?}", e),
             Error::Inflate(e) => write!(f, "error: {:?}", e),
+            Error::Db(e) => e.fmt(f),
         }
     }
 }
@@ -53,6 +56,12 @@ impl From<nom::error::ErrorKind> for Error {
 impl From<miniz_oxide::inflate::TINFLStatus> for Error {
     fn from(e: miniz_oxide::inflate::TINFLStatus) -> Error {
         Error::Inflate(e)
+    }
+}
+
+impl From<DbError> for Error {
+    fn from(e: DbError) -> Error {
+        Error::Db(e)
     }
 }
 

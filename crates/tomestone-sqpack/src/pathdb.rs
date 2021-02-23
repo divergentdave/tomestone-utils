@@ -1,4 +1,4 @@
-use std::{fs, io};
+use std::{fmt, fs, io};
 
 use directories::ProjectDirs;
 use rusqlite::{params, Connection, Statement, NO_PARAMS};
@@ -7,10 +7,21 @@ use crate::{IndexHash, IndexHash1, IndexHash2};
 
 const FILENAME: &str = "paths.db";
 
+#[derive(Debug)]
 pub enum DbError {
     Sqlite(rusqlite::Error),
     Io(io::Error),
     NoDirectories,
+}
+
+impl fmt::Display for DbError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DbError::Sqlite(e) => e.fmt(f),
+            DbError::Io(e) => e.fmt(f),
+            DbError::NoDirectories => write!(f, "Home directory path could not be found"),
+        }
+    }
 }
 
 impl From<rusqlite::Error> for DbError {
@@ -30,29 +41,31 @@ pub struct PathDb {
 }
 
 impl PathDb {
-    pub fn new() -> Result<PathDb, DbError> {
+    pub fn open() -> Result<PathDb, DbError> {
         let project_dirs = ProjectDirs::from("party.davidsherenowitsa", "David Cook", "Tomestone")
             .ok_or(DbError::NoDirectories)?;
         let dir = project_dirs.data_dir();
-        fs::create_dir(dir)?;
+        if !dir.is_dir() {
+            fs::create_dir(dir)?;
+        }
         let conn = Connection::open(dir.join(FILENAME))?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS index_1_folder (
-                crc INTEGER NOT NULL
+                crc INTEGER NOT NULL,
                 path TEXT NOT NULL PRIMARY KEY
             )",
             NO_PARAMS,
         )?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS index_1_filename (
-                crc INTEGER NOT NULL
+                crc INTEGER NOT NULL,
                 path TEXT NOT NULL PRIMARY KEY
             )",
             NO_PARAMS,
         )?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS index_2_path (
-                crc INTEGER NOT NULL
+                crc INTEGER NOT NULL,
                 path TEXT NOT NULL PRIMARY KEY
             )",
             NO_PARAMS,
@@ -128,13 +141,20 @@ impl<'a> PreparedStatements<'a> {
         ))
     }
 
-    pub fn index_1_add(&mut self, path: &str) -> Result<(), DbError> {
-        let hash = IndexHash1::hash(path);
-        let (folder, filename) = IndexHash1::split_path(path);
-        self.index_1_folder_insert_stmt
-            .execute(params![hash.folder_crc, folder])?;
-        self.index_1_filename_insert_stmt
-            .execute(params![hash.filename_crc, filename])?;
+    pub fn add_path(&mut self, path: &str) -> Result<(), DbError> {
+        {
+            let hash = IndexHash1::hash(path);
+            let (folder, filename) = IndexHash1::split_path(path);
+            self.index_1_folder_insert_stmt
+                .execute(params![hash.folder_crc, folder])?;
+            self.index_1_filename_insert_stmt
+                .execute(params![hash.filename_crc, filename])?;
+        }
+        {
+            let hash = IndexHash2::hash(path);
+            self.index_2_insert_stmt
+                .execute(params![hash.path_crc, path.to_lowercase()])?;
+        }
         Ok(())
     }
 
@@ -143,12 +163,5 @@ impl<'a> PreparedStatements<'a> {
             .index_2_lookup_stmt
             .query_map(&[hash.path_crc], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<String>, rusqlite::Error>>()?)
-    }
-
-    pub fn index_2_add(&mut self, path: &str) -> Result<(), DbError> {
-        let hash = IndexHash2::hash(path);
-        self.index_2_insert_stmt
-            .execute(params![hash.path_crc, path.to_lowercase()])?;
-        Ok(())
     }
 }
