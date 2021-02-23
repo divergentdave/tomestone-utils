@@ -15,7 +15,8 @@ use tomestone_exdf::{
     Language,
 };
 use tomestone_sqpack::{
-    Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2, PathDb,
+    pathdb::{PathDb, PreparedStatements},
+    Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2,
 };
 
 fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Vec<u8>>, Error> {
@@ -45,18 +46,52 @@ fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Ve
     }
 }
 
-fn list_files(game_data: &GameData, category: Category, expansion: Expansion) -> Result<(), Error> {
+fn list_files(
+    game_data: &GameData,
+    category: Category,
+    expansion: Expansion,
+    statements: &mut PreparedStatements<'_>,
+) -> Result<(), Error> {
     let stdout = stdout();
     let mut locked = stdout.lock();
     for id in game_data.iter_packs_category_expansion(category, expansion) {
         let index = game_data.get_index_1(&id).unwrap()?;
         for entry in index.iter() {
             let hash = entry.hash();
-            write!(
-                locked,
-                "{:08x} {:08x}\n",
-                hash.folder_crc, hash.filename_crc
-            )
+            let (folder_matches, filename_matches) = statements.index_1_lookup(hash)?;
+            match (folder_matches.len(), filename_matches.len()) {
+                (0, 0) => write!(
+                    locked,
+                    "<{:08x}>/<{:08x}>\n",
+                    hash.folder_crc, hash.filename_crc
+                ),
+                (1, 1) => write!(locked, "{}/{}\n", folder_matches[0], filename_matches[0]),
+                (0, 1) => write!(
+                    locked,
+                    "<{:08x}>/{}\n",
+                    hash.folder_crc, filename_matches[0]
+                ),
+                (1, 0) => write!(
+                    locked,
+                    "{}/<{:08x}>\n",
+                    folder_matches[0], hash.filename_crc
+                ),
+                (1, _) => write!(
+                    locked,
+                    "Hash collision! {}/{:?}\n",
+                    folder_matches[0], filename_matches
+                ),
+                (_, 1) => write!(
+                    locked,
+                    "Hash collision! {:?}/{}\n",
+                    folder_matches, filename_matches[0]
+                ),
+                (_, _) => write!(
+                    locked,
+                    "Hash collision! {:?}/{:?}\n",
+                    folder_matches, filename_matches
+                ),
+            }
             .unwrap();
         }
     }
@@ -322,24 +357,37 @@ fn main() {
                 }
             }
         }
-        ("list", Some(matches)) => match parse_repository_path(matches.value_of("path")) {
-            Some((category, expansion)) => {
-                if let Err(e) = list_files(&game_data, category, expansion) {
-                    eprintln!("error: couldn't read indices, {}", e);
+        ("list", Some(matches)) => {
+            let db = match PathDb::open() {
+                Ok(db) => db,
+                Err(e) => {
+                    eprintln!("error: couldn't open path hash database, {}", e);
                     process::exit(1);
                 }
-            }
-            None => {
-                for category in Category::iter_all() {
-                    for expansion in Expansion::iter_all() {
-                        if let Err(e) = list_files(&game_data, *category, *expansion) {
-                            eprintln!("error: couldn't read indices, {}", e);
-                            process::exit(1);
+            };
+            let mut statements = db.prepare().unwrap();
+
+            match parse_repository_path(matches.value_of("path")) {
+                Some((category, expansion)) => {
+                    if let Err(e) = list_files(&game_data, category, expansion, &mut statements) {
+                        eprintln!("error: couldn't read indices, {}", e);
+                        process::exit(1);
+                    }
+                }
+                None => {
+                    for category in Category::iter_all() {
+                        for expansion in Expansion::iter_all() {
+                            if let Err(e) =
+                                list_files(&game_data, *category, *expansion, &mut statements)
+                            {
+                                eprintln!("error: couldn't read indices, {}", e);
+                                process::exit(1);
+                            }
                         }
                     }
                 }
             }
-        },
+        }
         ("grep", Some(matches)) => {
             let re = match BytesRegex::new(matches.value_of("pattern").unwrap()) {
                 Ok(re) => re,

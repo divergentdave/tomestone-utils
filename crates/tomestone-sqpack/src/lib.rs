@@ -14,9 +14,7 @@ use regex::Regex;
 
 mod compression;
 mod parser;
-mod pathdb;
-
-pub use pathdb::PathDb;
+pub mod pathdb;
 
 pub(crate) const SHA1_OUTPUT_SIZE: usize = 20;
 
