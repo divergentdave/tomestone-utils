@@ -160,17 +160,21 @@ impl IndexHash1 {
             filename_crc,
         }
     }
-}
 
-impl IndexHash for IndexHash1 {
-    fn hash(path: &str) -> Self {
-        let (folder, filename) = if let Some(last_separator_pos) = path.rfind('/') {
+    fn split_path(path: &str) -> (String, String) {
+        if let Some(last_separator_pos) = path.rfind('/') {
             let folder_slice = &path[..last_separator_pos];
             let filename_slice = &path[last_separator_pos + 1..];
             (folder_slice.to_lowercase(), filename_slice.to_lowercase())
         } else {
             ("".to_string(), path.to_lowercase())
-        };
+        }
+    }
+}
+
+impl IndexHash for IndexHash1 {
+    fn hash(path: &str) -> Self {
+        let (folder, filename) = IndexHash1::split_path(path);
         IndexHash1 {
             folder_crc: crc32(folder.as_bytes()),
             filename_crc: crc32(filename.as_bytes()),

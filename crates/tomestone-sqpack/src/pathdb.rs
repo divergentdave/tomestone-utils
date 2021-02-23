@@ -1,108 +1,154 @@
-use std::fs;
+use std::{fs, io};
 
 use directories::ProjectDirs;
-use rusqlite::{Connection, Statement, NO_PARAMS};
+use rusqlite::{params, Connection, Statement, NO_PARAMS};
+
+use crate::{IndexHash, IndexHash1, IndexHash2};
 
 const FILENAME: &str = "paths.db";
 
-pub enum DbError {}
+pub enum DbError {
+    Sqlite(rusqlite::Error),
+    Io(io::Error),
+    NoDirectories,
+}
+
+impl From<rusqlite::Error> for DbError {
+    fn from(e: rusqlite::Error) -> Self {
+        DbError::Sqlite(e)
+    }
+}
+
+impl From<io::Error> for DbError {
+    fn from(e: io::Error) -> Self {
+        DbError::Io(e)
+    }
+}
 
 pub struct PathDb {
     conn: Connection,
 }
 
-pub struct PreparedStatements<'a> {
-    index_1_directory_lookup_stmt: Statement<'a>,
-    index_1_directory_insert_stmt: Statement<'a>,
-    index_1_filename_lookup_stmt: Statement<'a>,
-    index_1_filename_insert_stmt: Statement<'a>,
-    index_2_lookup_stmt: Statement<'a>,
-    index_2_insert_stmt: Statement<'a>,
-}
-
 impl PathDb {
     pub fn new() -> Result<PathDb, DbError> {
-        let project_dirs =
-            ProjectDirs::from("party.davidsherenowitsa", "David Cook", "Tomestone").unwrap();
+        let project_dirs = ProjectDirs::from("party.davidsherenowitsa", "David Cook", "Tomestone")
+            .ok_or(DbError::NoDirectories)?;
         let dir = project_dirs.data_dir();
-        fs::create_dir(dir).unwrap();
-        let conn = Connection::open(dir.join(FILENAME)).unwrap();
+        fs::create_dir(dir)?;
+        let conn = Connection::open(dir.join(FILENAME))?;
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS index_1_directory (
+            "CREATE TABLE IF NOT EXISTS index_1_folder (
                 crc INTEGER NOT NULL
                 path TEXT NOT NULL PRIMARY KEY
             )",
             NO_PARAMS,
-        )
-        .unwrap();
+        )?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS index_1_filename (
                 crc INTEGER NOT NULL
                 path TEXT NOT NULL PRIMARY KEY
             )",
             NO_PARAMS,
-        )
-        .unwrap();
+        )?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS index_2_path (
                 crc INTEGER NOT NULL
                 path TEXT NOT NULL PRIMARY KEY
             )",
             NO_PARAMS,
-        )
-        .unwrap();
+        )?;
 
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS index_1_directory_crc ON index_1_directory (crc)",
+            "CREATE INDEX IF NOT EXISTS index_1_folder_crc ON index_1_folder (crc)",
             NO_PARAMS,
-        )
-        .unwrap();
+        )?;
         conn.execute(
             "CREATE INDEX IF NOT EXISTS index_1_filename_crc ON index_1_filename (crc)",
             NO_PARAMS,
-        )
-        .unwrap();
+        )?;
         conn.execute(
             "CREATE INDEX IF NOT EXISTS index_2_path_crc ON index_2_path (crc)",
             NO_PARAMS,
-        )
-        .unwrap();
+        )?;
 
         Ok(PathDb { conn })
     }
 
     pub fn prepare<'a>(&'a self) -> Result<PreparedStatements<'a>, DbError> {
-        let index_1_directory_lookup_stmt = self
+        let index_1_folder_lookup_stmt = self
             .conn
-            .prepare("SELECT path FROM index_1_directory WHERE crc = ?")
-            .unwrap();
-        let index_1_directory_insert_stmt = self
+            .prepare("SELECT path FROM index_1_folder WHERE crc = ?")?;
+        let index_1_folder_insert_stmt = self
             .conn
-            .prepare("INSERT OR IGNORE INTO index_1_directory (crc, path) VALUES (?, ?)")
-            .unwrap();
+            .prepare("INSERT OR IGNORE INTO index_1_folder (crc, path) VALUES (?, ?)")?;
         let index_1_filename_lookup_stmt = self
             .conn
-            .prepare("SELECT path FROM index_1_filename WHERE crc = ?")
-            .unwrap();
+            .prepare("SELECT path FROM index_1_filename WHERE crc = ?")?;
         let index_1_filename_insert_stmt = self
             .conn
-            .prepare("INSERT OR IGNORE INTO index_1_filename (crc, path) VALUES (?, ?)")
-            .unwrap();
+            .prepare("INSERT OR IGNORE INTO index_1_filename (crc, path) VALUES (?, ?)")?;
         let index_2_lookup_stmt = self
             .conn
-            .prepare("SELECT path FROM index_2_path WHERE crc = ?")
-            .unwrap();
+            .prepare("SELECT path FROM index_2_path WHERE crc = ?")?;
         let index_2_insert_stmt = self
             .conn
-            .prepare("INSERT OR IGNORE INTO index_2_path (crc, path) VALUES (?, ?)")
-            .unwrap();
+            .prepare("INSERT OR IGNORE INTO index_2_path (crc, path) VALUES (?, ?)")?;
         Ok(PreparedStatements {
-            index_1_directory_lookup_stmt,
-            index_1_directory_insert_stmt,
+            index_1_folder_lookup_stmt,
+            index_1_folder_insert_stmt,
             index_1_filename_lookup_stmt,
             index_1_filename_insert_stmt,
             index_2_lookup_stmt,
             index_2_insert_stmt,
         })
+    }
+}
+
+pub struct PreparedStatements<'a> {
+    index_1_folder_lookup_stmt: Statement<'a>,
+    index_1_folder_insert_stmt: Statement<'a>,
+    index_1_filename_lookup_stmt: Statement<'a>,
+    index_1_filename_insert_stmt: Statement<'a>,
+    index_2_lookup_stmt: Statement<'a>,
+    index_2_insert_stmt: Statement<'a>,
+}
+
+impl<'a> PreparedStatements<'a> {
+    pub fn index_1_lookup(
+        &mut self,
+        hash: IndexHash1,
+    ) -> Result<(Vec<String>, Vec<String>), DbError> {
+        Ok((
+            self.index_1_folder_lookup_stmt
+                .query_map(&[hash.folder_crc], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<String>, rusqlite::Error>>()?,
+            self.index_1_filename_lookup_stmt
+                .query_map(&[hash.filename_crc], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<String>, rusqlite::Error>>()?,
+        ))
+    }
+
+    pub fn index_1_add(&mut self, path: &str) -> Result<(), DbError> {
+        let hash = IndexHash1::hash(path);
+        let (folder, filename) = IndexHash1::split_path(path);
+        self.index_1_folder_insert_stmt
+            .execute(params![hash.folder_crc, folder])?;
+        self.index_1_filename_insert_stmt
+            .execute(params![hash.filename_crc, filename])?;
+        Ok(())
+    }
+
+    pub fn index_2_lookup(&mut self, hash: IndexHash2) -> Result<Vec<String>, DbError> {
+        Ok(self
+            .index_2_lookup_stmt
+            .query_map(&[hash.path_crc], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<String>, rusqlite::Error>>()?)
+    }
+
+    pub fn index_2_add(&mut self, path: &str) -> Result<(), DbError> {
+        let hash = IndexHash2::hash(path);
+        self.index_2_insert_stmt
+            .execute(params![hash.path_crc, path.to_lowercase()])?;
+        Ok(())
     }
 }
