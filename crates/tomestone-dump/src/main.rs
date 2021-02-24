@@ -46,6 +46,29 @@ fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Ve
     }
 }
 
+fn write_file_name<W: Write>(
+    writer: &mut W,
+    statements: &mut PreparedStatements<'_>,
+    hash: IndexHash1,
+) -> Result<(), Error> {
+    let (folder_matches, filename_matches) = statements.index_1_lookup(hash)?;
+    match (folder_matches.len(), filename_matches.len()) {
+        (0, 0) => write!(
+            writer,
+            "<{:08x}>/<{:08x}>",
+            hash.folder_crc, hash.filename_crc
+        ),
+        (1, 1) => write!(writer, "{}/{}", folder_matches[0], filename_matches[0]),
+        (0, 1) => write!(writer, "<{:08x}>/{}", hash.folder_crc, filename_matches[0]),
+        (1, 0) => write!(writer, "{}/<{:08x}>", folder_matches[0], hash.filename_crc),
+        (1, _) => write!(writer, "{}/{:?}", folder_matches[0], filename_matches),
+        (_, 1) => write!(writer, "{:?}/{}", folder_matches, filename_matches[0]),
+        (_, _) => write!(writer, "{:?}/{:?}", folder_matches, filename_matches),
+    }
+    .unwrap();
+    Ok(())
+}
+
 fn list_files(
     game_data: &GameData,
     category: Category,
@@ -58,41 +81,8 @@ fn list_files(
         let index = game_data.get_index_1(&id).unwrap()?;
         for entry in index.iter() {
             let hash = entry.hash();
-            let (folder_matches, filename_matches) = statements.index_1_lookup(hash)?;
-            match (folder_matches.len(), filename_matches.len()) {
-                (0, 0) => write!(
-                    locked,
-                    "<{:08x}>/<{:08x}>\n",
-                    hash.folder_crc, hash.filename_crc
-                ),
-                (1, 1) => write!(locked, "{}/{}\n", folder_matches[0], filename_matches[0]),
-                (0, 1) => write!(
-                    locked,
-                    "<{:08x}>/{}\n",
-                    hash.folder_crc, filename_matches[0]
-                ),
-                (1, 0) => write!(
-                    locked,
-                    "{}/<{:08x}>\n",
-                    folder_matches[0], hash.filename_crc
-                ),
-                (1, _) => write!(
-                    locked,
-                    "Hash collision! {}/{:?}\n",
-                    folder_matches[0], filename_matches
-                ),
-                (_, 1) => write!(
-                    locked,
-                    "Hash collision! {:?}/{}\n",
-                    folder_matches, filename_matches[0]
-                ),
-                (_, _) => write!(
-                    locked,
-                    "Hash collision! {:?}/{:?}\n",
-                    folder_matches, filename_matches
-                ),
-            }
-            .unwrap();
+            write_file_name(&mut locked, statements, hash)?;
+            locked.write_all(b"\n").unwrap();
         }
     }
     Ok(())
@@ -204,6 +194,7 @@ fn parse_repository_path(path: Option<&str>) -> Option<(Category, Expansion)> {
 
 fn do_grep(
     game_data: &GameData,
+    statements: &mut PreparedStatements<'_>,
     category: Category,
     expansion: Expansion,
     re: &BytesRegex,
@@ -215,12 +206,9 @@ fn do_grep(
         for res in game_data.iter_files(pack_id, &index)? {
             let (hash, file) = res?;
             if re.is_match(&file) {
-                write!(
-                    locked,
-                    "File {:08x} {:08x} matches\n",
-                    hash.folder_crc, hash.filename_crc
-                )
-                .unwrap();
+                locked.write_all(b"File ").unwrap();
+                write_file_name(&mut locked, statements, hash)?;
+                locked.write_all(b" matches\n").unwrap();
             }
         }
     }
@@ -358,13 +346,7 @@ fn main() {
             }
         }
         ("list", Some(matches)) => {
-            let db = match PathDb::open() {
-                Ok(db) => db,
-                Err(e) => {
-                    eprintln!("error: couldn't open path hash database, {}", e);
-                    process::exit(1);
-                }
-            };
+            let db = open_db();
             let mut statements = db.prepare().unwrap();
 
             match parse_repository_path(matches.value_of("path")) {
@@ -389,6 +371,9 @@ fn main() {
             }
         }
         ("grep", Some(matches)) => {
+            let db = open_db();
+            let mut statements = db.prepare().unwrap();
+
             let re = match BytesRegex::new(matches.value_of("pattern").unwrap()) {
                 Ok(re) => re,
                 Err(e) => {
@@ -398,7 +383,7 @@ fn main() {
             };
             match parse_repository_path(matches.value_of("path")) {
                 Some((category, expansion)) => {
-                    if let Err(e) = do_grep(&game_data, category, expansion, &re) {
+                    if let Err(e) = do_grep(&game_data, &mut statements, category, expansion, &re) {
                         eprintln!("error: couldn't read files, {}", e);
                         process::exit(1);
                     }
@@ -406,7 +391,9 @@ fn main() {
                 None => {
                     for category in Category::iter_all() {
                         for expansion in Expansion::iter_all() {
-                            if let Err(e) = do_grep(&game_data, *category, *expansion, &re) {
+                            if let Err(e) =
+                                do_grep(&game_data, &mut statements, *category, *expansion, &re)
+                            {
                                 eprintln!("error: couldn't read files, {}", e);
                                 process::exit(1);
                             }
@@ -493,6 +480,16 @@ fn main() {
         }
         _ => {
             eprintln!("{}", app_matches.usage());
+            process::exit(1);
+        }
+    }
+}
+
+fn open_db() -> PathDb {
+    match PathDb::open() {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("error: couldn't open path hash database, {}", e);
             process::exit(1);
         }
     }
