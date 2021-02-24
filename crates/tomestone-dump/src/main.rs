@@ -8,7 +8,10 @@ use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, Arg, SubCommand, Values,
 };
 use once_cell::sync::Lazy;
-use regex::{bytes::Regex as BytesRegex, Regex};
+use regex::{
+    bytes::{Regex as BytesRegex, RegexBuilder as BytesRegexBuilder},
+    Regex,
+};
 
 use tomestone_exdf::{
     parser::{exdf::Exdf, exhf::parse_exhf, parse_row},
@@ -309,7 +312,14 @@ fn main() {
         .subcommand(
             SubCommand::with_name("grep")
                 .arg(Arg::with_name("pattern").required(true).index(1))
-                .arg(Arg::with_name("path").required(false).index(2)),
+                .arg(Arg::with_name("path").required(false).index(2))
+                .arg(
+                    Arg::with_name("ignore-case")
+                        .short("i")
+                        .long("ignore-case")
+                        .required(false)
+                        .takes_value(false),
+                ),
         )
         .subcommand(SubCommand::with_name("discover_paths"))
         .subcommand(
@@ -374,7 +384,11 @@ fn main() {
             let db = open_db();
             let mut statements = db.prepare().unwrap();
 
-            let re = match BytesRegex::new(matches.value_of("pattern").unwrap()) {
+            let mut builder = BytesRegexBuilder::new(matches.value_of("pattern").unwrap());
+            if matches.is_present("ignore-case") {
+                builder.case_insensitive(true);
+            }
+            let re = match builder.build() {
                 Ok(re) => re,
                 Err(e) => {
                     eprintln!("error: invalid regular expression, {}", e);
