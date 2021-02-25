@@ -258,16 +258,12 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
         }
     }
 
-    let stdout = stdout();
-    let mut locked = stdout.lock();
-
     for (pack_id, index) in indices.iter() {
         for res in game_data.iter_files(*pack_id, &index)? {
             let (_hash, file) = res?;
             for caps in PATH_DISCOVERY_RE.captures_iter(&file) {
                 let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
                 if game_data.lookup_path_locator(discovered_path)?.is_some() {
-                    write!(locked, "{}\n", discovered_path).unwrap();
                     statements.add_path(discovered_path)?;
                 }
             }
@@ -284,7 +280,6 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
                 std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap()
             );
             if game_data.lookup_path_locator(&discovered_path)?.is_some() {
-                write!(locked, "{}\n", discovered_path).unwrap();
                 statements.add_path(&discovered_path)?;
             }
         }
