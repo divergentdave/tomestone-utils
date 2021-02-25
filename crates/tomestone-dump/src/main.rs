@@ -22,7 +22,11 @@ use tomestone_sqpack::{
     Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2,
 };
 
-fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Vec<u8>>, Error> {
+fn lookup(
+    game_data: &GameData,
+    statements: &mut PreparedStatements<'_>,
+    mut path_or_crc: Values<'_>,
+) -> Result<Option<Vec<u8>>, Error> {
     static CRC_RE: Lazy<Regex> = Lazy::new(|| Regex::new("^[0-9A-Fa-f]{8}$").unwrap());
 
     let first_arg = path_or_crc.next().unwrap();
@@ -45,7 +49,11 @@ fn lookup(game_data: &GameData, mut path_or_crc: Values<'_>) -> Result<Option<Ve
         game_data.lookup_hash_2_data(&hash)
     } else {
         // path
-        game_data.lookup_path_data(first_arg)
+        let res = game_data.lookup_path_data(first_arg);
+        if let Ok(Some(_)) = &res {
+            statements.add_path(first_arg)?;
+        }
+        res
     }
 }
 
@@ -266,6 +274,16 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
     Ok(())
 }
 
+fn open_db() -> PathDb {
+    match PathDb::open() {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("error: couldn't open path hash database, {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 fn main() {
     dotenv::dotenv().ok();
     let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
@@ -326,9 +344,17 @@ fn main() {
             SubCommand::with_name("exd").arg(Arg::with_name("path").required(true).index(1)),
         );
     let app_matches = app.get_matches();
+
+    let db = open_db();
+    let mut statements = db.prepare().unwrap();
+
     match app_matches.subcommand() {
         ("raw", Some(matches)) => {
-            match lookup(&game_data, matches.values_of("path_or_crc").unwrap()) {
+            match lookup(
+                &game_data,
+                &mut statements,
+                matches.values_of("path_or_crc").unwrap(),
+            ) {
                 Ok(Some(data)) => {
                     stdout().write_all(&data).unwrap();
                 }
@@ -343,7 +369,11 @@ fn main() {
             }
         }
         ("hex", Some(matches)) => {
-            match lookup(&game_data, matches.values_of("path_or_crc").unwrap()) {
+            match lookup(
+                &game_data,
+                &mut statements,
+                matches.values_of("path_or_crc").unwrap(),
+            ) {
                 Ok(Some(data)) => print_hex_dump(&data),
                 Ok(None) => {
                     eprintln!("error: file not found");
@@ -355,35 +385,27 @@ fn main() {
                 }
             }
         }
-        ("list", Some(matches)) => {
-            let db = open_db();
-            let mut statements = db.prepare().unwrap();
-
-            match parse_repository_path(matches.value_of("path")) {
-                Some((category, expansion)) => {
-                    if let Err(e) = list_files(&game_data, category, expansion, &mut statements) {
-                        eprintln!("error: couldn't read indices, {}", e);
-                        process::exit(1);
-                    }
+        ("list", Some(matches)) => match parse_repository_path(matches.value_of("path")) {
+            Some((category, expansion)) => {
+                if let Err(e) = list_files(&game_data, category, expansion, &mut statements) {
+                    eprintln!("error: couldn't read indices, {}", e);
+                    process::exit(1);
                 }
-                None => {
-                    for category in Category::iter_all() {
-                        for expansion in Expansion::iter_all() {
-                            if let Err(e) =
-                                list_files(&game_data, *category, *expansion, &mut statements)
-                            {
-                                eprintln!("error: couldn't read indices, {}", e);
-                                process::exit(1);
-                            }
+            }
+            None => {
+                for category in Category::iter_all() {
+                    for expansion in Expansion::iter_all() {
+                        if let Err(e) =
+                            list_files(&game_data, *category, *expansion, &mut statements)
+                        {
+                            eprintln!("error: couldn't read indices, {}", e);
+                            process::exit(1);
                         }
                     }
                 }
             }
-        }
+        },
         ("grep", Some(matches)) => {
-            let db = open_db();
-            let mut statements = db.prepare().unwrap();
-
             let mut builder = BytesRegexBuilder::new(matches.value_of("pattern").unwrap());
             if matches.is_present("ignore-case") {
                 builder.case_insensitive(true);
@@ -440,6 +462,10 @@ fn main() {
                     process::exit(1);
                 }
             };
+            if let Err(e) = statements.add_path(&exh_path) {
+                eprintln!("database error: {}", e);
+                process::exit(1);
+            }
             let exhf = match parse_exhf(&exh_data) {
                 Ok((_, exhf)) => exhf,
                 Err(e) => {
@@ -468,6 +494,10 @@ fn main() {
                     process::exit(1);
                 }
             };
+            if let Err(e) = statements.add_path(&exd_path) {
+                eprintln!("database error: {}", e);
+                process::exit(1);
+            }
             let exdf = match Exdf::new(&exd_data) {
                 Ok(exdf) => exdf,
                 Err(e) => {
@@ -494,16 +524,6 @@ fn main() {
         }
         _ => {
             eprintln!("{}", app_matches.usage());
-            process::exit(1);
-        }
-    }
-}
-
-fn open_db() -> PathDb {
-    match PathDb::open() {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("error: couldn't open path hash database, {}", e);
             process::exit(1);
         }
     }
