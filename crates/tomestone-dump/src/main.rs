@@ -307,28 +307,35 @@ fn main() {
         .author(crate_authors!())
         .about(crate_description!())
         .subcommand(
-            SubCommand::with_name("raw").arg(
-                Arg::with_name("path_or_crc")
-                    .required(true)
-                    .index(1)
-                    .min_values(1)
-                    .max_values(2),
-            ),
+            SubCommand::with_name("raw")
+                .about("Extract a file and write it to standard output")
+                .arg(
+                    Arg::with_name("path_or_crc")
+                        .required(true)
+                        .index(1)
+                        .min_values(1)
+                        .max_values(2),
+                ),
         )
         .subcommand(
-            SubCommand::with_name("hex").arg(
-                Arg::with_name("path_or_crc")
-                    .required(true)
-                    .index(1)
-                    .min_values(1)
-                    .max_values(2),
-            ),
+            SubCommand::with_name("hex")
+                .about("Extract a file and print it as a hex dump")
+                .arg(
+                    Arg::with_name("path_or_crc")
+                        .required(true)
+                        .index(1)
+                        .min_values(1)
+                        .max_values(2),
+                ),
         )
         .subcommand(
-            SubCommand::with_name("list").arg(Arg::with_name("path").required(false).index(1)),
+            SubCommand::with_name("list")
+                .about("List files by hash or path (where available)")
+                .arg(Arg::with_name("path").required(false).index(1)),
         )
         .subcommand(
             SubCommand::with_name("grep")
+                .about("Search file contents for regular expressions")
                 .arg(Arg::with_name("pattern").required(true).index(1))
                 .arg(Arg::with_name("path").required(false).index(2))
                 .arg(
@@ -339,9 +346,14 @@ fn main() {
                         .takes_value(false),
                 ),
         )
-        .subcommand(SubCommand::with_name("discover_paths"))
         .subcommand(
-            SubCommand::with_name("exd").arg(Arg::with_name("path").required(true).index(1)),
+            SubCommand::with_name("discover_paths")
+                .about("Search all files for paths of other files, and update the path database"),
+        )
+        .subcommand(
+            SubCommand::with_name("exd")
+                .about("Extract and dump EXHF/EXDF files")
+                .arg(Arg::with_name("path").required(true).index(1)),
         );
     let app_matches = app.get_matches();
 
