@@ -233,6 +233,8 @@ static PATH_DISCOVERY_RE: Lazy<BytesRegex> = Lazy::new(|| {
     )
     .unwrap()
 });
+static PATH_DISCOVERY_EXD_RE: Lazy<BytesRegex> =
+    Lazy::new(|| BytesRegex::new("([A-Za-z0-9/_]+),-?[0-9]+\r\n").unwrap());
 
 fn discover_paths(game_data: &GameData) -> Result<(), Error> {
     let db = PathDb::open()?;
@@ -271,6 +273,23 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
             }
         }
     }
+
+    if let Some(exd_table_of_contents_data) = game_data.lookup_hash_1_data(&IndexHash1 {
+        folder_crc: 0xe39b7999,
+        filename_crc: 0x51b57ebc,
+    })? {
+        for caps in PATH_DISCOVERY_EXD_RE.captures_iter(&exd_table_of_contents_data) {
+            let discovered_path = format!(
+                "exd/{}.exh",
+                std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap()
+            );
+            if game_data.lookup_path_locator(&discovered_path)?.is_some() {
+                write!(locked, "{}\n", discovered_path).unwrap();
+                statements.add_path(&discovered_path)?;
+            }
+        }
+    }
+
     Ok(())
 }
 
