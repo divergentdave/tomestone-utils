@@ -77,7 +77,7 @@ pub enum Value<'a> {
     U16(u16),
     I32(i32),
     U32(u32),
-    Float(()), // TODO: single or double precision? look at column offsets of a file where it's used
+    Float(f32),
     I16x4([i16; 4]),
     Bitflag(bool),
 }

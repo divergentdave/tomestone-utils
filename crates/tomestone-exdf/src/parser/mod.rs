@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use nom::{
     combinator::map,
-    number::complete::{be_i16, be_i32, be_i8, be_u16, be_u32, be_u8},
+    number::complete::{be_f32, be_i16, be_i32, be_i8, be_u16, be_u32, be_u8},
     sequence::tuple,
 };
 
@@ -44,7 +44,7 @@ pub fn parse_row<'a>(
                     ColumnFormat::U16 => Value::U16(be_u16(input)?.1),
                     ColumnFormat::I32 => Value::I32(be_i32(input)?.1),
                     ColumnFormat::U32 => Value::U32(be_u32(input)?.1),
-                    ColumnFormat::Float => todo!(),
+                    ColumnFormat::Float => Value::Float(be_f32(input)?.1),
                     ColumnFormat::I16x4 => Value::I16x4(
                         map(tuple((be_i16, be_i16, be_i16, be_i16)), |(a, b, c, d)| {
                             [a, b, c, d]
