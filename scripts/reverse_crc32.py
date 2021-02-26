@@ -4,7 +4,7 @@ import z3
 POLYNOMIAL = 0xEDB88320
 
 
-def crc32(data):
+def jamcrc(data):
     data_size = data.size()
     size = max(data_size, 32)
     if data_size < 32:
@@ -51,7 +51,7 @@ def gen_matches(prefix, suffix, byte_size, target):
             z3.And(byte >= 0x30, byte <= 0x39),
             byte == 0x5f,
         ))
-    s.add(crc32(data) == target)
+    s.add(jamcrc(data) == target)
     while s.check() == z3.sat:
         m = s.model()
         yield bitvec_to_bytes(m, data)
@@ -62,7 +62,7 @@ def test():
     exd_int = ord("e") | (ord("x") << 8) | (ord("d") << 16)
     exd_bvv = z3.BitVecVal(exd_int, 24)
     expected_crc = 0xe39b7999
-    actual_crc = z3.simplify(crc32(exd_bvv)).as_long()
+    actual_crc = z3.simplify(jamcrc(exd_bvv)).as_long()
     assert actual_crc == expected_crc
 
 
