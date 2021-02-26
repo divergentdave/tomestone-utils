@@ -270,10 +270,7 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
         }
     }
 
-    if let Some(exd_table_of_contents_data) = game_data.lookup_hash_1_data(&IndexHash1 {
-        folder_crc: 0xe39b7999,
-        filename_crc: 0x51b57ebc,
-    })? {
+    if let Some(exd_table_of_contents_data) = game_data.lookup_path_data("exd/root.exl")? {
         for caps in PATH_DISCOVERY_EXD_RE.captures_iter(&exd_table_of_contents_data) {
             let discovered_path = format!(
                 "exd/{}.exh",

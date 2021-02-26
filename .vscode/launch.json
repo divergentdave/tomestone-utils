@@ -5,6 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: reverse_crc32.py",
+            "type": "python",
+            "request": "launch",
+            "program": "scripts/reverse_crc32.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "type": "lldb",
             "request": "launch",
             "name": "Debug executable 'fanttheysia'",
@@ -150,7 +158,9 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": [
+                "discover_paths"
+            ],
             "cwd": "${workspaceFolder}"
         },
         {

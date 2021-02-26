@@ -69,10 +69,10 @@ def test():
 def main():
     test()
 
-    prefix = b"e"
-    suffix = b"d"
-    max_length = 3
-    target = 0xe39b7999
+    prefix = b""
+    suffix = b""
+    max_length = 9
+    target = 0x51b57ebc
     for length in range(max(1, len(prefix) + len(suffix)), max_length + 1):
         for match in gen_matches(prefix, suffix, length, target):
             print(match.decode("ascii"))
