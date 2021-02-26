@@ -158,6 +158,14 @@ impl<'a> PreparedStatements<'a> {
         Ok(())
     }
 
+    pub fn add_folder(&mut self, path: &str) -> Result<(), DbError> {
+        let lowercase = path.to_lowercase();
+        let crc = crate::crc32(lowercase.as_bytes());
+        self.index_1_folder_insert_stmt
+            .execute(params![crc, lowercase])?;
+        Ok(())
+    }
+
     pub fn index_2_lookup(&mut self, hash: IndexHash2) -> Result<Vec<String>, DbError> {
         Ok(self
             .index_2_lookup_stmt

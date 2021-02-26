@@ -148,7 +148,7 @@ pub trait IndexHash {
     fn hash(path: &str) -> Self;
 }
 
-fn crc32(data: &[u8]) -> u32 {
+pub(crate) fn crc32(data: &[u8]) -> u32 {
     let mut hasher = crc32fast::Hasher::new();
     hasher.update(data);
     !hasher.finalize()
@@ -276,6 +276,14 @@ impl<E: IndexEntry> Index<E> {
         } else {
             None
         }
+    }
+}
+
+impl Index<IndexEntry1> {
+    pub fn contains_folder(&self, crc: &u32) -> bool {
+        self.table
+            .binary_search_by_key(crc, |e| e.hash().folder_crc)
+            .is_ok()
     }
 }
 
@@ -619,6 +627,34 @@ impl GameData {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn contains_folder(&self, path: &str) -> Result<bool, Error> {
+        let segments: Vec<_> = path.splitn(3, '/').collect();
+        let category = if let Ok(category) = Category::parse_name(segments[0]) {
+            category
+        } else {
+            return Ok(false);
+        };
+        let expansion = if let Some(segment) = segments.get(1) {
+            if let Ok(expansion) = Expansion::parse_name(segment) {
+                expansion
+            } else {
+                Expansion::Base
+            }
+        } else {
+            Expansion::Base
+        };
+
+        let crc = crc32(path.to_lowercase().as_bytes());
+
+        for id in self.iter_packs_category_expansion(category, expansion) {
+            let index = self.get_index_1(&id).unwrap()?;
+            if index.contains_folder(&crc) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     pub fn lookup_hash_1_data(&self, hash: &IndexHash1) -> Result<Option<Vec<u8>>, Error> {

@@ -265,6 +265,14 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
                 let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
                 if game_data.lookup_path_locator(discovered_path)?.is_some() {
                     statements.add_path(discovered_path)?;
+                } else if game_data.contains_folder(discovered_path)? {
+                    statements.add_folder(discovered_path)?;
+                } else {
+                    let slash_idx = discovered_path.rfind('/').unwrap();
+                    let discovered_folder = &discovered_path[..slash_idx];
+                    if game_data.contains_folder(discovered_folder)? {
+                        statements.add_folder(discovered_folder)?;
+                    }
                 }
             }
         }
