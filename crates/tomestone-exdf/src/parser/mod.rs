@@ -57,3 +57,54 @@ pub fn parse_row<'a>(
         )
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use tomestone_sqpack::GameData;
+
+    #[test]
+    #[ignore = "slow test"]
+    fn exdf_game_data() {
+        dotenv::dotenv().ok();
+        // Don't test anything if the game directory isn't probided
+        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+            root
+        } else {
+            return;
+        };
+        let game_data = GameData::new(root).unwrap();
+
+        let toc_data = game_data.lookup_path_data("exd/root.exl").unwrap().unwrap();
+        let toc_str = std::str::from_utf8(&toc_data).unwrap();
+        for line in toc_str.split_ascii_whitespace() {
+            if line.is_empty() {
+                continue;
+            }
+            let comma_idx = line.find(',').unwrap();
+            let name = &line[..comma_idx];
+            if name == "EXLT" {
+                continue;
+            }
+            let exh_path = format!("exd/{}.exh", name);
+            let exh_data = game_data.lookup_path_data(&exh_path).unwrap().unwrap();
+            let (_, exhf) = super::exhf::parse_exhf(&exh_data).unwrap();
+            for language in exhf.languages() {
+                let short_code = language.short_code();
+                for (page_start, _) in exhf.pages() {
+                    let exd_path = if let Some(short_code) = short_code {
+                        format!("exd/{}_{}_{}.exd", name, page_start, short_code)
+                    } else {
+                        format!("exd/{}_{}.exd", name, page_start)
+                    };
+                    if let Some(exd_data) = game_data.lookup_path_data(&exd_path).unwrap() {
+                        let exdf = super::exdf::Exdf::new(&exd_data).unwrap();
+                        for row_res in exdf.iter() {
+                            let (_, row_data) = row_res.unwrap();
+                            super::parse_row(row_data, &exhf).unwrap();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
