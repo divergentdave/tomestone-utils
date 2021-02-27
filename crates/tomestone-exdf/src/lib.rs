@@ -31,6 +31,19 @@ impl Language {
             _ => Err(EnumParseError),
         }
     }
+
+    pub fn short_code(&self) -> Option<&'static str> {
+        match self {
+            Language::NoLanguage => None,
+            Language::Japanese => Some("ja"),
+            Language::English => Some("en"),
+            Language::German => Some("de"),
+            Language::French => Some("fr"),
+            Language::ChineseSingapore => Some("cns"),
+            Language::ChineseTraditional => Some("cnt"),
+            Language::Korean => Some("ko"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,6 +73,7 @@ impl ColumnFormat {
             6 => Ok(ColumnFormat::I32),
             7 => Ok(ColumnFormat::U32),
             9 => Ok(ColumnFormat::Float),
+            0xb => Ok(ColumnFormat::I16x4),
             value if value >= 0x19 && value <= 0x20 => {
                 Ok(ColumnFormat::Bitflag((value - 0x19) as u8))
             }

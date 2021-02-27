@@ -331,12 +331,26 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
 
     if let Some(exd_table_of_contents_data) = game_data.lookup_path_data("exd/root.exl")? {
         for caps in PATH_DISCOVERY_EXD_RE.captures_iter(&exd_table_of_contents_data) {
-            let discovered_path = format!(
-                "exd/{}.exh",
-                std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap()
-            );
-            if game_data.lookup_path_locator(&discovered_path)?.is_some() {
-                statements.add_path(&discovered_path)?;
+            let base = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
+            let exh_path = format!("exd/{}.exh", base);
+            if let Some(exh_data) = game_data.lookup_path_data(&exh_path)? {
+                statements.add_path(&exh_path)?;
+
+                if let Ok((_, exhf)) = tomestone_exdf::parser::exhf::parse_exhf(&exh_data) {
+                    for language in exhf.languages() {
+                        let short_code = language.short_code();
+                        for (page_start, _) in exhf.pages() {
+                            let exd_path = if let Some(short_code) = short_code {
+                                format!("exd/{}_{}_{}.exd", base, page_start, short_code)
+                            } else {
+                                format!("exd/{}_{}.exd", base, page_start)
+                            };
+                            if game_data.lookup_path_locator(&exd_path)?.is_some() {
+                                statements.add_path(&exd_path)?;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
