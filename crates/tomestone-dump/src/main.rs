@@ -280,7 +280,7 @@ fn do_grep(
 static PATH_DISCOVERY_RE: Lazy<BytesRegex> = Lazy::new(|| {
     BytesRegex::new(
         "((?:common|bgcommon|bg|cut|chara|shader|ui|sound|vfx|ui_script|exd|game_script|music|\
-    sqpack_test|debug)/[-a-zA-Z0-9_./]+)\\x00",
+        sqpack_test|debug)/[-a-zA-Z0-9_./]+)\\x00",
     )
     .unwrap()
 });
