@@ -4,9 +4,7 @@ use std::{
     process,
 };
 
-use clap::{
-    crate_authors, crate_description, crate_name, crate_version, App, Arg, SubCommand, Values,
-};
+use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg, SubCommand};
 use once_cell::sync::Lazy;
 use regex::{
     bytes::{Regex as BytesRegex, RegexBuilder as BytesRegexBuilder},
@@ -22,12 +20,23 @@ use tomestone_sqpack::{
     Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2,
 };
 
-fn lookup(
+fn lookup<'a>(
     game_data: &GameData,
-    statements: &mut PreparedStatements<'_>,
-    mut path_or_crc: Values<'_>,
+    statements: Option<&mut PreparedStatements<'_>>,
+    mut path_or_crc: impl Iterator<Item = &'a str>,
 ) -> Result<Option<Vec<u8>>, Error> {
     static CRC_RE: Lazy<Regex> = Lazy::new(|| Regex::new("^[0-9A-Fa-f]{8}$").unwrap());
+    static PATH_LIKE_RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+            "^([0-9A-Fa-f]{8})/([0-9A-Fa-f]{8})$|\
+            ^<([0-9A-Fa-f]{8})>/<([0-9A-Fa-f]{8})>$|\
+            ^(.*)/([0-9A-Fa-f]{8})$|\
+            ^(.*)/<([0-9A-Fa-f]{8})>$|\
+            ^([0-9A-Fa-f]{8})/(.*)$|\
+            ^<([0-9A-Fa-f]{8})>/(.*)$",
+        )
+        .unwrap()
+    });
 
     let first_arg = path_or_crc.next().unwrap();
     let second_arg = path_or_crc.next();
@@ -48,12 +57,54 @@ fn lookup(
         let hash = IndexHash2::new(crc);
         game_data.lookup_hash_2_data(&hash)
     } else {
-        // path
-        let res = game_data.lookup_path_data(first_arg);
-        if let Ok(Some(_)) = &res {
-            statements.add_path(first_arg)?;
+        let opt = game_data.lookup_path_data(first_arg)?;
+        if opt.is_some() {
+            // path
+            if let Some(statements) = statements {
+                statements.add_path(first_arg)?;
+            }
+            Ok(opt)
+        } else if let Some(caps) = PATH_LIKE_RE.captures(first_arg) {
+            // combinations of CRC-32 and partial paths, joined with a slash
+            let left = caps
+                .get(1)
+                .or_else(|| caps.get(3))
+                .or_else(|| caps.get(5))
+                .or_else(|| caps.get(7))
+                .or_else(|| caps.get(9))
+                .or_else(|| caps.get(11))
+                .unwrap()
+                .as_str();
+            let right = caps
+                .get(2)
+                .or_else(|| caps.get(4))
+                .or_else(|| caps.get(6))
+                .or_else(|| caps.get(8))
+                .or_else(|| caps.get(10))
+                .or_else(|| caps.get(12))
+                .unwrap()
+                .as_str();
+            let mut folder_crcs = vec![tomestone_sqpack::crc32(left.to_lowercase().as_bytes())];
+            if let Ok(crc) = u32::from_str_radix(left, 16) {
+                folder_crcs.push(crc);
+            }
+            let mut filename_crcs = vec![tomestone_sqpack::crc32(right.to_lowercase().as_bytes())];
+            if let Ok(crc) = u32::from_str_radix(right, 16) {
+                filename_crcs.push(crc);
+            }
+            for folder_crc in folder_crcs.iter().rev() {
+                for filename_crc in filename_crcs.iter().rev() {
+                    let hash = IndexHash1::new(*folder_crc, *filename_crc);
+                    let opt = game_data.lookup_hash_1_data(&hash)?;
+                    if opt.is_some() {
+                        return Ok(opt);
+                    }
+                }
+            }
+            Ok(None)
+        } else {
+            Ok(None)
         }
-        res
     }
 }
 
@@ -383,7 +434,7 @@ fn main() {
         ("raw", Some(matches)) => {
             match lookup(
                 &game_data,
-                &mut statements,
+                Some(&mut statements),
                 matches.values_of("path_or_crc").unwrap(),
             ) {
                 Ok(Some(data)) => {
@@ -402,7 +453,7 @@ fn main() {
         ("hex", Some(matches)) => {
             match lookup(
                 &game_data,
-                &mut statements,
+                Some(&mut statements),
                 matches.values_of("path_or_crc").unwrap(),
             ) {
                 Ok(Some(data)) => print_hex_dump(&data),
@@ -562,7 +613,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{write_hex_dump, PATH_DISCOVERY_RE};
+    use tomestone_sqpack::GameData;
+
+    use crate::{lookup, write_hex_dump, PATH_DISCOVERY_RE};
 
     #[test]
     fn path_discovery_regex() {
@@ -680,5 +733,90 @@ mod tests {
             b"41414141 41414141 41414141 41414141  AAAAAAAAAAAAAAAA\n\
             30313233 34353637 38393031 32333435  0123456789012345\n",
         );
+    }
+
+    #[test]
+    fn cli_lookup() {
+        dotenv::dotenv().ok();
+        // Don't test anything if the game directory isn't probided
+        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+            root
+        } else {
+            return;
+        };
+        let game_data = GameData::new(root).unwrap();
+
+        lookup(&game_data, None, vec!["exd/fcauthority.exh"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(&game_data, None, vec!["e39b7999", "e69d80a4"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(&game_data, None, vec!["E39B7999", "E69D80A4"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(&game_data, None, vec!["e39b7999/e69d80a4"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(&game_data, None, vec!["<e39b7999>/<e69d80a4>"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(&game_data, None, vec!["exd/<e69d80a4>"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(
+            &game_data,
+            None,
+            vec!["<e39b7999>/fcauthority.exh"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(&game_data, None, vec!["exd/e69d80a4"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(
+            &game_data,
+            None,
+            vec!["e39b7999/fcauthority.exh"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+
+        lookup(
+            &game_data,
+            None,
+            vec!["music/ex1/bgm_ex1_deep01.scd"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(&game_data, None, vec!["7cf6ce88", "7f2056de"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(&game_data, None, vec!["7cf6ce88/7f2056de"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(&game_data, None, vec!["<7cf6ce88>/<7f2056de>"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(&game_data, None, vec!["music/ex1/<7f2056de>"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(
+            &game_data,
+            None,
+            vec!["<7cf6ce88>/bgm_ex1_deep01.scd"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(&game_data, None, vec!["music/ex1/7f2056de"].into_iter())
+            .unwrap()
+            .unwrap();
+        lookup(
+            &game_data,
+            None,
+            vec!["7cf6ce88/bgm_ex1_deep01.scd"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
     }
 }
