@@ -437,7 +437,14 @@ fn main() {
         .subcommand(
             SubCommand::with_name("exd")
                 .about("Extract and dump EXHF/EXDF files")
-                .arg(Arg::with_name("path").required(true).index(1)),
+                .arg(Arg::with_name("path").required(true).index(1))
+                .arg(
+                    Arg::with_name("language")
+                        .long("language")
+                        .short("l")
+                        .required(false)
+                        .takes_value(true),
+                ),
         );
     let app_matches = app.get_matches();
 
@@ -542,6 +549,7 @@ fn main() {
         }
         ("exd", Some(matches)) => {
             let original_path = matches.value_of("path").unwrap();
+            let language = matches.value_of("language").unwrap_or("en");
             let (exh_path, path_base) = if let Some(dot_position) = original_path.rfind('.') {
                 (original_path.to_string(), &original_path[..dot_position])
             } else {
@@ -571,49 +579,55 @@ fn main() {
             };
             println!("{:?}", exhf);
 
-            let exd_path = if exhf.languages().contains(&Language::English) {
-                format!("{}_0_en.exd", path_base)
-            } else if exhf.languages().contains(&Language::NoLanguage) {
-                format!("{}_0.exd", path_base)
-            } else {
-                eprintln!("error: no supported language");
-                process::exit(1);
-            };
-            let exd_data = match game_data.lookup_path_data(&exd_path) {
-                Ok(Some(exd_data)) => exd_data,
-                Ok(None) => {
-                    eprintln!("error: file not found");
+            for (page_start, _) in exhf.pages() {
+                let exd_path = if exhf
+                    .languages()
+                    .iter()
+                    .any(|header_language| header_language.short_code() == Some(language))
+                {
+                    format!("{}_{}_{}.exd", path_base, page_start, language)
+                } else if exhf.languages().contains(&Language::NoLanguage) {
+                    format!("{}_{}.exd", path_base, page_start)
+                } else {
+                    eprintln!("error: no supported language");
+                    process::exit(1);
+                };
+                let exd_data = match game_data.lookup_path_data(&exd_path) {
+                    Ok(Some(exd_data)) => exd_data,
+                    Ok(None) => {
+                        eprintln!("error: file not found");
+                        process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        process::exit(1);
+                    }
+                };
+                if let Err(e) = statements.add_path(&exd_path) {
+                    eprintln!("database error: {}", e);
                     process::exit(1);
                 }
-                Err(e) => {
-                    eprintln!("{}", e);
-                    process::exit(1);
-                }
-            };
-            if let Err(e) = statements.add_path(&exd_path) {
-                eprintln!("database error: {}", e);
-                process::exit(1);
-            }
-            let exdf = match Exdf::new(&exd_data) {
-                Ok(exdf) => exdf,
-                Err(e) => {
-                    eprintln!("{:?}", e.code);
-                    process::exit(1);
-                }
-            };
-            for res in exdf.iter() {
-                let (_row_number, row_data) = match res {
-                    Ok(row) => row,
+                let exdf = match Exdf::new(&exd_data) {
+                    Ok(exdf) => exdf,
                     Err(e) => {
                         eprintln!("{:?}", e.code);
                         process::exit(1);
                     }
                 };
-                match parse_row(row_data, &exhf) {
-                    Ok(parsed) => println!("{:?}", parsed),
-                    Err(e) => {
-                        eprintln!("{}", e);
-                        process::exit(1);
+                for res in exdf.iter() {
+                    let (_row_number, row_data) = match res {
+                        Ok(row) => row,
+                        Err(e) => {
+                            eprintln!("{:?}", e.code);
+                            process::exit(1);
+                        }
+                    };
+                    match parse_row(row_data, &exhf) {
+                        Ok(parsed) => println!("{:?}", parsed),
+                        Err(e) => {
+                            eprintln!("{}", e);
+                            process::exit(1);
+                        }
                     }
                 }
             }
