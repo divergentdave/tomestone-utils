@@ -7,7 +7,6 @@ pub struct EnumParseError;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Language {
-    NoLanguage = 0,
     Japanese = 1,
     English = 2,
     German = 3,
@@ -18,30 +17,29 @@ pub enum Language {
 }
 
 impl Language {
-    fn from_u16(value: u16) -> Result<Language, EnumParseError> {
+    fn from_u16(value: u16) -> Result<Option<Language>, EnumParseError> {
         match value {
-            0 => Ok(Language::NoLanguage),
-            1 => Ok(Language::Japanese),
-            2 => Ok(Language::English),
-            3 => Ok(Language::German),
-            4 => Ok(Language::French),
-            5 => Ok(Language::ChineseSingapore),
-            6 => Ok(Language::ChineseTraditional),
-            7 => Ok(Language::Korean),
+            0 => Ok(None),
+            1 => Ok(Some(Language::Japanese)),
+            2 => Ok(Some(Language::English)),
+            3 => Ok(Some(Language::German)),
+            4 => Ok(Some(Language::French)),
+            5 => Ok(Some(Language::ChineseSingapore)),
+            6 => Ok(Some(Language::ChineseTraditional)),
+            7 => Ok(Some(Language::Korean)),
             _ => Err(EnumParseError),
         }
     }
 
-    pub fn short_code(&self) -> Option<&'static str> {
+    pub fn short_code(&self) -> &'static str {
         match self {
-            Language::NoLanguage => None,
-            Language::Japanese => Some("ja"),
-            Language::English => Some("en"),
-            Language::German => Some("de"),
-            Language::French => Some("fr"),
-            Language::ChineseSingapore => Some("cns"),
-            Language::ChineseTraditional => Some("cnt"),
-            Language::Korean => Some("ko"),
+            Language::Japanese => "ja",
+            Language::English => "en",
+            Language::German => "de",
+            Language::French => "fr",
+            Language::ChineseSingapore => "cns",
+            Language::ChineseTraditional => "cnt",
+            Language::Korean => "ko",
         }
     }
 }
@@ -120,37 +118,34 @@ mod tests {
 
     #[test]
     fn language_round_trip() {
-        assert!(matches!(
-            Language::from_u16(Language::NoLanguage as u16),
-            Ok(Language::NoLanguage)
-        ));
+        assert!(matches!(Language::from_u16(0), Ok(None)));
         assert!(matches!(
             Language::from_u16(Language::Japanese as u16),
-            Ok(Language::Japanese)
+            Ok(Some(Language::Japanese))
         ));
         assert!(matches!(
             Language::from_u16(Language::English as u16),
-            Ok(Language::English)
+            Ok(Some(Language::English))
         ));
         assert!(matches!(
             Language::from_u16(Language::German as u16),
-            Ok(Language::German)
+            Ok(Some(Language::German))
         ));
         assert!(matches!(
             Language::from_u16(Language::French as u16),
-            Ok(Language::French)
+            Ok(Some(Language::French))
         ));
         assert!(matches!(
             Language::from_u16(Language::ChineseSingapore as u16),
-            Ok(Language::ChineseSingapore)
+            Ok(Some(Language::ChineseSingapore))
         ));
         assert!(matches!(
             Language::from_u16(Language::ChineseTraditional as u16),
-            Ok(Language::ChineseTraditional)
+            Ok(Some(Language::ChineseTraditional))
         ));
         assert!(matches!(
             Language::from_u16(Language::Korean as u16),
-            Ok(Language::Korean)
+            Ok(Some(Language::Korean))
         ));
         assert!(matches!(Language::from_u16(65535), Err(EnumParseError)));
     }

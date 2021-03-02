@@ -60,6 +60,7 @@ pub fn parse_row<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::Language;
     use tomestone_sqpack::GameData;
 
     #[test]
@@ -89,7 +90,7 @@ mod tests {
             let exh_data = game_data.lookup_path_data(&exh_path).unwrap().unwrap();
             let (_, exhf) = super::exhf::parse_exhf(&exh_data).unwrap();
             for language in exhf.languages() {
-                let short_code = language.short_code();
+                let short_code = language.as_ref().map(Language::short_code);
                 for (page_start, _) in exhf.pages() {
                     let exd_path = if let Some(short_code) = short_code {
                         format!("exd/{}_{}_{}.exd", name, page_start, short_code)

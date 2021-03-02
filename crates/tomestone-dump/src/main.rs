@@ -338,7 +338,7 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
 
                 if let Ok((_, exhf)) = tomestone_exdf::parser::exhf::parse_exhf(&exh_data) {
                     for language in exhf.languages() {
-                        let short_code = language.short_code();
+                        let short_code = language.as_ref().map(Language::short_code);
                         for (page_start, _) in exhf.pages() {
                             let exd_path = if let Some(short_code) = short_code {
                                 format!("exd/{}_{}_{}.exd", base, page_start, short_code)
@@ -580,13 +580,15 @@ fn main() {
             println!("{:?}", exhf);
 
             for (page_start, _) in exhf.pages() {
-                let exd_path = if exhf
-                    .languages()
-                    .iter()
-                    .any(|header_language| header_language.short_code() == Some(language))
-                {
+                let exd_path = if exhf.languages().iter().any(|header_language| {
+                    if let Some(header_language) = header_language {
+                        header_language.short_code() == language
+                    } else {
+                        false
+                    }
+                }) {
                     format!("{}_{}_{}.exd", path_base, page_start, language)
-                } else if exhf.languages().contains(&Language::NoLanguage) {
+                } else if exhf.languages().contains(&None) {
                     format!("{}_{}.exd", path_base, page_start)
                 } else {
                     eprintln!("error: no supported language");

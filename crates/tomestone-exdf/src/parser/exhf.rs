@@ -27,7 +27,7 @@ pub struct Exhf {
     row_size: u16,
     column_definitions: Vec<(ColumnFormat, u16)>,
     pages: Vec<(u32, u32)>,
-    languages: Vec<Language>,
+    languages: Vec<Option<Language>>,
 }
 
 impl Exhf {
@@ -35,7 +35,7 @@ impl Exhf {
         header: ExhfHeader,
         column_definitions: Vec<(ColumnFormat, u16)>,
         pages: Vec<(u32, u32)>,
-        languages: Vec<Language>,
+        languages: Vec<Option<Language>>,
     ) -> Exhf {
         Exhf {
             row_size: header.row_size,
@@ -53,7 +53,7 @@ impl Exhf {
         &self.pages
     }
 
-    pub fn languages(&self) -> &[Language] {
+    pub fn languages(&self) -> &[Option<Language>] {
         &self.languages
     }
 
@@ -96,7 +96,7 @@ fn page_entry(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
     pair(be_u32, be_u32)(input)
 }
 
-fn language_code(input: &[u8]) -> IResult<&[u8], Language> {
+fn language_code(input: &[u8]) -> IResult<&[u8], Option<Language>> {
     map_res(le_u16, Language::from_u16)(input)
 }
 
