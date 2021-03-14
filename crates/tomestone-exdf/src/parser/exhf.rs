@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use nom::{
-    bytes::streaming::tag,
+    bytes::complete::tag,
     combinator::{map, map_res},
     multi::count,
     number::complete::{be_u16, be_u32, le_u16},

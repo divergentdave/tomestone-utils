@@ -11,10 +11,7 @@ use regex::{
     Regex,
 };
 
-use tomestone_exdf::{
-    parser::{exdf::Exdf, exhf::parse_exhf, parse_row},
-    Language,
-};
+use tomestone_exdf::{Dataset, Language};
 use tomestone_sqpack::{
     pathdb::{PathDb, PreparedStatements},
     Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2,
@@ -549,88 +546,39 @@ fn main() {
         }
         ("exd", Some(matches)) => {
             let original_path = matches.value_of("path").unwrap();
-            let language = matches.value_of("language").unwrap_or("en");
-            let (exh_path, path_base) = if let Some(dot_position) = original_path.rfind('.') {
-                (original_path.to_string(), &original_path[..dot_position])
-            } else {
-                (format!("{}.exh", original_path), original_path)
-            };
-            let exh_data = match game_data.lookup_path_data(&exh_path) {
-                Ok(Some(exh_data)) => exh_data,
-                Ok(None) => {
-                    eprintln!("error: file not found");
-                    process::exit(1);
-                }
-                Err(e) => {
-                    eprintln!("{}", e);
+            let language_code = matches.value_of("language").unwrap_or("en");
+            let language = match language_code.parse() {
+                Ok(language) => language,
+                Err(_) => {
+                    eprintln!("error: did not recognize language {}", language_code);
                     process::exit(1);
                 }
             };
-            if let Err(e) = statements.add_path(&exh_path) {
-                eprintln!("database error: {}", e);
-                process::exit(1);
-            }
-            let exhf = match parse_exhf(&exh_data) {
-                Ok((_, exhf)) => exhf,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    process::exit(1);
-                }
+            let path_base = match (original_path.rfind('.'), original_path.starts_with("exd/")) {
+                (Some(dot_position), false) => &original_path[..dot_position],
+                (Some(dot_position), true) => &original_path[4..dot_position],
+                (None, false) => original_path,
+                (None, true) => &original_path[4..],
             };
-            println!("{:?}", exhf);
 
-            for (page_start, _) in exhf.pages() {
-                let exd_path = if exhf.languages().iter().any(|header_language| {
-                    if let Some(header_language) = header_language {
-                        header_language.short_code() == language
-                    } else {
-                        false
-                    }
-                }) {
-                    format!("{}_{}_{}.exd", path_base, page_start, language)
-                } else if exhf.languages().contains(&None) {
-                    format!("{}_{}.exd", path_base, page_start)
-                } else {
-                    eprintln!("error: no supported language");
-                    process::exit(1);
-                };
-                let exd_data = match game_data.lookup_path_data(&exd_path) {
-                    Ok(Some(exd_data)) => exd_data,
-                    Ok(None) => {
-                        eprintln!("error: file not found");
-                        process::exit(1);
-                    }
-                    Err(e) => {
-                        eprintln!("{}", e);
-                        process::exit(1);
-                    }
-                };
-                if let Err(e) = statements.add_path(&exd_path) {
-                    eprintln!("database error: {}", e);
+            let dataset = match Dataset::load(&game_data, path_base, language) {
+                Ok(dataset) => dataset,
+                Err(e) => {
+                    eprintln!("error: loading dataset failed: {}", e);
                     process::exit(1);
                 }
-                let exdf = match Exdf::new(&exd_data) {
-                    Ok(exdf) => exdf,
-                    Err(e) => {
-                        eprintln!("{:?}", e.code);
-                        process::exit(1);
-                    }
-                };
-                for res in exdf.iter() {
-                    let (_row_number, row_data) = match res {
+            };
+            println!("{:?}", &dataset.exhf);
+            for page_iter in dataset.page_iter() {
+                for res in page_iter {
+                    let row = match res {
                         Ok(row) => row,
                         Err(e) => {
-                            eprintln!("{:?}", e.code);
+                            eprintln!("error: reading dataset failed: {}", e);
                             process::exit(1);
                         }
                     };
-                    match parse_row(row_data, &exhf) {
-                        Ok(parsed) => println!("{:?}", parsed),
-                        Err(e) => {
-                            eprintln!("{}", e);
-                            process::exit(1);
-                        }
-                    }
+                    println!("{:?}", row);
                 }
             }
         }

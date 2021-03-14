@@ -13,10 +13,7 @@ use self::exhf::Exhf;
 pub mod exdf;
 pub mod exhf;
 
-pub fn parse_row<'a>(
-    data: &'a [u8],
-    exhf: &Exhf,
-) -> Result<Vec<Value<'a>>, nom::Err<nom::error::Error<&'a [u8]>>> {
+pub fn parse_row<'a>(data: &'a [u8], exhf: &Exhf) -> Result<Vec<Value<'a>>, nom::error::ErrorKind> {
     exhf.column_definitions()
         .iter()
         .map(
@@ -55,7 +52,11 @@ pub fn parse_row<'a>(
                 })
             },
         )
-        .collect()
+        .collect::<Result<Vec<Value<'a>>, nom::Err<nom::error::Error<&'a [u8]>>>>()
+        .map_err(|e| match e {
+            nom::Err::Incomplete(_) => unreachable!(),
+            nom::Err::Error(e) | nom::Err::Failure(e) => e.code,
+        })
 }
 
 #[cfg(test)]
@@ -98,7 +99,7 @@ mod tests {
                         format!("exd/{}_{}.exd", name, page_start)
                     };
                     if let Some(exd_data) = game_data.lookup_path_data(&exd_path).unwrap() {
-                        let exdf = super::exdf::Exdf::new(&exd_data).unwrap();
+                        let exdf = super::exdf::Exdf::new(exd_data).unwrap();
                         for row_res in exdf.iter() {
                             let (_, row_data) = row_res.unwrap();
                             super::parse_row(row_data, &exhf).unwrap();

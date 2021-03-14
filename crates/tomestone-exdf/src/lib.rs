@@ -1,17 +1,24 @@
-use std::fmt;
+use std::{fmt, str::FromStr};
+
+use parser::{
+    exdf::{Exdf, ExdfIterator},
+    exhf::{parse_exhf, Exhf},
+    parse_row,
+};
+use tomestone_sqpack::GameData;
 
 pub mod parser;
 
 #[derive(Debug)]
 pub struct EnumParseError;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {
     Japanese = 1,
     English = 2,
     German = 3,
     French = 4,
-    ChineseSingapore = 5,
+    ChineseSimplified = 5,
     ChineseTraditional = 6,
     Korean = 7,
 }
@@ -24,7 +31,7 @@ impl Language {
             2 => Ok(Some(Language::English)),
             3 => Ok(Some(Language::German)),
             4 => Ok(Some(Language::French)),
-            5 => Ok(Some(Language::ChineseSingapore)),
+            5 => Ok(Some(Language::ChineseSimplified)),
             6 => Ok(Some(Language::ChineseTraditional)),
             7 => Ok(Some(Language::Korean)),
             _ => Err(EnumParseError),
@@ -37,9 +44,26 @@ impl Language {
             Language::English => "en",
             Language::German => "de",
             Language::French => "fr",
-            Language::ChineseSingapore => "cns",
+            Language::ChineseSimplified => "cns",
             Language::ChineseTraditional => "cnt",
             Language::Korean => "ko",
+        }
+    }
+}
+
+impl FromStr for Language {
+    type Err = EnumParseError;
+
+    fn from_str(s: &str) -> Result<Self, EnumParseError> {
+        match s {
+            "ja" => Ok(Language::Japanese),
+            "en" => Ok(Language::English),
+            "de" => Ok(Language::German),
+            "fr" => Ok(Language::French),
+            "cns" => Ok(Language::ChineseSimplified),
+            "cnt" => Ok(Language::ChineseTraditional),
+            "ko" => Ok(Language::Korean),
+            _ => Err(EnumParseError),
         }
     }
 }
@@ -112,6 +136,122 @@ impl<'a> fmt::Debug for Value<'a> {
     }
 }
 
+#[derive(Debug)]
+pub enum Error {
+    Sqpack(tomestone_sqpack::Error),
+    Nom(nom::error::ErrorKind),
+    NoSuchFile,
+    LanguageUnavailable,
+}
+
+impl From<nom::error::ErrorKind> for Error {
+    fn from(e: nom::error::ErrorKind) -> Error {
+        Error::Nom(e)
+    }
+}
+
+impl<'a> From<nom::error::Error<&'a [u8]>> for Error {
+    fn from(e: nom::error::Error<&'a [u8]>) -> Error {
+        Error::Nom(e.code)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Sqpack(e) => e.fmt(f),
+            Error::Nom(e) => write!(f, "parsing error: {:?}", e),
+            Error::NoSuchFile => write!(f, "file not found"),
+            Error::LanguageUnavailable => write!(f, "language data not available"),
+        }
+    }
+}
+
+struct DatasetPage {
+    _row_start: u32,
+    exdf: Exdf,
+}
+
+pub struct DatasetPageIter<'a> {
+    exdf_iter: ExdfIterator<'a>,
+    exhf: &'a Exhf,
+}
+
+impl<'a> Iterator for DatasetPageIter<'a> {
+    type Item = Result<Vec<Value<'a>>, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let data = match self.exdf_iter.next()? {
+            Ok((_, data)) => data,
+            Err(e) => return Some(Err(e.into())),
+        };
+        match parse_row(data, &self.exhf) {
+            Ok(row) => Some(Ok(row)),
+            Err(e) => return Some(Err(e.into())),
+        }
+    }
+}
+
+pub struct Dataset {
+    pub exhf: Exhf,
+    pages: Vec<DatasetPage>,
+}
+
+impl Dataset {
+    pub fn load(game_data: &GameData, base: &str, language: Language) -> Result<Dataset, Error> {
+        let exh_path = format!("exd/{}.exh", base);
+        let exh_data = match game_data.lookup_path_data(&exh_path) {
+            Ok(Some(exh_data)) => exh_data,
+            Ok(None) => return Err(Error::NoSuchFile),
+            Err(e) => return Err(Error::Sqpack(e)),
+        };
+        let exhf = match parse_exhf(&exh_data) {
+            Ok((_, exhf)) => exhf,
+            Err(nom::Err::Incomplete(_)) => unreachable!(),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => return Err(Error::Nom(e.code)),
+        };
+
+        let short_code = if exhf.languages().contains(&Some(language)) {
+            Some(language.short_code())
+        } else if exhf.languages().contains(&None) {
+            None
+        } else {
+            return Err(Error::LanguageUnavailable);
+        };
+
+        let pages = exhf
+            .pages()
+            .iter()
+            .map(|(page_start, _)| {
+                let exd_path = if let Some(short_code) = short_code {
+                    format!("exd/{}_{}_{}.exd", base, page_start, short_code)
+                } else {
+                    format!("exd/{}_{}.exd", base, page_start)
+                };
+                let exdf_data = match game_data.lookup_path_data(&exd_path) {
+                    Ok(Some(exd_data)) => exd_data,
+                    Ok(None) => return Err(Error::NoSuchFile),
+                    Err(e) => return Err(Error::Sqpack(e)),
+                };
+                let exdf = Exdf::new(exdf_data)?;
+                Ok(DatasetPage {
+                    _row_start: *page_start,
+                    exdf,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Dataset { exhf, pages })
+    }
+
+    pub fn page_iter<'a>(&'a self) -> impl Iterator<Item = DatasetPageIter<'a>> {
+        let exhf = &self.exhf;
+        self.pages.iter().map(move |p| DatasetPageIter {
+            exdf_iter: p.exdf.iter(),
+            exhf,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{EnumParseError, Language};
@@ -136,8 +276,8 @@ mod tests {
             Ok(Some(Language::French))
         ));
         assert!(matches!(
-            Language::from_u16(Language::ChineseSingapore as u16),
-            Ok(Some(Language::ChineseSingapore))
+            Language::from_u16(Language::ChineseSimplified as u16),
+            Ok(Some(Language::ChineseSimplified))
         ));
         assert!(matches!(
             Language::from_u16(Language::ChineseTraditional as u16),

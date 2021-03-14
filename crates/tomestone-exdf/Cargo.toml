@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 nom = "6.0.1"
 tomestone-common = { path = "../tomestone-common" }
+tomestone-sqpack = { path = "../tomestone-sqpack" }
 
 [dev-dependencies]
 dotenv = "0.15.0"
-tomestone-sqpack = { path = "../tomestone-sqpack" }
