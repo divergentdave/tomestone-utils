@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, string::FromUtf8Error};
 
 use parser::{
     exdf::{Exdf, ExdfIterator},
@@ -142,6 +142,13 @@ pub enum Error {
     Nom(nom::error::ErrorKind),
     NoSuchFile,
     LanguageUnavailable,
+    Utf8(FromUtf8Error),
+}
+
+impl From<tomestone_sqpack::Error> for Error {
+    fn from(e: tomestone_sqpack::Error) -> Error {
+        Error::Sqpack(e)
+    }
 }
 
 impl From<nom::error::ErrorKind> for Error {
@@ -163,6 +170,7 @@ impl fmt::Display for Error {
             Error::Nom(e) => write!(f, "parsing error: {:?}", e),
             Error::NoSuchFile => write!(f, "file not found"),
             Error::LanguageUnavailable => write!(f, "language data not available"),
+            Error::Utf8(e) => e.fmt(f),
         }
     }
 }
@@ -248,6 +256,39 @@ impl Dataset {
         self.pages.iter().map(move |p| DatasetPageIter {
             exdf_iter: p.exdf.iter(),
             exhf,
+        })
+    }
+}
+
+pub struct RootList {
+    text: String,
+}
+
+impl RootList {
+    pub fn open(game_data: &GameData) -> Result<RootList, Error> {
+        let data = match game_data.lookup_path_data("exd/root.exl") {
+            Ok(Some(toc_data)) => toc_data,
+            Ok(None) => return Err(Error::NoSuchFile),
+            Err(e) => return Err(Error::Sqpack(e)),
+        };
+        match String::from_utf8(data) {
+            Ok(text) => Ok(RootList { text }),
+            Err(e) => Err(Error::Utf8(e)),
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.text.split_ascii_whitespace().filter_map(|line| {
+            if let Some(comma_pos) = line.find(',') {
+                let name = &line[..comma_pos];
+                if name == "EXLT" {
+                    return None;
+                }
+                Some(name)
+            } else {
+                // skip empty line
+                None
+            }
         })
     }
 }

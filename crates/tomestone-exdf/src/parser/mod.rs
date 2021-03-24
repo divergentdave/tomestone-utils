@@ -61,7 +61,7 @@ pub fn parse_row<'a>(data: &'a [u8], exhf: &Exhf) -> Result<Vec<Value<'a>>, nom:
 
 #[cfg(test)]
 mod tests {
-    use crate::Language;
+    use crate::{Language, RootList};
     use tomestone_sqpack::GameData;
 
     #[test]
@@ -76,17 +76,8 @@ mod tests {
         };
         let game_data = GameData::new(root).unwrap();
 
-        let toc_data = game_data.lookup_path_data("exd/root.exl").unwrap().unwrap();
-        let toc_str = std::str::from_utf8(&toc_data).unwrap();
-        for line in toc_str.split_ascii_whitespace() {
-            if line.is_empty() {
-                continue;
-            }
-            let comma_idx = line.find(',').unwrap();
-            let name = &line[..comma_idx];
-            if name == "EXLT" {
-                continue;
-            }
+        let root_list = RootList::open(&game_data).unwrap();
+        for name in root_list.iter() {
             let exh_path = format!("exd/{}.exh", name);
             let exh_data = game_data.lookup_path_data(&exh_path).unwrap().unwrap();
             let (_, exhf) = super::exhf::parse_exhf(&exh_data).unwrap();

@@ -11,17 +11,17 @@ use regex::{
     Regex,
 };
 
-use tomestone_exdf::{Dataset, Language};
+use tomestone_exdf::{Dataset, Language, RootList};
 use tomestone_sqpack::{
     pathdb::{PathDb, PreparedStatements},
-    Category, Error, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2,
+    Category, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2,
 };
 
 fn lookup<'a>(
     game_data: &GameData,
     statements: Option<&mut PreparedStatements<'_>>,
     mut path_or_crc: impl Iterator<Item = &'a str>,
-) -> Result<Option<Vec<u8>>, Error> {
+) -> Result<Option<Vec<u8>>, tomestone_sqpack::Error> {
     static CRC_RE: Lazy<Regex> = Lazy::new(|| Regex::new("^[0-9A-Fa-f]{8}$").unwrap());
     static PATH_LIKE_RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
@@ -109,7 +109,7 @@ fn write_file_name<W: Write>(
     writer: &mut W,
     statements: &mut PreparedStatements<'_>,
     hash: IndexHash1,
-) -> Result<(), Error> {
+) -> Result<(), tomestone_sqpack::Error> {
     let (folder_matches, filename_matches) = statements.index_1_lookup(hash)?;
     match (folder_matches.len(), filename_matches.len()) {
         (0, 0) => write!(
@@ -133,7 +133,7 @@ fn list_files(
     category: Category,
     expansion: Expansion,
     statements: &mut PreparedStatements<'_>,
-) -> Result<(), Error> {
+) -> Result<(), tomestone_sqpack::Error> {
     let stdout = stdout();
     let mut locked = stdout.lock();
     for id in game_data.iter_packs_category_expansion(category, expansion) {
@@ -257,7 +257,7 @@ fn do_grep(
     category: Category,
     expansion: Expansion,
     re: &BytesRegex,
-) -> Result<(), Error> {
+) -> Result<(), tomestone_sqpack::Error> {
     let stdout = stdout();
     let mut locked = stdout.lock();
     for pack_id in game_data.iter_packs_category_expansion(category, expansion) {
@@ -281,12 +281,12 @@ static PATH_DISCOVERY_RE: Lazy<BytesRegex> = Lazy::new(|| {
     )
     .unwrap()
 });
-static PATH_DISCOVERY_EXD_RE: Lazy<BytesRegex> =
-    Lazy::new(|| BytesRegex::new("([A-Za-z0-9/_]+),-?[0-9]+\r\n").unwrap());
 
-fn discover_paths(game_data: &GameData) -> Result<(), Error> {
-    let db = PathDb::open()?;
-    let mut statements = db.prepare()?;
+fn discover_paths(game_data: &GameData) -> Result<(), tomestone_exdf::Error> {
+    let db = PathDb::open().map_err::<tomestone_sqpack::Error, _>(From::from)?;
+    let mut statements = db
+        .prepare()
+        .map_err::<tomestone_sqpack::Error, _>(From::from)?;
 
     let mut indices = BTreeMap::new();
     for category in &[
@@ -312,39 +312,47 @@ fn discover_paths(game_data: &GameData) -> Result<(), Error> {
             for caps in PATH_DISCOVERY_RE.captures_iter(&file) {
                 let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
                 if game_data.lookup_path_locator(discovered_path)?.is_some() {
-                    statements.add_path(discovered_path)?;
+                    statements
+                        .add_path(discovered_path)
+                        .map_err::<tomestone_sqpack::Error, _>(From::from)?;
                 } else if game_data.contains_folder(discovered_path)? {
-                    statements.add_folder(discovered_path)?;
+                    statements
+                        .add_folder(discovered_path)
+                        .map_err::<tomestone_sqpack::Error, _>(From::from)?;
                 } else {
                     let slash_idx = discovered_path.rfind('/').unwrap();
                     let discovered_folder = &discovered_path[..slash_idx];
                     if game_data.contains_folder(discovered_folder)? {
-                        statements.add_folder(discovered_folder)?;
+                        statements
+                            .add_folder(discovered_folder)
+                            .map_err::<tomestone_sqpack::Error, _>(From::from)?;
                     }
                 }
             }
         }
     }
 
-    if let Some(exd_table_of_contents_data) = game_data.lookup_path_data("exd/root.exl")? {
-        for caps in PATH_DISCOVERY_EXD_RE.captures_iter(&exd_table_of_contents_data) {
-            let base = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
-            let exh_path = format!("exd/{}.exh", base);
-            if let Some(exh_data) = game_data.lookup_path_data(&exh_path)? {
-                statements.add_path(&exh_path)?;
+    let root_list = RootList::open(&game_data)?;
+    for name in root_list.iter() {
+        let exh_path = format!("exd/{}.exh", name);
+        if let Some(exh_data) = game_data.lookup_path_data(&exh_path)? {
+            statements
+                .add_path(&exh_path)
+                .map_err::<tomestone_sqpack::Error, _>(From::from)?;
 
-                if let Ok((_, exhf)) = tomestone_exdf::parser::exhf::parse_exhf(&exh_data) {
-                    for language in exhf.languages() {
-                        let short_code = language.as_ref().map(Language::short_code);
-                        for (page_start, _) in exhf.pages() {
-                            let exd_path = if let Some(short_code) = short_code {
-                                format!("exd/{}_{}_{}.exd", base, page_start, short_code)
-                            } else {
-                                format!("exd/{}_{}.exd", base, page_start)
-                            };
-                            if game_data.lookup_path_locator(&exd_path)?.is_some() {
-                                statements.add_path(&exd_path)?;
-                            }
+            if let Ok((_, exhf)) = tomestone_exdf::parser::exhf::parse_exhf(&exh_data) {
+                for language in exhf.languages() {
+                    let short_code = language.as_ref().map(Language::short_code);
+                    for (page_start, _) in exhf.pages() {
+                        let exd_path = if let Some(short_code) = short_code {
+                            format!("exd/{}_{}_{}.exd", name, page_start, short_code)
+                        } else {
+                            format!("exd/{}_{}.exd", name, page_start)
+                        };
+                        if game_data.lookup_path_locator(&exd_path)?.is_some() {
+                            statements
+                                .add_path(&exd_path)
+                                .map_err::<tomestone_sqpack::Error, _>(From::from)?;
                         }
                     }
                 }
