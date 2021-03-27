@@ -25,7 +25,7 @@ fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + Ref
             let res = catch_unwind(|| f(path, GrowableBufReader::new(file)));
             if let Err(panic) = res {
                 eprintln!("Error while processing {:?}", file_entry.path());
-                panic!(panic);
+                std::panic::panic_any(panic);
             }
         }
     }
