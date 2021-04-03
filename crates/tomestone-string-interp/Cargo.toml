@@ -8,3 +8,8 @@ edition = "2018"
 
 [dependencies]
 nom = "6.0.1"
+
+[dev-dependencies]
+dotenv = "0.15.0"
+tomestone-exdf = { path = "../tomestone-exdf" }
+tomestone-sqpack = { path = "../tomestone-sqpack" }

@@ -1,19 +1,35 @@
 use std::{fmt, string::FromUtf8Error};
 
+mod parser;
+
 #[derive(Debug)]
 pub enum Error {
+    Nom(nom::error::ErrorKind),
     Utf8(FromUtf8Error),
-    Eof,
-    UnsupportedType(u8),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Error::Nom(e) => write!(f, "parsing error: {:?}", e),
             Error::Utf8(e) => e.fmt(f),
-            Error::Eof => write!(f, "unexpected end of string"),
-            Error::UnsupportedType(type_code) => write!(f, "unsupported type {}", type_code),
         }
+    }
+}
+
+impl nom::error::ParseError<&[u8]> for Error {
+    fn from_error_kind(_: &[u8], kind: nom::error::ErrorKind) -> Error {
+        Error::Nom(kind)
+    }
+
+    fn append(_: &[u8], _: nom::error::ErrorKind, other: Error) -> Error {
+        other
+    }
+}
+
+impl<I, E> nom::error::FromExternalError<I, E> for Error {
+    fn from_external_error(_: I, kind: nom::error::ErrorKind, _: E) -> Error {
+        Error::Nom(kind)
     }
 }
 
@@ -23,39 +39,116 @@ impl From<FromUtf8Error> for Error {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Segment {
-    Literal(String),
+impl From<nom::error::ErrorKind> for Error {
+    fn from(e: nom::error::ErrorKind) -> Error {
+        Error::Nom(e)
+    }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+impl<'a> From<nom::error::Error<&'a [u8]>> for Error {
+    fn from(e: nom::error::Error<&'a [u8]>) -> Error {
+        Error::Nom(e.code)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Expression {
+    GreaterThanOrEqual(Box<(Expression, Expression)>),
+    TodoComparison1(Box<(Expression, Expression)>),
+    LessThanOrEqual(Box<(Expression, Expression)>),
+    TodoComparison2(Box<(Expression, Expression)>),
+    Equal(Box<(Expression, Expression)>),
+    TodoComparison3(Box<(Expression, Expression)>),
+    TopLevelParameter(u8),
+    IntegerParameter(Box<Expression>),
+    PlayerParameter(Box<Expression>),
+    StringParameter(Box<Expression>),
+    ObjectParameter(Box<Expression>),
+    TodoEC,
+    Integer(u32),
+    Text(Box<Text>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Segment {
+    Literal(String),
+    TodoResetTime(Vec<u8>),
+    Time(Expression),
+    If {
+        condition: Expression,
+        true_value: Expression,
+        false_value: Expression,
+    },
+    Switch {
+        discriminant: Expression,
+        cases: Vec<Expression>,
+    },
+    Todo0A(Expression),
+    IfEquals {
+        left: Expression,
+        right: Expression,
+        true_value: Expression,
+        false_value: Expression,
+    },
+    Todo0F {
+        player: Expression,
+        self_value: Expression,
+        other_value: Expression,
+    },
+    NewLine,
+    GuiIcon(Expression),
+    ColorChange(Expression),
+    Todo14(Expression),
+    Emphasis2(u32),
+    Emphasis(u32),
+    Todo1B(Vec<u8>),
+    Todo1C(Vec<u8>),
+    Indent,
+    CommandIcon(Expression),
+    Dash,
+    Value(Expression),
+    TodoFormat(Expression, Vec<u8>),
+    TwoDigitValue(Expression),
+    Todo26(Expression, Expression, Expression),
+    Sheet(Vec<Expression>),
+    TodoHighlight(Expression),
+    Link(Vec<Expression>),
+    Split {
+        input: Expression,
+        separator: Expression,
+        index: Expression,
+    },
+    Todo2D(Expression),
+    AutoTranslate(Expression, Expression),
+    Todo2F(Expression),
+    SheetJa(Vec<Expression>),
+    SheetEn(Vec<Expression>),
+    SheetDe(Vec<Expression>),
+    SheetFr(Vec<Expression>),
+    Todo40(Expression),
+    Foreground(Expression),
+    Glow(Expression),
+    ZeroPaddedValue {
+        value: Expression,
+        digits: Expression,
+    },
+    Todo51(Expression),
+    Todo60(Vec<u8>),
+    Todo61(Expression),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Text {
     segments: Vec<Segment>,
 }
 
 impl Text {
-    pub fn parse(mut input: &[u8]) -> Result<Text, Error> {
-        let mut segments = vec![];
-        while !input.is_empty() {
-            if let Some(start_pos) = input.iter().position(|&byte| byte == 2u8) {
-                if start_pos > 0 {
-                    segments.push(Segment::Literal(String::from_utf8(
-                        input[..start_pos].to_owned(),
-                    )?));
-                }
-                if input.len() <= start_pos + 1 {
-                    return Err(Error::Eof);
-                }
-                let type_byte = input[start_pos + 1];
-                match type_byte {
-                    _ => return Err(Error::UnsupportedType(type_byte)),
-                }
-            } else {
-                segments.push(Segment::Literal(String::from_utf8(input.to_owned())?));
-                input = &input[input.len()..input.len()];
-            }
+    pub fn parse(input: &[u8]) -> Result<Text, Error> {
+        match parser::tagged_text(input) {
+            Ok((_, text)) => Ok(text),
+            Err(nom::Err::Incomplete(_)) => unreachable!(),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(e),
         }
-        Ok(Text { segments })
     }
 }
 

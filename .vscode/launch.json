@@ -127,25 +127,6 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug integration test 'test_game_data'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--test=test_game_data",
-                    "--package=tomestone-sqpack"
-                ],
-                "filter": {
-                    "name": "test_game_data",
-                    "kind": "test"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
             "name": "Debug executable 'tomestone-dump'",
             "cargo": {
                 "args": [
@@ -199,6 +180,27 @@
                 }
             },
             "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug game data unit test in library 'tomestone-string-interp'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=tomestone-string-interp"
+                ],
+                "filter": {
+                    "name": "tomestone-string-interp",
+                    "kind": "lib"
+                }
+            },
+            "args": [
+                "--ignored"
+            ],
             "cwd": "${workspaceFolder}"
         }
     ]
