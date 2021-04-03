@@ -216,176 +216,92 @@ fn segment_todo_format(input: &[u8]) -> IResult<&[u8], Segment, Error> {
 }
 
 fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
+    fn contents<'a>(
+        mut f: impl FnMut(&'a [u8]) -> IResult<&'a [u8], Segment, Error>,
+    ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Segment, Error> {
+        move |input| length_value(integer_usize, all_consuming(&mut f))(input)
+    }
+
     let (input, type_byte) = be_u8(input)?;
     match type_byte {
-        types::tag::TODO_RESET_TIME => length_value(
-            integer_usize,
-            all_consuming(map(take_while(|_| true), |data: &[u8]| {
-                Segment::TodoResetTime(data.to_owned())
-            })),
-        )(input),
-        types::tag::TIME => {
-            length_value(integer_usize, all_consuming(map(expression, Segment::Time)))(input)
+        types::tag::TODO_RESET_TIME => contents(map(take_while(|_| true), |data: &[u8]| {
+            Segment::TodoResetTime(data.to_owned())
+        }))(input),
+        types::tag::TIME => contents(map(expression, Segment::Time))(input),
+        types::tag::IF => contents(segment_if)(input),
+        types::tag::SWITCH => contents(segment_switch)(input),
+        types::tag::TODO_0A => contents(map(expression, Segment::Todo0A))(input),
+        types::tag::IF_EQUALS => contents(segment_if_equals)(input),
+        types::tag::TODO_0F => contents(map(
+            tuple((expression, expression, expression)),
+            |(player, self_value, other_value)| Segment::Todo0F {
+                player,
+                self_value,
+                other_value,
+            },
+        ))(input),
+        types::tag::NEW_LINE => contents(segment_no_data(Segment::NewLine))(input),
+        types::tag::GUI_ICON => contents(map(expression, Segment::GuiIcon))(input),
+        types::tag::COLOR_CHANGE => contents(map(expression, Segment::ColorChange))(input),
+        types::tag::TODO_14 => contents(map(expression, Segment::Todo14))(input),
+        types::tag::EMPHASIS_2 => contents(map(integer, Segment::Emphasis2))(input),
+        types::tag::EMPHASIS => contents(map(integer, Segment::Emphasis))(input),
+        types::tag::TODO_1B => contents(map(take_while(|_| true), |data: &[u8]| {
+            Segment::Todo1B(data.to_owned())
+        }))(input),
+        types::tag::TODO_1C => contents(map(take_while(|_| true), |data: &[u8]| {
+            Segment::Todo1C(data.to_owned())
+        }))(input),
+        types::tag::INDENT => contents(segment_no_data(Segment::Indent))(input),
+        types::tag::COMMAND_ICON => contents(map(expression, Segment::CommandIcon))(input),
+        types::tag::DASH => contents(segment_no_data(Segment::Dash))(input),
+        types::tag::VALUE => contents(map(expression, Segment::Value))(input),
+        types::tag::TODO_FORMAT => contents(segment_todo_format)(input),
+        types::tag::TWO_DIGIT_VALUE => contents(map(expression, Segment::TwoDigitValue))(input),
+        types::tag::TODO_26 => contents(map(
+            tuple((expression, expression, expression)),
+            |(arg1, arg2, arg3)| Segment::Todo26(arg1, arg2, arg3),
+        ))(input),
+        types::tag::SHEET => {
+            contents(map(many_m_n(2, usize::MAX, expression), Segment::Sheet))(input)
         }
-        types::tag::IF => length_value(integer_usize, all_consuming(segment_if))(input),
-        types::tag::SWITCH => length_value(integer_usize, all_consuming(segment_switch))(input),
-        types::tag::TODO_0A => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::Todo0A)),
-        )(input),
-        types::tag::IF_EQUALS => {
-            length_value(integer_usize, all_consuming(segment_if_equals))(input)
+        types::tag::TODO_HIGHLIGHT => contents(map(expression, Segment::TodoHighlight))(input),
+        types::tag::LINK => {
+            contents(map(many_m_n(1, usize::MAX, expression), Segment::Link))(input)
         }
-        types::tag::TODO_0F => length_value(
-            integer_usize,
-            all_consuming(map(
-                tuple((expression, expression, expression)),
-                |(player, self_value, other_value)| Segment::Todo0F {
-                    player,
-                    self_value,
-                    other_value,
-                },
-            )),
-        )(input),
-        types::tag::NEW_LINE => length_value(
-            integer_usize,
-            all_consuming(segment_no_data(Segment::NewLine)),
-        )(input),
-        types::tag::GUI_ICON => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::GuiIcon)),
-        )(input),
-        types::tag::COLOR_CHANGE => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::ColorChange)),
-        )(input),
-        types::tag::TODO_14 => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::Todo14)),
-        )(input),
-        types::tag::EMPHASIS_2 => length_value(
-            integer_usize,
-            all_consuming(map(integer, Segment::Emphasis2)),
-        )(input),
-        types::tag::EMPHASIS => length_value(
-            integer_usize,
-            all_consuming(map(integer, Segment::Emphasis)),
-        )(input),
-        types::tag::TODO_1B => length_value(
-            integer_usize,
-            all_consuming(map(take_while(|_| true), |data: &[u8]| {
-                Segment::Todo1B(data.to_owned())
-            })),
-        )(input),
-        types::tag::TODO_1C => length_value(
-            integer_usize,
-            all_consuming(map(take_while(|_| true), |data: &[u8]| {
-                Segment::Todo1C(data.to_owned())
-            })),
-        )(input),
-        types::tag::INDENT => length_value(
-            integer_usize,
-            all_consuming(segment_no_data(Segment::Indent)),
-        )(input),
-        types::tag::COMMAND_ICON => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::CommandIcon)),
-        )(input),
-        types::tag::DASH => {
-            length_value(integer_usize, all_consuming(segment_no_data(Segment::Dash)))(input)
-        }
-        types::tag::VALUE => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::Value)),
-        )(input),
-        types::tag::TODO_FORMAT => {
-            length_value(integer_usize, all_consuming(segment_todo_format))(input)
-        }
-        types::tag::TWO_DIGIT_VALUE => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::TwoDigitValue)),
-        )(input),
-        types::tag::TODO_26 => length_value(
-            integer_usize,
-            all_consuming(map(
-                tuple((expression, expression, expression)),
-                |(arg1, arg2, arg3)| Segment::Todo26(arg1, arg2, arg3),
-            )),
-        )(input),
-        types::tag::SHEET => length_value(
-            integer_usize,
-            all_consuming(map(many_m_n(2, usize::MAX, expression), Segment::Sheet)),
-        )(input),
-        types::tag::TODO_HIGHLIGHT => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::TodoHighlight)),
-        )(input),
-        types::tag::LINK => length_value(
-            integer_usize,
-            all_consuming(map(many_m_n(1, usize::MAX, expression), Segment::Link)),
-        )(input),
-        types::tag::SPLIT => length_value(integer_usize, all_consuming(segment_split))(input),
-        types::tag::TODO_2D => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::Todo2D)),
-        )(input),
-        types::tag::AUTO_TRANSLATE => length_value(
-            integer_usize,
-            all_consuming(map(pair(expression, expression), |(arg1, arg2)| {
+        types::tag::SPLIT => contents(segment_split)(input),
+        types::tag::TODO_2D => contents(map(expression, Segment::Todo2D))(input),
+        types::tag::AUTO_TRANSLATE => {
+            contents(map(pair(expression, expression), |(arg1, arg2)| {
                 Segment::AutoTranslate(arg1, arg2)
-            })),
-        )(input),
-        types::tag::TODO_2F => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::Todo2F)),
-        )(input),
-        types::tag::SHEET_JA => length_value(
-            integer_usize,
-            all_consuming(map(many_m_n(3, usize::MAX, expression), Segment::SheetJa)),
-        )(input),
-        types::tag::SHEET_EN => length_value(
-            integer_usize,
-            all_consuming(map(many_m_n(3, usize::MAX, expression), Segment::SheetEn)),
-        )(input),
-        types::tag::SHEET_DE => length_value(
-            integer_usize,
-            all_consuming(map(many_m_n(3, usize::MAX, expression), Segment::SheetDe)),
-        )(input),
-        types::tag::SHEET_FR => length_value(
-            integer_usize,
-            all_consuming(map(many_m_n(3, usize::MAX, expression), Segment::SheetFr)),
-        )(input),
-        types::tag::TODO_40 => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::Todo40)),
-        )(input),
-        types::tag::FOREGROUND => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::Foreground)),
-        )(input),
-        types::tag::GLOW => {
-            length_value(integer_usize, all_consuming(map(expression, Segment::Glow)))(input)
+            }))(input)
         }
-        types::tag::ZERO_PADDED_VALUE => length_value(
-            integer_usize,
-            all_consuming(map(pair(expression, expression), |(value, digits)| {
+        types::tag::TODO_2F => contents(map(expression, Segment::Todo2F))(input),
+        types::tag::SHEET_JA => {
+            contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetJa))(input)
+        }
+        types::tag::SHEET_EN => {
+            contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetEn))(input)
+        }
+        types::tag::SHEET_DE => {
+            contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetDe))(input)
+        }
+        types::tag::SHEET_FR => {
+            contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetFr))(input)
+        }
+        types::tag::TODO_40 => contents(map(expression, Segment::Todo40))(input),
+        types::tag::FOREGROUND => contents(map(expression, Segment::Foreground))(input),
+        types::tag::GLOW => contents(map(expression, Segment::Glow))(input),
+        types::tag::ZERO_PADDED_VALUE => {
+            contents(map(pair(expression, expression), |(value, digits)| {
                 Segment::ZeroPaddedValue { value, digits }
-            })),
-        )(input),
-        types::tag::TODO_51 => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::Todo51)),
-        )(input),
-        types::tag::TODO_60 => length_value(
-            integer_usize,
-            all_consuming(map(take_while(|_| true), |data: &[u8]| {
-                Segment::Todo60(data.to_owned())
-            })),
-        )(input),
-        types::tag::TODO_61 => length_value(
-            integer_usize,
-            all_consuming(map(expression, Segment::Todo61)),
-        )(input),
+            }))(input)
+        }
+        types::tag::TODO_51 => contents(map(expression, Segment::Todo51))(input),
+        types::tag::TODO_60 => contents(map(take_while(|_| true), |data: &[u8]| {
+            Segment::Todo60(data.to_owned())
+        }))(input),
+        types::tag::TODO_61 => contents(map(expression, Segment::Todo61))(input),
         _ => Err(nom::Err::Failure(Error::from_error_kind(
             input,
             ErrorKind::Alt,
