@@ -47,7 +47,7 @@ def gen_matches(prefix, suffix, byte_size, target):
             z3.And(byte >= 0x61, byte <= 0x7a),
             byte == 0x2d,
             byte == 0x2e,
-            byte == 0x2f,
+            # byte == 0x2f,
             z3.And(byte >= 0x30, byte <= 0x39),
             byte == 0x5f,
         ))
@@ -69,10 +69,10 @@ def test():
 def main():
     test()
 
-    prefix = b""
-    suffix = b""
-    max_length = 9
-    target = 0x51b57ebc
+    prefix = b"fesbkc002btl_031"
+    suffix = b".luab"
+    max_length = 23
+    target = 0x0481e34a
     for length in range(max(1, len(prefix) + len(suffix)), max_length + 1):
         for match in gen_matches(prefix, suffix, length, target):
             print(match.decode("ascii"))
