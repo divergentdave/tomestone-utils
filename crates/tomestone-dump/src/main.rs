@@ -358,6 +358,13 @@ fn discover_paths(game_data: &GameData) -> Result<(), tomestone_exdf::Error> {
                 }
             }
         }
+
+        let luab_path = format!("game_script/{}.luab", name);
+        if game_data.lookup_path_locator(&luab_path)?.is_some() {
+            statements
+                .add_path(&luab_path)
+                .map_err::<tomestone_sqpack::Error, _>(From::from)?;
+        }
     }
 
     Ok(())
