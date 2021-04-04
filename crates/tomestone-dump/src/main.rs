@@ -368,15 +368,25 @@ fn discover_paths(game_data: &GameData) -> Result<(), tomestone_exdf::Error> {
 
         if name.starts_with("quest/") {
             if let Some(underscore_pos) = name.find('_') {
-                let luab_path = format!(
-                    "game_script/{}btl{}.luab",
-                    &name[..underscore_pos],
-                    &name[underscore_pos..]
-                );
-                if game_data.lookup_path_locator(&luab_path)?.is_some() {
-                    statements
-                        .add_path(&luab_path)
-                        .map_err::<tomestone_sqpack::Error, _>(From::from)?;
+                for luab_path in [
+                    format!(
+                        "game_script/{}btl{}.luab",
+                        &name[..underscore_pos],
+                        &name[underscore_pos..]
+                    ),
+                    format!(
+                        "game_script/{}btl2{}.luab",
+                        &name[..underscore_pos],
+                        &name[underscore_pos..]
+                    ),
+                ]
+                .iter()
+                {
+                    if game_data.lookup_path_locator(&luab_path)?.is_some() {
+                        statements
+                            .add_path(&luab_path)
+                            .map_err::<tomestone_sqpack::Error, _>(From::from)?;
+                    }
                 }
             }
         }
