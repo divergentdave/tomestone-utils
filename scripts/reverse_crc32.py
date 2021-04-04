@@ -69,10 +69,10 @@ def test():
 def main():
     test()
 
-    prefix = b"fesbkc002btl_031"
+    prefix = b"stmbda702btl_025"
     suffix = b".luab"
     max_length = 23
-    target = 0x0481e34a
+    target = 0xebb78e97
     for length in range(max(1, len(prefix) + len(suffix)), max_length + 1):
         for match in gen_matches(prefix, suffix, length, target):
             print(match.decode("ascii"))
