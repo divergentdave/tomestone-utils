@@ -674,6 +674,7 @@ dependencies = [
  "regex",
  "tomestone-exdf",
  "tomestone-sqpack",
+ "tomestone-string-interp",
 ]
 
 [[package]]

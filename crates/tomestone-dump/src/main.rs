@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    fmt::Write as FmtWrite,
     io::{self, stdout, Write},
     process,
 };
@@ -11,11 +12,12 @@ use regex::{
     Regex,
 };
 
-use tomestone_exdf::{Dataset, Language, RootList};
+use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::{
     pathdb::{PathDb, PreparedStatements},
     Category, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2,
 };
+use tomestone_string_interp::Text;
 
 fn lookup<'a>(
     game_data: &GameData,
@@ -611,14 +613,34 @@ fn main() {
             println!("{:?}", &dataset.exhf);
             for page_iter in dataset.page_iter() {
                 for res in page_iter {
-                    let row = match res {
+                    let (_row_number, row) = match res {
                         Ok(row) => row,
                         Err(e) => {
                             eprintln!("error: reading dataset failed: {}", e);
                             process::exit(1);
                         }
                     };
-                    println!("{:?}", row);
+
+                    let mut line = String::new();
+                    line.push('[');
+                    for (i, value) in row.iter().enumerate() {
+                        if i != 0 {
+                            line.push_str(", ");
+                        }
+                        if let Value::String(data) = value {
+                            match Text::parse(data) {
+                                Ok(text) => write!(&mut line, "{:?}", text).unwrap(),
+                                Err(e) => {
+                                    eprintln!("error: parsing tagged text failed: {}", e);
+                                    process::exit(1);
+                                }
+                            }
+                        } else {
+                            write!(&mut line, "{:?}", value).unwrap();
+                        }
+                    }
+                    line.push(']');
+                    println!("{}", line);
                 }
             }
         }

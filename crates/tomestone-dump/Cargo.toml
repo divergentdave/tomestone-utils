@@ -12,3 +12,4 @@ once_cell = "1.5.2"
 regex = "1.4.3"
 tomestone-exdf = { path = "../tomestone-exdf" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }
+tomestone-string-interp = { path = "../tomestone-string-interp" }
