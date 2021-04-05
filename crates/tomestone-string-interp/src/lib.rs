@@ -251,7 +251,7 @@ impl TreeNode for Expression {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Segment {
     Literal(String),
     TodoResetTime(Vec<u8>),
@@ -325,7 +325,115 @@ impl TreeNode for Segment {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+impl fmt::Debug for Segment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Segment::Literal(string) => string.fmt(f),
+            Segment::TodoResetTime(data) => f.debug_tuple("TodoResetTime").field(data).finish(),
+            Segment::Time(arg) => f.debug_tuple("Time").field(arg).finish(),
+            Segment::If {
+                condition,
+                true_value,
+                false_value,
+            } => f
+                .debug_struct("If")
+                .field("condition", condition)
+                .field("true_value", true_value)
+                .field("false_value", false_value)
+                .finish(),
+            Segment::Switch {
+                discriminant,
+                cases,
+            } => f
+                .debug_struct("Switch")
+                .field("discriminant", discriminant)
+                .field("cases", cases)
+                .finish(),
+            Segment::Todo0A(arg) => f.debug_tuple("Todo0A").field(arg).finish(),
+            Segment::IfEquals {
+                left,
+                right,
+                true_value,
+                false_value,
+            } => f
+                .debug_struct("IfEquals")
+                .field("left", left)
+                .field("right", right)
+                .field("true_value", true_value)
+                .field("false_value", false_value)
+                .finish(),
+            Segment::Todo0F {
+                player,
+                self_value,
+                other_value,
+            } => f
+                .debug_struct("Todo0F")
+                .field("player", player)
+                .field("self_value", self_value)
+                .field("other_value", other_value)
+                .finish(),
+            Segment::NewLine => write!(f, "NewLine"),
+            Segment::GuiIcon(arg) => f.debug_tuple("GuiIcon").field(arg).finish(),
+            Segment::ColorChange(arg) => f.debug_tuple("ColorChange").field(arg).finish(),
+            Segment::Todo14(arg) => f.debug_tuple("Todo14").field(arg).finish(),
+            Segment::Emphasis2(arg) => f.debug_tuple("Emphasis2").field(arg).finish(),
+            Segment::Emphasis(arg) => f.debug_tuple("Emphasis").field(arg).finish(),
+            Segment::Todo1B(arg) => f.debug_tuple("Todo1B").field(arg).finish(),
+            Segment::Todo1C(arg) => f.debug_tuple("Todo1C").field(arg).finish(),
+            Segment::Indent => write!(f, "Indent"),
+            Segment::CommandIcon(arg) => f.debug_tuple("CommandIcon").field(arg).finish(),
+            Segment::Dash => write!(f, "Dash"),
+            Segment::Value(arg) => f.debug_tuple("Value").field(arg).finish(),
+            Segment::TodoFormat(arg1, arg2) => {
+                f.debug_tuple("TodoFormat").field(arg1).field(arg2).finish()
+            }
+            Segment::TwoDigitValue(arg) => f.debug_tuple("TwoDigitValue").field(arg).finish(),
+            Segment::Todo26(arg1, arg2, arg3) => f
+                .debug_tuple("Todo26")
+                .field(arg1)
+                .field(arg2)
+                .field(arg3)
+                .finish(),
+            Segment::Sheet(args) => f.debug_tuple("Sheet").field(args).finish(),
+            Segment::TodoHighlight(arg) => f.debug_tuple("TodoHighlight").field(arg).finish(),
+            Segment::Link(arg) => f.debug_tuple("Link").field(arg).finish(),
+            Segment::Split {
+                input,
+                separator,
+                index,
+            } => f
+                .debug_struct("Split")
+                .field("input", input)
+                .field("separator", separator)
+                .field("index", index)
+                .finish(),
+            Segment::Todo2D(arg) => f.debug_tuple("Todo2D").field(arg).finish(),
+            Segment::AutoTranslate(arg1, arg2) => f
+                .debug_tuple("AutoTranslate")
+                .field(arg1)
+                .field(arg2)
+                .finish(),
+            Segment::Todo2F(arg) => f.debug_tuple("Todo2F").field(arg).finish(),
+            Segment::SheetJa(args) => f.debug_tuple("SheetJa").field(args).finish(),
+            Segment::SheetEn(args) => f.debug_tuple("SheetEn").field(args).finish(),
+            Segment::SheetDe(args) => f.debug_tuple("SheetDe").field(args).finish(),
+            Segment::SheetFr(args) => f.debug_tuple("SheetFr").field(args).finish(),
+            Segment::Todo40(arg) => f.debug_tuple("Todo40").field(arg).finish(),
+            Segment::Foreground(arg) => f.debug_tuple("Foreground").field(arg).finish(),
+            Segment::Glow(arg) => f.debug_tuple("Glow").field(arg).finish(),
+            Segment::ZeroPaddedValue { value, digits } => f
+                .debug_struct("ZeroPaddedValue")
+                .field("value", value)
+                .field("digits", digits)
+                .finish(),
+            Segment::Todo51(arg) => f.debug_tuple("Todo51").field(arg).finish(),
+            Segment::Todo60(data) => f.debug_tuple("Todo60").field(data).finish(),
+            Segment::Todo61(arg) => f.debug_tuple("Todo61").field(arg).finish(),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Text {
     segments: Vec<Segment>,
 }
@@ -345,6 +453,12 @@ impl TreeNode for Text {
         for segment in self.segments.iter() {
             segment.accept(visitor);
         }
+    }
+}
+
+impl fmt::Debug for Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.segments.fmt(f)
     }
 }
 
