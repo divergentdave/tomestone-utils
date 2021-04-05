@@ -69,7 +69,7 @@ impl Exdf {
         }
     }
 
-    pub fn iter<'b>(&'b self) -> ExdfIterator<'b> {
+    pub fn iter(&self) -> ExdfIterator<'_> {
         ExdfIterator {
             data: &self.data,
             offsets: self.offsets.iter(),
@@ -85,7 +85,7 @@ pub struct ExdfIterator<'a> {
 impl<'a, 'b> Iterator for ExdfIterator<'a> {
     type Item = Result<(u32, &'a [u8]), nom::error::Error<&'a [u8]>>;
 
-    fn next(&mut self) -> Option<Result<(u32, &'a [u8]), nom::error::Error<&'a [u8]>>> {
+    fn next(&mut self) -> Option<Self::Item> {
         let entry = self.offsets.next()?;
         let offset = TryInto::<usize>::try_into(entry.data_offset).unwrap();
         match data_row(&self.data[offset..]) {

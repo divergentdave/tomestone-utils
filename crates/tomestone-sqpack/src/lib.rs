@@ -69,16 +69,16 @@ pub struct EnumParseError;
 #[derive(Debug, PartialEq, Eq)]
 pub enum PlatformId {
     Win32 = 0,
-    PS3 = 1,
-    PS4 = 2,
+    Ps3 = 1,
+    Ps4 = 2,
 }
 
 impl PlatformId {
     pub(crate) fn from_u8(value: u8) -> Result<PlatformId, EnumParseError> {
         match value {
             0 => Ok(PlatformId::Win32),
-            1 => Ok(PlatformId::PS3),
-            2 => Ok(PlatformId::PS4),
+            1 => Ok(PlatformId::Ps3),
+            2 => Ok(PlatformId::Ps4),
             _ => Err(EnumParseError),
         }
     }
@@ -89,7 +89,7 @@ pub(crate) struct SqPackTypeParseError;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SqPackType {
-    SQDB = 0,
+    Sqdb = 0,
     Data = 1,
     Index = 2,
 }
@@ -97,7 +97,7 @@ pub enum SqPackType {
 impl SqPackType {
     pub(crate) fn from_u32(value: u32) -> Result<SqPackType, SqPackTypeParseError> {
         match value {
-            0 => Ok(SqPackType::SQDB),
+            0 => Ok(SqPackType::Sqdb),
             1 => Ok(SqPackType::Data),
             2 => Ok(SqPackType::Index),
             _ => Err(SqPackTypeParseError),
@@ -107,23 +107,23 @@ impl SqPackType {
 
 #[derive(Debug)]
 pub enum IndexType {
-    ZERO = 0,
-    FILES = 1,
-    TWO = 2,
-    THREE = 3,
-    FOUR = 4,
-    FIVE = 5,
+    Zero = 0,
+    Files = 1,
+    Two = 2,
+    Three = 3,
+    Four = 4,
+    Five = 5,
 }
 
 impl IndexType {
     pub fn parse(value: u32) -> Option<IndexType> {
         match value {
-            0 => Some(IndexType::ZERO),
-            1 => Some(IndexType::FILES),
-            2 => Some(IndexType::TWO),
-            3 => Some(IndexType::THREE),
-            4 => Some(IndexType::FOUR),
-            5 => Some(IndexType::FIVE),
+            0 => Some(IndexType::Zero),
+            1 => Some(IndexType::Files),
+            2 => Some(IndexType::Two),
+            3 => Some(IndexType::Three),
+            4 => Some(IndexType::Four),
+            5 => Some(IndexType::Five),
             _ => None,
         }
     }

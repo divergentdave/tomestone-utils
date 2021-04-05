@@ -599,12 +599,12 @@ mod tests {
             PlatformId::Win32
         );
         assert_eq!(
-            platform_id(&[PlatformId::PS3 as u8][..]).unwrap().1,
-            PlatformId::PS3
+            platform_id(&[PlatformId::Ps3 as u8][..]).unwrap().1,
+            PlatformId::Ps3
         );
         assert_eq!(
-            platform_id(&[PlatformId::PS4 as u8][..]).unwrap().1,
-            PlatformId::PS4
+            platform_id(&[PlatformId::Ps4 as u8][..]).unwrap().1,
+            PlatformId::Ps4
         );
         assert_eq!(
             platform_id(b"\xff").unwrap_err(),
@@ -620,10 +620,10 @@ mod tests {
     fn test_sqpack_type() {
         use super::sqpack_type;
         assert_eq!(
-            sqpack_type(&[SqPackType::SQDB as u8, 0, 0, 0][..])
+            sqpack_type(&[SqPackType::Sqdb as u8, 0, 0, 0][..])
                 .unwrap()
                 .1,
-            SqPackType::SQDB
+            SqPackType::Sqdb
         );
         assert_eq!(
             sqpack_type(&[SqPackType::Data as u8, 0, 0, 0][..])

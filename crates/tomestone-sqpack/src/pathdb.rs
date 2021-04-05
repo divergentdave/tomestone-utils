@@ -87,7 +87,7 @@ impl PathDb {
         Ok(PathDb { conn })
     }
 
-    pub fn prepare<'a>(&'a self) -> Result<PreparedStatements<'a>, DbError> {
+    pub fn prepare(&self) -> Result<PreparedStatements<'_>, DbError> {
         let index_1_folder_lookup_stmt = self
             .conn
             .prepare("SELECT path FROM index_1_folder WHERE crc = ?")?;

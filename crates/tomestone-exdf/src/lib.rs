@@ -96,9 +96,7 @@ impl ColumnFormat {
             7 => Ok(ColumnFormat::U32),
             9 => Ok(ColumnFormat::Float),
             0xb => Ok(ColumnFormat::I16x4),
-            value if value >= 0x19 && value <= 0x20 => {
-                Ok(ColumnFormat::Bitflag((value - 0x19) as u8))
-            }
+            0x19..=0x20 => Ok(ColumnFormat::Bitflag((value - 0x19) as u8)),
             _ => Err(EnumParseError),
         }
     }
@@ -195,7 +193,7 @@ impl<'a> Iterator for DatasetPageIter<'a> {
         };
         match parse_row(data, &self.exhf) {
             Ok(row) => Some(Ok((row_number, row))),
-            Err(e) => return Some(Err(e.into())),
+            Err(e) => Some(Err(e.into())),
         }
     }
 }
@@ -251,7 +249,7 @@ impl Dataset {
         Ok(Dataset { exhf, pages })
     }
 
-    pub fn page_iter<'a>(&'a self) -> impl Iterator<Item = DatasetPageIter<'a>> {
+    pub fn page_iter(&self) -> impl Iterator<Item = DatasetPageIter<'_>> {
         let exhf = &self.exhf;
         self.pages.iter().map(move |p| DatasetPageIter {
             exdf_iter: p.exdf.iter(),

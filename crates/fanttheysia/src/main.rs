@@ -17,7 +17,7 @@ impl GenderExpressionVisitor {
 impl Visitor for GenderExpressionVisitor {
     fn visit_expression(&mut self, expr: &Expression) {
         if let Expression::PlayerParameter(child_expr) = expr {
-            if &**child_expr == &Expression::Integer(4) {
+            if **child_expr == Expression::Integer(4) {
                 self.flag = true;
                 return;
             }
@@ -117,7 +117,7 @@ fn main() {
                             Ok(text) => {
                                 let mut visitor = GenderConditionalTextVisitor::new();
                                 text.accept(&mut visitor);
-                                if visitor.ifs.len() > 0 {
+                                if !visitor.ifs.is_empty() {
                                     println!("{} row {}: {:?}", name, i, text);
                                 }
                                 for if_tag in visitor.ifs.into_iter() {
