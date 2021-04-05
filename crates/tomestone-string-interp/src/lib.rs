@@ -57,10 +57,176 @@ pub trait TreeNode {
 
 pub trait Visitor {
     fn visit_tag(&mut self, _tag: &Segment) {}
+
     fn visit_expression(&mut self, _expr: &Expression) {}
+
+    fn recurse_tag(&mut self, tag: &Segment)
+    where
+        Self: Sized,
+    {
+        match tag {
+            Segment::Literal(_) => {}
+            Segment::TodoResetTime(_) => {}
+            Segment::Time(expr) => expr.accept(self),
+            Segment::If {
+                condition,
+                true_value,
+                false_value,
+            } => {
+                condition.accept(self);
+                true_value.accept(self);
+                false_value.accept(self);
+            }
+            Segment::Switch {
+                discriminant,
+                cases,
+            } => {
+                discriminant.accept(self);
+                for case in cases {
+                    case.accept(self);
+                }
+            }
+            Segment::Todo0A(expr) => expr.accept(self),
+            Segment::IfEquals {
+                left,
+                right,
+                true_value,
+                false_value,
+            } => {
+                left.accept(self);
+                right.accept(self);
+                true_value.accept(self);
+                false_value.accept(self);
+            }
+            Segment::Todo0F {
+                player,
+                self_value,
+                other_value,
+            } => {
+                player.accept(self);
+                self_value.accept(self);
+                other_value.accept(self);
+            }
+            Segment::NewLine => {}
+            Segment::GuiIcon(expr) => expr.accept(self),
+            Segment::ColorChange(expr) => expr.accept(self),
+            Segment::Todo14(expr) => expr.accept(self),
+            Segment::Emphasis2(_) => {}
+            Segment::Emphasis(_) => {}
+            Segment::Todo1B(_) => {}
+            Segment::Todo1C(_) => {}
+            Segment::Indent => {}
+            Segment::CommandIcon(expr) => expr.accept(self),
+            Segment::Dash => {}
+            Segment::Value(expr) => expr.accept(self),
+            Segment::TodoFormat(expr, _) => expr.accept(self),
+            Segment::TwoDigitValue(expr) => expr.accept(self),
+            Segment::Todo26(arg1, arg2, arg3) => {
+                arg1.accept(self);
+                arg2.accept(self);
+                arg3.accept(self);
+            }
+            Segment::Sheet(args) => {
+                for arg in args.iter() {
+                    arg.accept(self);
+                }
+            }
+            Segment::TodoHighlight(expr) => expr.accept(self),
+            Segment::Link(args) => {
+                for arg in args.iter() {
+                    arg.accept(self);
+                }
+            }
+            Segment::Split {
+                input,
+                separator,
+                index,
+            } => {
+                input.accept(self);
+                separator.accept(self);
+                index.accept(self);
+            }
+            Segment::Todo2D(expr) => expr.accept(self),
+            Segment::AutoTranslate(arg1, arg2) => {
+                arg1.accept(self);
+                arg2.accept(self);
+            }
+            Segment::Todo2F(expr) => expr.accept(self),
+            Segment::SheetJa(args) => {
+                for arg in args.iter() {
+                    arg.accept(self);
+                }
+            }
+            Segment::SheetEn(args) => {
+                for arg in args.iter() {
+                    arg.accept(self);
+                }
+            }
+            Segment::SheetDe(args) => {
+                for arg in args.iter() {
+                    arg.accept(self);
+                }
+            }
+            Segment::SheetFr(args) => {
+                for arg in args.iter() {
+                    arg.accept(self);
+                }
+            }
+            Segment::Todo40(expr) => expr.accept(self),
+            Segment::Foreground(expr) => expr.accept(self),
+            Segment::Glow(expr) => expr.accept(self),
+            Segment::ZeroPaddedValue { value, digits } => {
+                value.accept(self);
+                digits.accept(self);
+            }
+            Segment::Todo51(expr) => expr.accept(self),
+            Segment::Todo60(_) => {}
+            Segment::Todo61(expr) => expr.accept(self),
+        }
+    }
+
+    fn recurse_expression(&mut self, expr: &Expression)
+    where
+        Self: Sized,
+    {
+        match expr {
+            Expression::GreaterThanOrEqual(boite) => {
+                boite.0.accept(self);
+                boite.1.accept(self);
+            }
+            Expression::TodoComparison1(boite) => {
+                boite.0.accept(self);
+                boite.1.accept(self);
+            }
+            Expression::LessThanOrEqual(boite) => {
+                boite.0.accept(self);
+                boite.1.accept(self);
+            }
+            Expression::TodoComparison2(boite) => {
+                boite.0.accept(self);
+                boite.1.accept(self);
+            }
+            Expression::Equal(boite) => {
+                boite.0.accept(self);
+                boite.1.accept(self);
+            }
+            Expression::TodoComparison3(boite) => {
+                boite.0.accept(self);
+                boite.1.accept(self);
+            }
+            Expression::TopLevelParameter(_) => {}
+            Expression::IntegerParameter(boite) => boite.accept(self),
+            Expression::PlayerParameter(boite) => boite.accept(self),
+            Expression::StringParameter(boite) => boite.accept(self),
+            Expression::ObjectParameter(boite) => boite.accept(self),
+            Expression::TodoEC => {}
+            Expression::Integer(_) => {}
+            Expression::Text(boite) => boite.accept(self),
+        }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expression {
     GreaterThanOrEqual(Box<(Expression, Expression)>),
     TodoComparison1(Box<(Expression, Expression)>),
@@ -84,7 +250,7 @@ impl TreeNode for Expression {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Segment {
     Literal(String),
     TodoResetTime(Vec<u8>),
@@ -158,7 +324,7 @@ impl TreeNode for Segment {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Text {
     segments: Vec<Segment>,
 }
