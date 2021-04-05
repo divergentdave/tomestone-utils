@@ -186,15 +186,15 @@ pub struct DatasetPageIter<'a> {
 }
 
 impl<'a> Iterator for DatasetPageIter<'a> {
-    type Item = Result<Vec<Value<'a>>, Error>;
+    type Item = Result<(u32, Vec<Value<'a>>), Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let data = match self.exdf_iter.next()? {
-            Ok((_, data)) => data,
+        let (row_number, data) = match self.exdf_iter.next()? {
+            Ok((row_number, data)) => (row_number, data),
             Err(e) => return Some(Err(e.into())),
         };
         match parse_row(data, &self.exhf) {
-            Ok(row) => Some(Ok(row)),
+            Ok(row) => Some(Ok((row_number, row))),
             Err(e) => return Some(Err(e.into())),
         }
     }

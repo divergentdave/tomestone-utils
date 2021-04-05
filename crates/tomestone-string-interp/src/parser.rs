@@ -362,10 +362,9 @@ mod tests {
         for name in root_list.iter() {
             // TODO: test other language files too
             let dataset = Dataset::load(&game_data, name, Language::English).unwrap();
-            let mut i = 0;
             for page in dataset.page_iter() {
                 for res in page {
-                    let row = res.unwrap();
+                    let (i, row) = res.unwrap();
                     for value in row {
                         if let Value::String(data) = value {
                             let res = tagged_text(data);
@@ -376,7 +375,6 @@ mod tests {
                             res.unwrap();
                         }
                     }
-                    i += 1;
                 }
             }
         }
