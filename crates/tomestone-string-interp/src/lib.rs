@@ -51,6 +51,15 @@ impl<'a> From<nom::error::Error<&'a [u8]>> for Error {
     }
 }
 
+pub trait TreeNode {
+    fn accept<V: Visitor>(&self, visitor: &mut V);
+}
+
+pub trait Visitor {
+    fn visit_tag(&mut self, _tag: &Segment) {}
+    fn visit_expression(&mut self, _expr: &Expression) {}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     GreaterThanOrEqual(Box<(Expression, Expression)>),
@@ -67,6 +76,12 @@ pub enum Expression {
     TodoEC,
     Integer(u32),
     Text(Box<Text>),
+}
+
+impl TreeNode for Expression {
+    fn accept<V: Visitor>(&self, visitor: &mut V) {
+        visitor.visit_expression(self);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,6 +152,12 @@ pub enum Segment {
     Todo61(Expression),
 }
 
+impl TreeNode for Segment {
+    fn accept<V: Visitor>(&self, visitor: &mut V) {
+        visitor.visit_tag(self);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Text {
     segments: Vec<Segment>,
@@ -148,6 +169,14 @@ impl Text {
             Ok((_, text)) => Ok(text),
             Err(nom::Err::Incomplete(_)) => unreachable!(),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(e),
+        }
+    }
+}
+
+impl TreeNode for Text {
+    fn accept<V: Visitor>(&self, visitor: &mut V) {
+        for segment in self.segments.iter() {
+            segment.accept(visitor);
         }
     }
 }
