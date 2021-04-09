@@ -31,7 +31,7 @@ fn main() {
         process::exit(1);
     };
 
-    const NAMES: [(&[u8], &[u8]); 8] = [
+    const NAMES: [(&[u8], &[u8]); 10] = [
         (b"_YSHTOLA_", b"Y'shtola"),
         (b"_ALPHINAUD_", b"Alphinaud"),
         (b"_ALISAIE_", b"Alisaie"),
@@ -40,6 +40,8 @@ fn main() {
         (b"_YDA_", b"Yda"),
         (b"_PAPALYMO_", b"Papalymo"),
         (b"_CID_", b"Cid"),
+        (b"_THANCRED_", b"Thancred"),
+        (b"_URIANGER_", b"Urianger"),
     ];
     let mut counters = vec![0; NAMES.len()];
 
