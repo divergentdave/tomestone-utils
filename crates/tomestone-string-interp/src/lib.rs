@@ -1,11 +1,14 @@
-use std::{fmt, string::FromUtf8Error};
+use std::{fmt, num::NonZeroU8, string::FromUtf8Error};
 
+mod encoding;
 mod parser;
+mod types;
 
 #[derive(Debug)]
 pub enum Error {
     Nom(nom::error::ErrorKind),
     Utf8(FromUtf8Error),
+    NullByte,
 }
 
 impl fmt::Display for Error {
@@ -13,6 +16,7 @@ impl fmt::Display for Error {
         match self {
             Error::Nom(e) => write!(f, "parsing error: {:?}", e),
             Error::Utf8(e) => e.fmt(f),
+            Error::NullByte => write!(f, "null byte encountered"),
         }
     }
 }
@@ -254,7 +258,7 @@ impl TreeNode for Expression {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Segment {
     Literal(String),
-    TodoResetTime(Vec<u8>),
+    TodoResetTime(Vec<NonZeroU8>),
     Time(Expression),
     If {
         condition: Expression,
@@ -283,13 +287,13 @@ pub enum Segment {
     Todo14(Expression),
     Emphasis2(u32),
     Emphasis(u32),
-    Todo1B(Vec<u8>),
-    Todo1C(Vec<u8>),
+    Todo1B(Vec<NonZeroU8>),
+    Todo1C(Vec<NonZeroU8>),
     Indent,
     CommandIcon(Expression),
     Dash,
     Value(Expression),
-    TodoFormat(Expression, Vec<u8>),
+    TodoFormat(Expression, Vec<NonZeroU8>),
     TwoDigitValue(Expression),
     Todo26(Expression, Expression, Expression),
     Sheet(Vec<Expression>),
@@ -315,7 +319,7 @@ pub enum Segment {
         digits: Expression,
     },
     Todo51(Expression),
-    Todo60(Vec<u8>),
+    Todo60(Vec<NonZeroU8>),
     Todo61(Expression),
 }
 
@@ -440,11 +444,15 @@ pub struct Text {
 
 impl Text {
     pub fn parse(input: &[u8]) -> Result<Text, Error> {
-        match parser::tagged_text(input) {
+        match nom::combinator::complete(parser::tagged_text)(input) {
             Ok((_, text)) => Ok(text),
             Err(nom::Err::Incomplete(_)) => unreachable!(),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(e),
         }
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, encoding::EncodeError> {
+        encoding::encode(self)
     }
 }
 
@@ -474,5 +482,303 @@ mod tests {
                 segments: vec![Segment::Literal("Hello world".to_string())]
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use std::num::NonZeroU8;
+
+    use quickcheck::{Arbitrary, Gen, QuickCheck};
+
+    use super::{Expression, Segment, Text};
+
+    fn arbitrary_expr(g: &mut Gen, depth: usize) -> Expression {
+        let choices = if depth >= 4 {
+            &[6, 11, 12][..]
+        } else {
+            &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13][..]
+        };
+        match g.choose(choices).unwrap() {
+            0 => Expression::GreaterThanOrEqual(Box::new((
+                arbitrary_expr(g, depth + 1),
+                arbitrary_expr(g, depth + 1),
+            ))),
+            1 => Expression::TodoComparison1(Box::new((
+                arbitrary_expr(g, depth + 1),
+                arbitrary_expr(g, depth + 1),
+            ))),
+            2 => Expression::LessThanOrEqual(Box::new((
+                arbitrary_expr(g, depth + 1),
+                arbitrary_expr(g, depth + 1),
+            ))),
+            3 => Expression::TodoComparison2(Box::new((
+                arbitrary_expr(g, depth + 1),
+                arbitrary_expr(g, depth + 1),
+            ))),
+            4 => Expression::Equal(Box::new((
+                arbitrary_expr(g, depth + 1),
+                arbitrary_expr(g, depth + 1),
+            ))),
+            5 => Expression::TodoComparison3(Box::new((
+                arbitrary_expr(g, depth + 1),
+                arbitrary_expr(g, depth + 1),
+            ))),
+            6 => Expression::TopLevelParameter(u8::arbitrary(g) & 0xf),
+            7 => Expression::IntegerParameter(Box::new(arbitrary_expr(g, depth + 1))),
+            8 => Expression::PlayerParameter(Box::new(arbitrary_expr(g, depth + 1))),
+            9 => Expression::StringParameter(Box::new(arbitrary_expr(g, depth + 1))),
+            10 => Expression::ObjectParameter(Box::new(arbitrary_expr(g, depth + 1))),
+            11 => Expression::TodoEC,
+            12 => Expression::Integer(u32::arbitrary(g)),
+            13 => Expression::Text(Box::new(arbitrary_text(g, depth + 1))),
+            _ => unreachable!(),
+        }
+    }
+
+    fn arbitrary_segment(g: &mut Gen, depth: usize) -> Segment {
+        match g
+            .choose(&[
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+            ])
+            .unwrap()
+        {
+            0 => {
+                let string = String::arbitrary(g);
+                let mut string =
+                    string.replace(|char| char == '\x00' || char == '\x02', "\u{fffd}");
+                if string.is_empty() {
+                    string.push(char::arbitrary(g));
+                }
+                Segment::Literal(string)
+            }
+            1 => Segment::TodoResetTime(Vec::<NonZeroU8>::arbitrary(g)),
+            2 => Segment::Time(arbitrary_expr(g, depth)),
+            3 => Segment::If {
+                condition: arbitrary_expr(g, depth),
+                true_value: arbitrary_expr(g, depth),
+                false_value: arbitrary_expr(g, depth),
+            },
+            4 => {
+                let mut cases: Vec<Expression> = Vec::<()>::arbitrary(g)
+                    .into_iter()
+                    .map(|()| arbitrary_expr(g, depth))
+                    .collect();
+                if cases.is_empty() {
+                    cases.push(arbitrary_expr(g, depth));
+                }
+                Segment::Switch {
+                    discriminant: arbitrary_expr(g, depth),
+                    cases,
+                }
+            }
+            5 => Segment::Todo0A(arbitrary_expr(g, depth)),
+            6 => Segment::IfEquals {
+                left: arbitrary_expr(g, depth),
+                right: arbitrary_expr(g, depth),
+                true_value: arbitrary_expr(g, depth),
+                false_value: arbitrary_expr(g, depth),
+            },
+            7 => Segment::Todo0F {
+                player: arbitrary_expr(g, depth),
+                self_value: arbitrary_expr(g, depth),
+                other_value: arbitrary_expr(g, depth),
+            },
+            8 => Segment::NewLine,
+            9 => Segment::GuiIcon(arbitrary_expr(g, depth)),
+            10 => Segment::ColorChange(arbitrary_expr(g, depth)),
+            11 => Segment::Todo14(arbitrary_expr(g, depth)),
+            12 => Segment::Emphasis2(u8::arbitrary(g) as u32),
+            13 => Segment::Emphasis(u8::arbitrary(g) as u32),
+            14 => Segment::Todo1B(Vec::<NonZeroU8>::arbitrary(g)),
+            15 => Segment::Todo1C(Vec::<NonZeroU8>::arbitrary(g)),
+            16 => Segment::Indent,
+            17 => Segment::CommandIcon(arbitrary_expr(g, depth)),
+            18 => Segment::Dash,
+            19 => Segment::Value(arbitrary_expr(g, depth)),
+            20 => Segment::TodoFormat(arbitrary_expr(g, depth), Vec::<NonZeroU8>::arbitrary(g)),
+            21 => Segment::TwoDigitValue(arbitrary_expr(g, depth)),
+            22 => Segment::Todo26(
+                arbitrary_expr(g, depth),
+                arbitrary_expr(g, depth),
+                arbitrary_expr(g, depth),
+            ),
+            23 => {
+                let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
+                    .into_iter()
+                    .map(|()| arbitrary_expr(g, depth))
+                    .collect();
+                while args.len() < 2 {
+                    args.push(arbitrary_expr(g, depth));
+                }
+                Segment::Sheet(args)
+            }
+            24 => Segment::TodoHighlight(arbitrary_expr(g, depth)),
+            25 => {
+                let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
+                    .into_iter()
+                    .map(|()| arbitrary_expr(g, depth))
+                    .collect();
+                if args.is_empty() {
+                    args.push(arbitrary_expr(g, depth));
+                }
+                Segment::Link(args)
+            }
+            26 => Segment::Split {
+                input: arbitrary_expr(g, depth),
+                separator: arbitrary_expr(g, depth),
+                index: arbitrary_expr(g, depth),
+            },
+            27 => Segment::Todo2D(arbitrary_expr(g, depth)),
+            28 => Segment::AutoTranslate(arbitrary_expr(g, depth), arbitrary_expr(g, depth)),
+            29 => Segment::Todo2F(arbitrary_expr(g, depth)),
+            30 => {
+                let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
+                    .into_iter()
+                    .map(|()| arbitrary_expr(g, depth))
+                    .collect();
+                while args.len() < 3 {
+                    args.push(arbitrary_expr(g, depth));
+                }
+                Segment::SheetJa(args)
+            }
+            31 => {
+                let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
+                    .into_iter()
+                    .map(|()| arbitrary_expr(g, depth))
+                    .collect();
+                while args.len() < 3 {
+                    args.push(arbitrary_expr(g, depth));
+                }
+                Segment::SheetEn(args)
+            }
+            32 => {
+                let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
+                    .into_iter()
+                    .map(|()| arbitrary_expr(g, depth))
+                    .collect();
+                while args.len() < 3 {
+                    args.push(arbitrary_expr(g, depth));
+                }
+                Segment::SheetDe(args)
+            }
+            33 => {
+                let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
+                    .into_iter()
+                    .map(|()| arbitrary_expr(g, depth))
+                    .collect();
+                while args.len() < 3 {
+                    args.push(arbitrary_expr(g, depth));
+                }
+                Segment::SheetFr(args)
+            }
+            34 => Segment::Todo40(arbitrary_expr(g, depth)),
+            35 => Segment::Foreground(arbitrary_expr(g, depth)),
+            36 => Segment::Glow(arbitrary_expr(g, depth)),
+            37 => Segment::ZeroPaddedValue {
+                value: arbitrary_expr(g, depth),
+                digits: arbitrary_expr(g, depth),
+            },
+            38 => Segment::Todo51(arbitrary_expr(g, depth)),
+            39 => Segment::Todo60(Arbitrary::arbitrary(g)),
+            40 => Segment::Todo61(arbitrary_expr(g, depth)),
+            _ => unreachable!(),
+        }
+    }
+
+    impl Arbitrary for Segment {
+        fn arbitrary(g: &mut Gen) -> Segment {
+            arbitrary_segment(g, 0)
+        }
+    }
+
+    fn arbitrary_text(g: &mut Gen, depth: usize) -> Text {
+        Text {
+            segments: vec![arbitrary_segment(g, depth)],
+        }
+    }
+
+    impl Arbitrary for Text {
+        fn arbitrary(g: &mut Gen) -> Text {
+            Text {
+                segments: Vec::<Segment>::arbitrary(g),
+            }
+        }
+    }
+
+    fn property_encode_nul_free(tag: Segment) -> bool {
+        let text = Text {
+            segments: vec![tag],
+        };
+        if let Ok(data) = crate::encoding::encode(&text) {
+            !data.iter().any(|byte| *byte == 0)
+        } else {
+            true
+        }
+    }
+
+    #[test]
+    fn encode_nul_free() {
+        QuickCheck::new().quickcheck(property_encode_nul_free as fn(Segment) -> bool);
+    }
+
+    fn property_encode_round_trip(tag: Segment) -> bool {
+        let text = Text {
+            segments: vec![tag],
+        };
+        if let Ok(data) = crate::encoding::encode(&text) {
+            match Text::parse(&data) {
+                Ok(parsed) => {
+                    if parsed == text {
+                        true
+                    } else {
+                        eprintln!(
+                            "round trip failed, {:?} => {:02x?} => {:?}",
+                            text, data, parsed
+                        );
+                        false
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "round trip failed, {:?} => {:02x?} => parse error {:?}",
+                        text, data, e
+                    );
+                    false
+                }
+            }
+        } else {
+            true
+        }
+    }
+
+    #[test]
+    fn encode_round_trip() {
+        QuickCheck::new().quickcheck(property_encode_round_trip as fn(Segment) -> bool);
+    }
+
+    #[test]
+    fn regression_01() {
+        assert!(property_encode_round_trip(Segment::Dash));
+        assert!(property_encode_round_trip(Segment::Indent));
+        assert!(property_encode_round_trip(Segment::NewLine));
+    }
+
+    #[test]
+    fn regression_02() {
+        let _ = Text::parse(b"\x02\x24\x24");
+    }
+
+    #[test]
+    fn regression_03() {
+        Text::parse(b"\x02\x20\x04\xf1\x00\x00\x03").unwrap();
+    }
+
+    #[test]
+    fn regression_04() {
+        assert!(property_encode_round_trip(Segment::Value(
+            Expression::Integer(0x544600)
+        )));
     }
 }

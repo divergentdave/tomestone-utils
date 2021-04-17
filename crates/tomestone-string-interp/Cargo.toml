@@ -14,3 +14,4 @@ chrono = "0.4"
 dotenv = "0.15.0"
 tomestone-exdf = { path = "../tomestone-exdf" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }
+quickcheck = "1.0.3"
