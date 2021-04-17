@@ -113,6 +113,7 @@ pub enum IndexType {
     Three = 3,
     Four = 4,
     Five = 5,
+    Six = 6,
 }
 
 impl IndexType {
@@ -124,6 +125,7 @@ impl IndexType {
             3 => Some(IndexType::Three),
             4 => Some(IndexType::Four),
             5 => Some(IndexType::Five),
+            6 => Some(IndexType::Six),
             _ => None,
         }
     }
