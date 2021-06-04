@@ -55,7 +55,12 @@ fn main() {
 
         for page in dataset.page_iter() {
             for res in page {
-                let (_, row) = res.unwrap();
+                let (_, row) = if let Ok(tuple) = res {
+                    tuple
+                } else {
+                    eprintln!("error: couldn't read row");
+                    process::exit(1);
+                };
                 if let &[Value::String(col1), Value::String(col2)] = &*row {
                     let col2_cleaned = if col2.len() > 4 && &col2[..2] == b"(-" {
                         // Skip name in "(-...-)" at the beginning of a line

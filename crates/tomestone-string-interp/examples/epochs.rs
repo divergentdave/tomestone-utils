@@ -30,7 +30,7 @@ impl<'a> Visitor for DateVisitor<'a> {
             println!("{:?}", self.text);
             println!();
         }
-        self.recurse_tag(tag)
+        self.recurse_tag(tag);
     }
 
     fn visit_expression(&mut self, expr: &Expression) {
