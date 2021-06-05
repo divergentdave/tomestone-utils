@@ -15,6 +15,7 @@ pub const BYTE: u8 = 0xf0;
 pub const INT16_MINUS_ONE: u8 = 0xf1;
 pub const INT16: u8 = 0xf2;
 pub const TODO_INT16: u8 = 0xf4;
+pub const INT24_MINUS_ONE: u8 = 0xf5;
 pub const INT24: u8 = 0xf6;
 pub const INT24_SHIFTED_8: u8 = 0xfd;
 pub const INT32: u8 = 0xfe;

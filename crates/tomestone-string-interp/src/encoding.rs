@@ -109,6 +109,13 @@ fn encode_expression(buf: &mut Vec<u8>, expr: &Expression) -> Result<(), EncodeE
                     ((value >> 8) & 0xFF) as u8,
                     (value & 0xFF) as u8,
                 ]),
+            0x10100..=0xFFFF00 if value & 0xFF == 0 && value & 0xFF00 != 0 => buf
+                .extend_from_slice(&[
+                    INT24_MINUS_ONE,
+                    (((value + 1) >> 16) & 0xFF) as u8,
+                    (((value + 1) >> 8) & 0xFF) as u8,
+                    ((value + 1) & 0xFF) as u8,
+                ]),
             0x1000000..=0xFFFFFF00
                 if value & 0xFF == 0 && value & 0xFF00 != 0 && value & 0xFF0000 != 0 =>
             {

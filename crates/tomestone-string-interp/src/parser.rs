@@ -83,6 +83,7 @@ fn expression(input: &[u8]) -> IResult<&[u8], Expression, Error> {
         })(input),
         INT16 => map(be_u16, |short| Expression::Integer(short as u32))(input),
         TODO_INT16 => map(be_u16, |short| Expression::Integer(short as u32))(input),
+        INT24_MINUS_ONE => map(be_u24, |value| Expression::Integer(value.wrapping_sub(1)))(input),
         INT24 => map(be_u24, Expression::Integer)(input),
         INT24_SHIFTED_8 => map(be_u24, |value| Expression::Integer(value << 8))(input),
         INT32 => map(be_u32, Expression::Integer)(input),
