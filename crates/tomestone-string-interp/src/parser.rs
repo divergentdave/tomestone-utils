@@ -191,6 +191,7 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
         GUI_ICON => contents(map(expression, Segment::GuiIcon))(input),
         COLOR_CHANGE => contents(map(expression, Segment::ColorChange))(input),
         TODO_14 => contents(map(expression, Segment::Todo14))(input),
+        TODO_17 => contents(segment_no_data(Segment::Todo17))(input),
         EMPHASIS_2 => contents(map(integer, Segment::Emphasis2))(input),
         EMPHASIS => contents(map(integer, Segment::Emphasis))(input),
         TODO_1B => contents(map_res(
