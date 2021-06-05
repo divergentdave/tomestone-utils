@@ -9,6 +9,7 @@ pub const NEW_LINE: u8 = 0x10;
 pub const GUI_ICON: u8 = 0x12;
 pub const COLOR_CHANGE: u8 = 0x13;
 pub const TODO_14: u8 = 0x14;
+pub const SOFT_HYPHEN: u8 = 0x16;
 pub const TODO_17: u8 = 0x17;
 pub const EMPHASIS_2: u8 = 0x19;
 pub const EMPHASIS: u8 = 0x1a;

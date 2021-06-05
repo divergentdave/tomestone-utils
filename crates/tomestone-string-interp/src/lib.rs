@@ -115,6 +115,7 @@ pub trait Visitor {
             Segment::GuiIcon(expr) => expr.accept(self),
             Segment::ColorChange(expr) => expr.accept(self),
             Segment::Todo14(expr) => expr.accept(self),
+            Segment::SoftHyphen => {}
             Segment::Todo17 => {}
             Segment::Emphasis2(_) => {}
             Segment::Emphasis(_) => {}
@@ -286,6 +287,7 @@ pub enum Segment {
     GuiIcon(Expression),
     ColorChange(Expression),
     Todo14(Expression),
+    SoftHyphen,
     Todo17,
     Emphasis2(u32),
     Emphasis(u32),
@@ -382,6 +384,7 @@ impl fmt::Debug for Segment {
             Segment::GuiIcon(arg) => f.debug_tuple("GuiIcon").field(arg).finish(),
             Segment::ColorChange(arg) => f.debug_tuple("ColorChange").field(arg).finish(),
             Segment::Todo14(arg) => f.debug_tuple("Todo14").field(arg).finish(),
+            Segment::SoftHyphen => f.debug_tuple("SoftHyphen").finish(),
             Segment::Todo17 => f.debug_tuple("Todo17").finish(),
             Segment::Emphasis2(arg) => f.debug_tuple("Emphasis2").field(arg).finish(),
             Segment::Emphasis(arg) => f.debug_tuple("Emphasis").field(arg).finish(),
@@ -543,7 +546,7 @@ mod proptests {
         match g
             .choose(&[
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-                23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+                23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
             ])
             .unwrap()
         {
@@ -592,23 +595,24 @@ mod proptests {
             9 => Segment::GuiIcon(arbitrary_expr(g, depth)),
             10 => Segment::ColorChange(arbitrary_expr(g, depth)),
             11 => Segment::Todo14(arbitrary_expr(g, depth)),
-            12 => Segment::Todo17,
-            13 => Segment::Emphasis2(u8::arbitrary(g) as u32),
-            14 => Segment::Emphasis(u8::arbitrary(g) as u32),
-            15 => Segment::Todo1B(Vec::<NonZeroU8>::arbitrary(g)),
-            16 => Segment::Todo1C(Vec::<NonZeroU8>::arbitrary(g)),
-            17 => Segment::Indent,
-            18 => Segment::CommandIcon(arbitrary_expr(g, depth)),
-            19 => Segment::Dash,
-            20 => Segment::Value(arbitrary_expr(g, depth)),
-            21 => Segment::TodoFormat(arbitrary_expr(g, depth), Vec::<NonZeroU8>::arbitrary(g)),
-            22 => Segment::TwoDigitValue(arbitrary_expr(g, depth)),
-            23 => Segment::Todo26(
+            12 => Segment::SoftHyphen,
+            13 => Segment::Todo17,
+            14 => Segment::Emphasis2(u8::arbitrary(g) as u32),
+            15 => Segment::Emphasis(u8::arbitrary(g) as u32),
+            16 => Segment::Todo1B(Vec::<NonZeroU8>::arbitrary(g)),
+            17 => Segment::Todo1C(Vec::<NonZeroU8>::arbitrary(g)),
+            18 => Segment::Indent,
+            19 => Segment::CommandIcon(arbitrary_expr(g, depth)),
+            20 => Segment::Dash,
+            21 => Segment::Value(arbitrary_expr(g, depth)),
+            22 => Segment::TodoFormat(arbitrary_expr(g, depth), Vec::<NonZeroU8>::arbitrary(g)),
+            23 => Segment::TwoDigitValue(arbitrary_expr(g, depth)),
+            24 => Segment::Todo26(
                 arbitrary_expr(g, depth),
                 arbitrary_expr(g, depth),
                 arbitrary_expr(g, depth),
             ),
-            24 => {
+            25 => {
                 let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
                     .into_iter()
                     .map(|()| arbitrary_expr(g, depth))
@@ -618,8 +622,8 @@ mod proptests {
                 }
                 Segment::Sheet(args)
             }
-            25 => Segment::TodoHighlight(arbitrary_expr(g, depth)),
-            26 => {
+            26 => Segment::TodoHighlight(arbitrary_expr(g, depth)),
+            27 => {
                 let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
                     .into_iter()
                     .map(|()| arbitrary_expr(g, depth))
@@ -629,15 +633,15 @@ mod proptests {
                 }
                 Segment::Link(args)
             }
-            27 => Segment::Split {
+            28 => Segment::Split {
                 input: arbitrary_expr(g, depth),
                 separator: arbitrary_expr(g, depth),
                 index: arbitrary_expr(g, depth),
             },
-            28 => Segment::Todo2D(arbitrary_expr(g, depth)),
-            29 => Segment::AutoTranslate(arbitrary_expr(g, depth), arbitrary_expr(g, depth)),
-            30 => Segment::Todo2F(arbitrary_expr(g, depth)),
-            31 => {
+            29 => Segment::Todo2D(arbitrary_expr(g, depth)),
+            30 => Segment::AutoTranslate(arbitrary_expr(g, depth), arbitrary_expr(g, depth)),
+            31 => Segment::Todo2F(arbitrary_expr(g, depth)),
+            32 => {
                 let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
                     .into_iter()
                     .map(|()| arbitrary_expr(g, depth))
@@ -647,7 +651,7 @@ mod proptests {
                 }
                 Segment::SheetJa(args)
             }
-            32 => {
+            33 => {
                 let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
                     .into_iter()
                     .map(|()| arbitrary_expr(g, depth))
@@ -657,7 +661,7 @@ mod proptests {
                 }
                 Segment::SheetEn(args)
             }
-            33 => {
+            34 => {
                 let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
                     .into_iter()
                     .map(|()| arbitrary_expr(g, depth))
@@ -667,7 +671,7 @@ mod proptests {
                 }
                 Segment::SheetDe(args)
             }
-            34 => {
+            35 => {
                 let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
                     .into_iter()
                     .map(|()| arbitrary_expr(g, depth))
@@ -677,16 +681,16 @@ mod proptests {
                 }
                 Segment::SheetFr(args)
             }
-            35 => Segment::Todo40(arbitrary_expr(g, depth)),
-            36 => Segment::Foreground(arbitrary_expr(g, depth)),
-            37 => Segment::Glow(arbitrary_expr(g, depth)),
-            38 => Segment::ZeroPaddedValue {
+            36 => Segment::Todo40(arbitrary_expr(g, depth)),
+            37 => Segment::Foreground(arbitrary_expr(g, depth)),
+            38 => Segment::Glow(arbitrary_expr(g, depth)),
+            39 => Segment::ZeroPaddedValue {
                 value: arbitrary_expr(g, depth),
                 digits: arbitrary_expr(g, depth),
             },
-            39 => Segment::Todo51(arbitrary_expr(g, depth)),
-            40 => Segment::Todo60(Arbitrary::arbitrary(g)),
-            41 => Segment::Todo61(arbitrary_expr(g, depth)),
+            40 => Segment::Todo51(arbitrary_expr(g, depth)),
+            41 => Segment::Todo60(Arbitrary::arbitrary(g)),
+            42 => Segment::Todo61(arbitrary_expr(g, depth)),
             _ => unreachable!(),
         }
     }

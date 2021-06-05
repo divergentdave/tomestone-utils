@@ -269,6 +269,9 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.append(&mut tag_data);
             buf.push(3);
         }
+        Segment::SoftHyphen => {
+            buf.extend_from_slice(&[2, SOFT_HYPHEN, 1, 3]);
+        }
         Segment::Todo17 => {
             buf.extend_from_slice(&[2, TODO_17, 1, 3]);
         }
