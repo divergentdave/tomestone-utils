@@ -310,19 +310,27 @@ mod tests {
 
         let root_list = RootList::open(&game_data).unwrap();
         for name in root_list.iter() {
-            // TODO: test other language files too
-            let dataset = Dataset::load(&game_data, name, Language::English).unwrap();
-            for page in dataset.page_iter() {
-                for res in page {
-                    let (i, row) = res.unwrap();
-                    for value in row {
-                        if let Value::String(data) = value {
-                            let res = tagged_text(data);
-                            if res.is_err() {
-                                eprintln!("Error while parsing {} row {}", name, i);
-                                eprintln!("{:02x?}", data);
+            for language in [
+                Language::Japanese,
+                Language::English,
+                Language::German,
+                Language::French,
+            ]
+            .iter()
+            {
+                let dataset = Dataset::load(&game_data, name, *language).unwrap();
+                for page in dataset.page_iter() {
+                    for res in page {
+                        let (i, row) = res.unwrap();
+                        for value in row {
+                            if let Value::String(data) = value {
+                                let res = tagged_text(data);
+                                if res.is_err() {
+                                    eprintln!("Error while parsing {} row {}", name, i);
+                                    eprintln!("{:02x?}", data);
+                                }
+                                res.unwrap();
                             }
-                            res.unwrap();
                         }
                     }
                 }

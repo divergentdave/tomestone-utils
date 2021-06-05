@@ -85,7 +85,14 @@ fn main() {
 
     let mut visitor = ExpressionUsageCounterVisitor::new();
     for name in root_list.iter() {
-        for language in [Language::English].iter() {
+        for language in [
+            Language::Japanese,
+            Language::English,
+            Language::German,
+            Language::French,
+        ]
+        .iter()
+        {
             let dataset = if let Ok(dataset) = Dataset::load(&game_data, name, *language) {
                 dataset
             } else {
