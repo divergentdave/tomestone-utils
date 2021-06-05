@@ -78,9 +78,16 @@ fn expression(input: &[u8]) -> IResult<&[u8], Expression, Error> {
         })(input),
         TODO_EC => Ok((input, Expression::TodoEC)),
         BYTE => map(be_u8, |byte| Expression::Integer(byte as u32))(input),
-        INT16_MINUS_ONE => map(be_u16, |short| {
-            Expression::Integer((short as u32).wrapping_sub(1))
-        })(input),
+        INT16_MINUS_ONE => {
+            if input == b"\x02" {
+                // TODO: figure out if this is a variable-length encoding, and
+                // what this input means.
+                return Ok((b"", Expression::Integer(2)));
+            }
+            map(be_u16, |short| {
+                Expression::Integer((short as u32).wrapping_sub(1))
+            })(input)
+        }
         INT16 => map(be_u16, |short| Expression::Integer(short as u32))(input),
         TODO_INT16 => map(be_u16, |short| Expression::Integer(short as u32))(input),
         INT24_MINUS_ONE => map(be_u24, |value| Expression::Integer(value.wrapping_sub(1)))(input),
