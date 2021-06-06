@@ -78,21 +78,29 @@ fn expression(input: &[u8]) -> IResult<&[u8], Expression, Error> {
         })(input),
         TODO_EC => Ok((input, Expression::TodoEC)),
         BYTE => map(be_u8, |byte| Expression::Integer(byte as u32))(input),
-        INT16_MINUS_ONE => {
-            if input == b"\x02" {
-                // TODO: figure out if this is a variable-length encoding, and
-                // what this input means.
-                return Ok((b"", Expression::Integer(2)));
-            }
-            map(be_u16, |short| {
-                Expression::Integer((short as u32).wrapping_sub(1))
-            })(input)
-        }
+        BYTE_SHIFTED_8 => map(be_u8, |byte| Expression::Integer((byte as u32) << 8))(input),
+        BYTE_SHIFTED_16 => map(be_u8, |byte| Expression::Integer((byte as u32) << 16))(input),
+        BYTE_SHIFTED_24 => map(be_u8, |byte| Expression::Integer((byte as u32) << 24))(input),
         INT16 => map(be_u16, |short| Expression::Integer(short as u32))(input),
-        TODO_INT16 => map(be_u16, |short| Expression::Integer(short as u32))(input),
-        INT24_MINUS_ONE => map(be_u24, |value| Expression::Integer(value.wrapping_sub(1)))(input),
+        INT16_SHIFTED_8 => map(be_u16, |short| Expression::Integer((short as u32) << 8))(input),
+        INT16_SHIFTED_16 => map(be_u16, |short| Expression::Integer((short as u32) << 16))(input),
+        INT16_FIRST_AND_THIRD_BYTES => map(pair(be_u8, be_u8), |(hi, lo)| {
+            Expression::Integer(((hi as u32) << 16) | (lo as u32))
+        })(input),
+        INT16_SECOND_AND_FOURTH_BYTES => map(pair(be_u8, be_u8), |(hi, lo)| {
+            Expression::Integer(((hi as u32) << 24) | ((lo as u32) << 8))
+        })(input),
+        INT16_FIRST_AND_LAST_BYTES => map(pair(be_u8, be_u8), |(hi, lo)| {
+            Expression::Integer(((hi as u32) << 24) | (lo as u32))
+        })(input),
         INT24 => map(be_u24, Expression::Integer)(input),
         INT24_SHIFTED_8 => map(be_u24, |value| Expression::Integer(value << 8))(input),
+        INT24_FIRST_SECOND_AND_FOURTH_BYTES => map(pair(be_u8, be_u16), |(hi, lo)| {
+            Expression::Integer(((hi as u32) << 24) | (lo as u32))
+        })(input),
+        INT24_FIRST_THIRD_AND_FOURTH_BYTES => map(pair(be_u16, be_u8), |(hi, lo)| {
+            Expression::Integer(((hi as u32) << 16) | (lo as u32))
+        })(input),
         INT32 => map(be_u32, Expression::Integer)(input),
         TAGGED_TEXT => expression_tagged_text(input),
         _ => Err(nom::Err::Error(Error::from_error_kind(

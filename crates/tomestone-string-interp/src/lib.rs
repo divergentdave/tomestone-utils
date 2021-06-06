@@ -1256,11 +1256,6 @@ mod proptests {
 
     #[test]
     fn regression_03() {
-        Text::parse(b"\x02\x20\x04\xf1\x00\x00\x03").unwrap();
-    }
-
-    #[test]
-    fn regression_04() {
         assert!(property_encode_round_trip(Segment::Value(
             Expression::Integer(0x544600)
         )));
