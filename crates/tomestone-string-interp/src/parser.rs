@@ -13,14 +13,36 @@ use nom::{
 use super::{Error, Expression, Segment, Text};
 
 fn integer(input: &[u8]) -> IResult<&[u8], u32, Error> {
+    use crate::types::expr::*;
+
     let (input, first_byte) = be_u8(input)?;
     match first_byte {
         1..=0xEF => Ok((input, first_byte as u32 - 1)),
-        0xF0 => map(be_u8, |byte| byte as u32)(input),
-        0xF1 => map(be_u8, |byte| (byte as u32) << 8)(input),
-        0xF2 => map(be_u16, |short| short as u32)(input),
-        0xFA => be_u24(input),
-        0xFE => be_u32(input),
+        BYTE => map(be_u8, |byte| (byte as u32))(input),
+        BYTE_SHIFTED_8 => map(be_u8, |byte| ((byte as u32) << 8))(input),
+        BYTE_SHIFTED_16 => map(be_u8, |byte| ((byte as u32) << 16))(input),
+        BYTE_SHIFTED_24 => map(be_u8, |byte| ((byte as u32) << 24))(input),
+        INT16 => map(be_u16, |short| (short as u32))(input),
+        INT16_SHIFTED_8 => map(be_u16, |short| ((short as u32) << 8))(input),
+        INT16_SHIFTED_16 => map(be_u16, |short| ((short as u32) << 16))(input),
+        INT16_FIRST_AND_THIRD_BYTES => map(pair(be_u8, be_u8), |(hi, lo)| {
+            ((hi as u32) << 16) | (lo as u32)
+        })(input),
+        INT16_SECOND_AND_FOURTH_BYTES => map(pair(be_u8, be_u8), |(hi, lo)| {
+            ((hi as u32) << 24) | ((lo as u32) << 8)
+        })(input),
+        INT16_FIRST_AND_LAST_BYTES => map(pair(be_u8, be_u8), |(hi, lo)| {
+            ((hi as u32) << 24) | (lo as u32)
+        })(input),
+        INT24 => be_u24(input),
+        INT24_SHIFTED_8 => map(be_u24, |value| (value << 8))(input),
+        INT24_FIRST_SECOND_AND_FOURTH_BYTES => map(pair(be_u8, be_u16), |(hi, lo)| {
+            ((hi as u32) << 24) | (lo as u32)
+        })(input),
+        INT24_FIRST_THIRD_AND_FOURTH_BYTES => map(pair(be_u16, be_u8), |(hi, lo)| {
+            ((hi as u32) << 16) | (lo as u32)
+        })(input),
+        INT32 => be_u32(input),
         _ => Err(nom::Err::Failure(Error::from_error_kind(
             input,
             ErrorKind::Alt,
