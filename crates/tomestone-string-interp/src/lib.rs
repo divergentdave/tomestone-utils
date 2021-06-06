@@ -493,7 +493,7 @@ mod tests {
 
 #[cfg(test)]
 mod proptests {
-    use std::num::NonZeroU8;
+    use std::{iter::empty, num::NonZeroU8};
 
     use quickcheck::{Arbitrary, Gen, QuickCheck};
 
@@ -540,6 +540,149 @@ mod proptests {
             13 => Expression::Text(Box::new(arbitrary_text(g, depth + 1))),
             _ => unreachable!(),
         }
+    }
+
+    fn shrink_expr(expr: &Expression) -> Box<dyn Iterator<Item = Expression>> {
+        match expr {
+            Expression::GreaterThanOrEqual(boite) => Box::new(
+                shrink_expr(&boite.0)
+                    .map({
+                        let right = boite.1.clone();
+                        move |left| Expression::GreaterThanOrEqual(Box::new((left, right.clone())))
+                    })
+                    .chain(shrink_expr(&boite.1).map({
+                        let left = boite.0.clone();
+                        move |right| Expression::GreaterThanOrEqual(Box::new((left.clone(), right)))
+                    })),
+            ),
+            Expression::TodoComparison1(boite) => Box::new(
+                shrink_expr(&boite.0)
+                    .map({
+                        let right = boite.1.clone();
+                        move |left| Expression::TodoComparison1(Box::new((left, right.clone())))
+                    })
+                    .chain(shrink_expr(&boite.1).map({
+                        let left = boite.0.clone();
+                        move |right| Expression::TodoComparison1(Box::new((left.clone(), right)))
+                    })),
+            ),
+            Expression::LessThanOrEqual(boite) => Box::new(
+                shrink_expr(&boite.0)
+                    .map({
+                        let right = boite.1.clone();
+                        move |left| Expression::LessThanOrEqual(Box::new((left, right.clone())))
+                    })
+                    .chain(shrink_expr(&boite.1).map({
+                        let left = boite.0.clone();
+                        move |right| Expression::LessThanOrEqual(Box::new((left.clone(), right)))
+                    })),
+            ),
+            Expression::TodoComparison2(boite) => Box::new(
+                shrink_expr(&boite.0)
+                    .map({
+                        let right = boite.1.clone();
+                        move |left| Expression::TodoComparison2(Box::new((left, right.clone())))
+                    })
+                    .chain(shrink_expr(&boite.1).map({
+                        let left = boite.0.clone();
+                        move |right| Expression::TodoComparison2(Box::new((left.clone(), right)))
+                    })),
+            ),
+            Expression::Equal(boite) => Box::new(
+                shrink_expr(&boite.0)
+                    .map({
+                        let right = boite.1.clone();
+                        move |left| Expression::Equal(Box::new((left, right.clone())))
+                    })
+                    .chain(shrink_expr(&boite.1).map({
+                        let left = boite.0.clone();
+                        move |right| Expression::Equal(Box::new((left.clone(), right)))
+                    })),
+            ),
+            Expression::TodoComparison3(boite) => Box::new(
+                shrink_expr(&boite.0)
+                    .map({
+                        let right = boite.1.clone();
+                        move |left| Expression::TodoComparison3(Box::new((left, right.clone())))
+                    })
+                    .chain(shrink_expr(&boite.1).map({
+                        let left = boite.0.clone();
+                        move |right| Expression::TodoComparison3(Box::new((left.clone(), right)))
+                    })),
+            ),
+            Expression::TopLevelParameter(parameter_index) => {
+                Box::new(parameter_index.shrink().map(Expression::TopLevelParameter))
+            }
+            Expression::IntegerParameter(boite) => Box::new(
+                shrink_expr(boite)
+                    .map(Box::new)
+                    .map(Expression::IntegerParameter),
+            ),
+            Expression::PlayerParameter(boite) => Box::new(
+                shrink_expr(boite)
+                    .map(Box::new)
+                    .map(Expression::PlayerParameter),
+            ),
+            Expression::StringParameter(boite) => Box::new(
+                shrink_expr(boite)
+                    .map(Box::new)
+                    .map(Expression::StringParameter),
+            ),
+            Expression::ObjectParameter(boite) => Box::new(
+                shrink_expr(boite)
+                    .map(Box::new)
+                    .map(Expression::ObjectParameter),
+            ),
+            Expression::TodoEC => Box::new(empty()),
+            Expression::Integer(value) => Box::new(value.shrink().map(Expression::Integer)),
+            Expression::Text(boite) => Box::new(boite.shrink().map(Expression::Text)),
+        }
+    }
+
+    fn shrink_expr_list(
+        expressions: &Vec<Expression>,
+    ) -> Box<dyn Iterator<Item = Vec<Expression>>> {
+        #[derive(Clone)]
+        struct ExpressionShrinkWrapper(Expression);
+
+        impl Arbitrary for ExpressionShrinkWrapper {
+            fn arbitrary(g: &mut Gen) -> Self {
+                ExpressionShrinkWrapper(arbitrary_expr(g, 0))
+            }
+
+            fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+                Box::new(shrink_expr(&self.0).map(ExpressionShrinkWrapper))
+            }
+        }
+
+        let wrapped = expressions
+            .iter()
+            .cloned()
+            .map(ExpressionShrinkWrapper)
+            .collect::<Vec<_>>();
+        Box::new(
+            wrapped
+                .shrink()
+                .map(|vec| vec.into_iter().map(|wrapped| wrapped.0).collect()),
+        )
+    }
+
+    fn shrink_expr_list_preserve_length(
+        expressions: &Vec<Expression>,
+    ) -> Box<dyn Iterator<Item = Vec<Expression>>> {
+        let expressions = expressions.clone();
+        Box::new(
+            (0..expressions.len())
+                .map(move |i| {
+                    let expressions = expressions.clone();
+                    shrink_expr(&expressions[i]).map(move |shrunk| {
+                        let mut expressions = expressions.clone();
+                        expressions[i] = shrunk;
+                        expressions
+                    })
+                })
+                .flatten(),
+        )
     }
 
     fn arbitrary_segment(g: &mut Gen, depth: usize) -> Segment {
@@ -699,6 +842,328 @@ mod proptests {
         fn arbitrary(g: &mut Gen) -> Segment {
             arbitrary_segment(g, 0)
         }
+
+        fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+            match self {
+                Segment::Literal(string) => Box::new(string.shrink().map(Segment::Literal)),
+                Segment::TodoResetTime(_) => Box::new(empty()),
+                Segment::Time(arg) => Box::new(shrink_expr(arg).map(Segment::Time)),
+                Segment::If {
+                    condition,
+                    true_value,
+                    false_value,
+                } => Box::new(
+                    vec![
+                        {
+                            let true_value = true_value.clone();
+                            let false_value = false_value.clone();
+                            Box::new(shrink_expr(condition).map(move |condition| Segment::If {
+                                condition,
+                                true_value: true_value.clone(),
+                                false_value: false_value.clone(),
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let condition = condition.clone();
+                            let false_value = false_value.clone();
+                            Box::new(shrink_expr(true_value).map(move |true_value| Segment::If {
+                                condition: condition.clone(),
+                                true_value,
+                                false_value: false_value.clone(),
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let condition = condition.clone();
+                            let true_value = true_value.clone();
+                            Box::new(
+                                shrink_expr(false_value).map(move |false_value| Segment::If {
+                                    condition: condition.clone(),
+                                    true_value: true_value.clone(),
+                                    false_value,
+                                }),
+                            ) as Box<dyn Iterator<Item = Self>>
+                        },
+                    ]
+                    .into_iter()
+                    .flatten(),
+                ),
+                Segment::Switch {
+                    discriminant,
+                    cases,
+                } => Box::new(
+                    shrink_expr(discriminant)
+                        .map({
+                            let cases = cases.clone();
+                            move |discriminant| Segment::Switch {
+                                discriminant,
+                                cases: cases.clone(),
+                            }
+                        })
+                        .chain(shrink_expr_list(cases).filter(|vec| !vec.is_empty()).map({
+                            let discriminant = discriminant.clone();
+                            move |cases| Segment::Switch {
+                                discriminant: discriminant.clone(),
+                                cases,
+                            }
+                        })),
+                ),
+                Segment::Todo0A(arg) => Box::new(shrink_expr(arg).map(Segment::Todo0A)),
+                Segment::IfEquals {
+                    left,
+                    right,
+                    true_value,
+                    false_value,
+                } => Box::new(
+                    vec![
+                        {
+                            let right = right.clone();
+                            let true_value = true_value.clone();
+                            let false_value = false_value.clone();
+                            Box::new(shrink_expr(left).map(move |left| Segment::IfEquals {
+                                left,
+                                right: right.clone(),
+                                true_value: true_value.clone(),
+                                false_value: false_value.clone(),
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let left = left.clone();
+                            let true_value = true_value.clone();
+                            let false_value = false_value.clone();
+                            Box::new(shrink_expr(right).map(move |right| Segment::IfEquals {
+                                left: left.clone(),
+                                right,
+                                true_value: true_value.clone(),
+                                false_value: false_value.clone(),
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let left = left.clone();
+                            let right = right.clone();
+                            let false_value = false_value.clone();
+                            Box::new(shrink_expr(true_value).map(move |true_value| {
+                                Segment::IfEquals {
+                                    left: left.clone(),
+                                    right: right.clone(),
+                                    true_value,
+                                    false_value: false_value.clone(),
+                                }
+                            }))
+                        },
+                        {
+                            let left = left.clone();
+                            let right = right.clone();
+                            let true_value = true_value.clone();
+                            Box::new(shrink_expr(false_value).map(move |false_value| {
+                                Segment::IfEquals {
+                                    left: left.clone(),
+                                    right: right.clone(),
+                                    true_value: true_value.clone(),
+                                    false_value,
+                                }
+                            }))
+                        },
+                    ]
+                    .into_iter()
+                    .flatten(),
+                ),
+                Segment::Todo0F {
+                    player,
+                    self_value,
+                    other_value,
+                } => Box::new(
+                    vec![
+                        {
+                            let self_value = self_value.clone();
+                            let other_value = other_value.clone();
+                            Box::new(shrink_expr(player).map(move |player| Segment::Todo0F {
+                                player,
+                                self_value: self_value.clone(),
+                                other_value: other_value.clone(),
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let player = player.clone();
+                            let other_value = other_value.clone();
+                            Box::new(shrink_expr(self_value).map(move |self_value| {
+                                Segment::Todo0F {
+                                    player: player.clone(),
+                                    self_value,
+                                    other_value: other_value.clone(),
+                                }
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let player = player.clone();
+                            let self_value = self_value.clone();
+                            Box::new(shrink_expr(other_value).map(move |other_value| {
+                                Segment::Todo0F {
+                                    player: player.clone(),
+                                    self_value: self_value.clone(),
+                                    other_value,
+                                }
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                    ]
+                    .into_iter()
+                    .flatten(),
+                ),
+                Segment::NewLine => Box::new(empty()),
+                Segment::GuiIcon(arg) => Box::new(shrink_expr(arg).map(Segment::GuiIcon)),
+                Segment::ColorChange(arg) => Box::new(shrink_expr(arg).map(Segment::ColorChange)),
+                Segment::Todo14(arg) => Box::new(shrink_expr(arg).map(Segment::Todo14)),
+                Segment::SoftHyphen => Box::new(empty()),
+                Segment::Todo17 => Box::new(empty()),
+                Segment::Emphasis2(value) => Box::new(value.shrink().map(Segment::Emphasis2)),
+                Segment::Emphasis(value) => Box::new(value.shrink().map(Segment::Emphasis)),
+                Segment::Todo1B(_) => Box::new(empty()),
+                Segment::Todo1C(_) => Box::new(empty()),
+                Segment::Indent => Box::new(empty()),
+                Segment::CommandIcon(arg) => Box::new(shrink_expr(arg).map(Segment::CommandIcon)),
+                Segment::Dash => Box::new(empty()),
+                Segment::Value(arg) => Box::new(shrink_expr(arg).map(Segment::Value)),
+                Segment::TodoFormat(arg, bytes) => Box::new(shrink_expr(arg).map({
+                    let bytes = bytes.clone();
+                    move |arg| Segment::TodoFormat(arg, bytes.clone())
+                })),
+                Segment::TwoDigitValue(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::TwoDigitValue))
+                }
+                Segment::Todo26(arg1, arg2, arg3) => {
+                    Box::new(
+                        vec![
+                            {
+                                let arg2 = arg2.clone();
+                                let arg3 = arg3.clone();
+                                Box::new(shrink_expr(arg1).map(move |arg1| {
+                                    Segment::Todo26(arg1, arg2.clone(), arg3.clone())
+                                }))
+                                    as Box<dyn Iterator<Item = Self>>
+                            },
+                            {
+                                let arg1 = arg1.clone();
+                                let arg3 = arg3.clone();
+                                Box::new(shrink_expr(arg2).map(move |arg2| {
+                                    Segment::Todo26(arg1.clone(), arg2, arg3.clone())
+                                }))
+                                    as Box<dyn Iterator<Item = Self>>
+                            },
+                            {
+                                let arg1 = arg1.clone();
+                                let arg2 = arg2.clone();
+                                Box::new(shrink_expr(arg3).map(move |arg3| {
+                                    Segment::Todo26(arg1.clone(), arg2.clone(), arg3)
+                                }))
+                                    as Box<dyn Iterator<Item = Self>>
+                            },
+                        ]
+                        .into_iter()
+                        .flatten(),
+                    )
+                }
+                Segment::Sheet(args) => {
+                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::Sheet))
+                }
+                Segment::TodoHighlight(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::TodoHighlight))
+                }
+                Segment::Link(args) => {
+                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::Link))
+                }
+                Segment::Split {
+                    input,
+                    separator,
+                    index,
+                } => Box::new(
+                    vec![
+                        {
+                            let separator = separator.clone();
+                            let index = index.clone();
+                            Box::new(shrink_expr(input).map(move |input| Segment::Split {
+                                input,
+                                separator: separator.clone(),
+                                index: index.clone(),
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let input = input.clone();
+                            let index = index.clone();
+                            Box::new(shrink_expr(separator).map(move |separator| Segment::Split {
+                                input: input.clone(),
+                                separator,
+                                index: index.clone(),
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let input = input.clone();
+                            let separator = separator.clone();
+                            Box::new(shrink_expr(index).map(move |index| Segment::Split {
+                                input: input.clone(),
+                                separator: separator.clone(),
+                                index,
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                    ]
+                    .into_iter()
+                    .flatten(),
+                ),
+                Segment::Todo2D(arg) => Box::new(shrink_expr(arg).map(Segment::Todo2D)),
+                Segment::AutoTranslate(arg1, arg2) => Box::new(
+                    shrink_expr(arg1)
+                        .map({
+                            let arg2 = arg2.clone();
+                            move |arg1| Segment::AutoTranslate(arg1, arg2.clone())
+                        })
+                        .chain(shrink_expr(arg2).map({
+                            let arg1 = arg1.clone();
+                            move |arg2| Segment::AutoTranslate(arg1.clone(), arg2)
+                        })),
+                ),
+                Segment::Todo2F(arg) => Box::new(shrink_expr(arg).map(Segment::Todo2F)),
+                Segment::SheetJa(args) => {
+                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::SheetJa))
+                }
+                Segment::SheetEn(args) => {
+                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::SheetEn))
+                }
+                Segment::SheetDe(args) => {
+                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::SheetDe))
+                }
+                Segment::SheetFr(args) => {
+                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::SheetFr))
+                }
+                Segment::Todo40(arg) => Box::new(shrink_expr(arg).map(Segment::Todo40)),
+                Segment::Foreground(arg) => Box::new(shrink_expr(arg).map(Segment::Foreground)),
+                Segment::Glow(arg) => Box::new(shrink_expr(arg).map(Segment::Glow)),
+                Segment::ZeroPaddedValue { value, digits } => Box::new(
+                    vec![
+                        {
+                            let digits = digits.clone();
+                            Box::new(shrink_expr(value).map(move |value| {
+                                Segment::ZeroPaddedValue {
+                                    value,
+                                    digits: digits.clone(),
+                                }
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let value = value.clone();
+                            Box::new(shrink_expr(digits).map(move |digits| {
+                                Segment::ZeroPaddedValue {
+                                    value: value.clone(),
+                                    digits,
+                                }
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                    ]
+                    .into_iter()
+                    .flatten(),
+                ),
+                Segment::Todo51(arg) => Box::new(shrink_expr(arg).map(Segment::Todo51)),
+                Segment::Todo60(_) => Box::new(empty()),
+                Segment::Todo61(arg) => Box::new(shrink_expr(arg).map(Segment::Todo61)),
+            }
+        }
     }
 
     fn arbitrary_text(g: &mut Gen, depth: usize) -> Text {
@@ -712,6 +1177,10 @@ mod proptests {
             Text {
                 segments: Vec::<Segment>::arbitrary(g),
             }
+        }
+
+        fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+            Box::new(self.segments.shrink().map(|segments| Text { segments }))
         }
     }
 
