@@ -500,7 +500,7 @@ mod proptests {
     use super::{Expression, Segment, Text};
 
     fn arbitrary_expr(g: &mut Gen, depth: usize) -> Expression {
-        let choices = if depth >= 4 {
+        let choices = if depth >= 1 {
             &[6, 11, 12][..]
         } else {
             &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13][..]
@@ -698,7 +698,7 @@ mod proptests {
                 let mut string =
                     string.replace(|char| char == '\x00' || char == '\x02', "\u{fffd}");
                 if string.is_empty() {
-                    string.push(char::arbitrary(g));
+                    string.push('\u{fffd}');
                 }
                 Segment::Literal(string)
             }
@@ -845,7 +845,14 @@ mod proptests {
 
         fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
             match self {
-                Segment::Literal(string) => Box::new(string.shrink().map(Segment::Literal)),
+                Segment::Literal(string) => Box::new(
+                    string
+                        .shrink()
+                        .filter(|string| {
+                            !string.is_empty() && !string.bytes().any(|byte| byte == 2)
+                        })
+                        .map(Segment::Literal),
+                ),
                 Segment::TodoResetTime(_) => Box::new(empty()),
                 Segment::Time(arg) => Box::new(shrink_expr(arg).map(Segment::Time)),
                 Segment::If {
