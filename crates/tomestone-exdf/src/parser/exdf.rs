@@ -2,14 +2,17 @@ use std::convert::TryInto;
 
 use nom::{
     bytes::streaming::tag,
-    combinator::map,
-    multi::{count, length_data},
+    combinator::{map, map_res, rest},
+    error::ParseError,
+    multi::{count, length_value},
     number::complete::{be_u16, be_u32},
     sequence::{pair, tuple},
     IResult,
 };
 
 use tomestone_common::null_padding;
+
+use crate::RawDataRow;
 
 #[derive(Debug)]
 struct ExdfHeader {
@@ -51,7 +54,7 @@ impl Exdf {
         })
     }
 
-    pub fn lookup(&self, row_number: u32) -> Option<Result<&[u8], nom::error::Error<&[u8]>>> {
+    pub fn lookup(&self, row_number: u32) -> Option<Result<RawDataRow, nom::error::Error<&[u8]>>> {
         match self
             .offsets
             .binary_search_by_key(&row_number, |entry| entry.row_number)
@@ -83,7 +86,7 @@ pub struct ExdfIterator<'a> {
 }
 
 impl<'a, 'b> Iterator for ExdfIterator<'a> {
-    type Item = Result<(u32, &'a [u8]), nom::error::Error<&'a [u8]>>;
+    type Item = Result<(u32, RawDataRow<'a>), nom::error::Error<&'a [u8]>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let entry = self.offsets.next()?;
@@ -122,8 +125,23 @@ fn offset_entry(input: &[u8]) -> IResult<&[u8], OffsetEntry> {
     })(input)
 }
 
-fn data_row(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    length_data(map(pair(be_u32, be_u16), |(length, _)| length))(input)
+fn data_row(input: &[u8]) -> IResult<&[u8], RawDataRow<'_>> {
+    length_value(
+        map_res(be_u32, |length| {
+            let (length_plus_two, overflow) = length.overflowing_add(2);
+            if overflow {
+                return Err(nom::error::Error::from_error_kind(
+                    b"",
+                    nom::error::ErrorKind::TooLarge,
+                ));
+            }
+            Ok(length_plus_two)
+        }),
+        map(pair(be_u16, rest), |(sub_row_count, data)| RawDataRow {
+            data,
+            sub_row_count,
+        }),
+    )(input)
 }
 
 #[cfg(test)]

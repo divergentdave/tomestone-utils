@@ -162,15 +162,20 @@ fn main() {
                         eprintln!("error: couldn't read row");
                         process::exit(1);
                     };
-                    for value in row.iter() {
-                        if let Value::String(data) = value {
-                            match Text::parse(data) {
-                                Ok(text) => {
-                                    text.accept(&mut visitor);
-                                }
-                                Err(e) => {
-                                    eprintln!("error: failed to parse {} row {}: {}", name, i, e);
-                                    process::exit(1);
+                    for sub_row in row.iter() {
+                        for value in sub_row.iter() {
+                            if let Value::String(data) = value {
+                                match Text::parse(data) {
+                                    Ok(text) => {
+                                        text.accept(&mut visitor);
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "error: failed to parse {} row {}: {}",
+                                            name, i, e
+                                        );
+                                        process::exit(1);
+                                    }
                                 }
                             }
                         }

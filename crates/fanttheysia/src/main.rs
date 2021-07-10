@@ -111,22 +111,24 @@ fn main() {
         for page in dataset.page_iter() {
             for res in page {
                 let (i, row) = res.unwrap();
-                for value in row {
-                    if let Value::String(data) = value {
-                        match Text::parse(data) {
-                            Ok(text) => {
-                                let mut visitor = GenderConditionalTextVisitor::new();
-                                text.accept(&mut visitor);
-                                if !visitor.ifs.is_empty() {
-                                    println!("{} row {}: {:?}", name, i, text);
+                for sub_row in row {
+                    for value in sub_row {
+                        if let Value::String(data) = value {
+                            match Text::parse(data) {
+                                Ok(text) => {
+                                    let mut visitor = GenderConditionalTextVisitor::new();
+                                    text.accept(&mut visitor);
+                                    if !visitor.ifs.is_empty() {
+                                        println!("{} row {}: {:?}", name, i, text);
+                                    }
+                                    for if_tag in visitor.ifs.into_iter() {
+                                        if_tag_set.insert(if_tag);
+                                    }
                                 }
-                                for if_tag in visitor.ifs.into_iter() {
-                                    if_tag_set.insert(if_tag);
+                                Err(e) => {
+                                    eprintln!("error: failed to parse {} row {}: {}", name, i, e);
+                                    process::exit(1);
                                 }
-                            }
-                            Err(e) => {
-                                eprintln!("error: failed to parse {} row {}: {}", name, i, e);
-                                process::exit(1);
                             }
                         }
                     }

@@ -621,24 +621,29 @@ fn main() {
                         }
                     };
 
-                    let mut line = format!("{} [", row_number);
-                    for (i, value) in row.iter().enumerate() {
-                        if i != 0 {
-                            line.push_str(", ");
+                    let mut line = format!("{} [[", row_number);
+                    for (sub_row_idx, sub_row) in row.iter().enumerate() {
+                        if sub_row_idx != 0 {
+                            line.push_str("], [");
                         }
-                        if let Value::String(data) = value {
-                            match Text::parse(data) {
-                                Ok(text) => write!(&mut line, "{:?}", text).unwrap(),
-                                Err(e) => {
-                                    eprintln!("error: parsing tagged text failed: {}", e);
-                                    process::exit(1);
-                                }
+                        for (i, value) in sub_row.iter().enumerate() {
+                            if i != 0 {
+                                line.push_str(", ");
                             }
-                        } else {
-                            write!(&mut line, "{:?}", value).unwrap();
+                            if let Value::String(data) = value {
+                                match Text::parse(data) {
+                                    Ok(text) => write!(&mut line, "{:?}", text).unwrap(),
+                                    Err(e) => {
+                                        eprintln!("error: parsing tagged text failed: {}", e);
+                                        process::exit(1);
+                                    }
+                                }
+                            } else {
+                                write!(&mut line, "{:?}", value).unwrap();
+                            }
                         }
                     }
-                    line.push(']');
+                    line.push_str("]]");
                     println!("{}", line);
                 }
             }

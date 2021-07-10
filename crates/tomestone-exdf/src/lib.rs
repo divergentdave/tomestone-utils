@@ -70,6 +70,12 @@ impl FromStr for Language {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub enum Cardinality {
+    Single,
+    Multiple,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum ColumnFormat {
     String,
     Bool,
@@ -174,6 +180,11 @@ impl fmt::Display for Error {
     }
 }
 
+pub struct RawDataRow<'a> {
+    data: &'a [u8],
+    sub_row_count: u16,
+}
+
 struct DatasetPage {
     _row_start: u32,
     exdf: Exdf,
@@ -185,14 +196,14 @@ pub struct DatasetPageIter<'a> {
 }
 
 impl<'a> Iterator for DatasetPageIter<'a> {
-    type Item = Result<(u32, Vec<Value<'a>>), Error>;
+    type Item = Result<(u32, Vec<Vec<Value<'a>>>), Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (row_number, data) = match self.exdf_iter.next()? {
-            Ok((row_number, data)) => (row_number, data),
+        let (row_number, row_data) = match self.exdf_iter.next()? {
+            Ok((row_number, row_data)) => (row_number, row_data),
             Err(e) => return Some(Err(e.into())),
         };
-        match parse_row(data, &self.exhf) {
+        match parse_row(row_data, &self.exhf) {
             Ok(row) => Some(Ok((row_number, row))),
             Err(e) => Some(Err(e.into())),
         }

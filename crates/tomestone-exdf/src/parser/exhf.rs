@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 
 use nom::{
+    branch::alt,
     bytes::complete::tag,
     combinator::{map, map_res},
     multi::count,
@@ -11,7 +12,7 @@ use nom::{
 
 use tomestone_common::null_padding;
 
-use crate::{ColumnFormat, Language};
+use crate::{Cardinality, ColumnFormat, Language};
 
 #[derive(Debug, Clone)]
 struct ExhfHeader {
@@ -19,7 +20,8 @@ struct ExhfHeader {
     num_columns: u16,
     num_pages: u16,
     num_language_codes: u16,
-    num_rows: u32,
+    total_sub_rows: u32,
+    cardinality: Cardinality,
 }
 
 #[derive(Debug)]
@@ -28,7 +30,8 @@ pub struct Exhf {
     column_definitions: Vec<(ColumnFormat, u16)>,
     pages: Vec<(u32, u32)>,
     languages: Vec<Option<Language>>,
-    pub num_rows: u32,
+    total_sub_rows: u32,
+    cardinality: Cardinality,
 }
 
 impl Exhf {
@@ -43,7 +46,8 @@ impl Exhf {
             column_definitions,
             pages,
             languages,
-            num_rows: header.num_rows,
+            total_sub_rows: header.total_sub_rows,
+            cardinality: header.cardinality,
         }
     }
 
@@ -62,29 +66,51 @@ impl Exhf {
     pub fn row_size(&self) -> u16 {
         self.row_size
     }
+
+    pub fn total_sub_rows(&self) -> u32 {
+        self.total_sub_rows
+    }
+
+    pub fn cardinality(&self) -> Cardinality {
+        self.cardinality
+    }
 }
 
 fn exhf_header(input: &[u8]) -> IResult<&[u8], ExhfHeader> {
     map(
         tuple((
-            tag("EXHF"),
-            tag("\x00\x03"),
-            be_u16, // size of dataset chunk
-            be_u16, // number of columns
-            be_u16, // number of pages
-            be_u16, // number of lang codes
-            be_u16, // unknown
-            be_u32, // unknown
-            be_u32, // number of entries
+            tag(b"EXHF"),
+            tag(b"\x00\x03"),
+            be_u16,      // size of dataset chunk
+            be_u16,      // number of columns
+            be_u16,      // number of pages
+            be_u16,      // number of lang codes
+            be_u16,      // unknown
+            cardinality, // single value or multi-value
+            be_u16,      // unknown
+            be_u32,      // number of entries
             null_padding(8),
         )),
-        |(_, _, row_size, num_columns, num_pages, num_language_codes, _, _, num_rows, ())| {
+        |(
+            _,
+            _,
+            row_size,
+            num_columns,
+            num_pages,
+            num_language_codes,
+            _,
+            cardinality,
+            _,
+            total_sub_rows,
+            (),
+        )| {
             ExhfHeader {
                 row_size,
                 num_columns,
                 num_pages,
                 num_language_codes,
-                num_rows,
+                total_sub_rows,
+                cardinality,
             }
         },
     )(input)
@@ -100,6 +126,13 @@ fn page_entry(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
 
 fn language_code(input: &[u8]) -> IResult<&[u8], Option<Language>> {
     map_res(le_u16, Language::from_u16)(input)
+}
+
+fn cardinality(input: &[u8]) -> IResult<&[u8], Cardinality> {
+    alt((
+        map(tag(b"\x00\x01"), |_| Cardinality::Single),
+        map(tag(b"\x00\x02"), |_| Cardinality::Multiple),
+    ))(input)
 }
 
 pub fn parse_exhf(input: &[u8]) -> IResult<&[u8], Exhf> {

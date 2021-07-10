@@ -1,4 +1,4 @@
-use std::process;
+use std::{convert::TryInto, process};
 
 use tomestone_exdf::{Dataset, Language, RootList};
 use tomestone_sqpack::GameData;
@@ -47,11 +47,14 @@ fn main() {
             let page_iterators = dataset.page_iter().collect::<Vec<_>>();
             let page_count = page_iterators.len();
             let mut total_row_count = 0;
+            let mut total_sub_row_count = 0;
             for page in page_iterators {
                 let mut row_count = 0;
+                let mut sub_row_count = 0;
                 let mut last_row_number = None;
                 for res in page {
-                    let row_number = if let Ok((row_number, _)) = res {
+                    let row_number = if let Ok((row_number, row)) = res {
+                        sub_row_count += TryInto::<u32>::try_into(row.len()).unwrap();
                         row_number
                     } else {
                         eprintln!("error: couldn't read data set row");
@@ -70,16 +73,22 @@ fn main() {
                 }
                 if page_count != 1 {
                     println!(
-                        "{} ({:?}) page has {} total rows",
-                        name, language, row_count
+                        "{} ({:?}) page has a total of {} rows and {} sub-rows",
+                        name, language, row_count, sub_row_count
                     );
                 }
                 total_row_count += row_count;
+                total_sub_row_count += sub_row_count;
             }
             assert_eq!(
-                total_row_count, dataset.exhf.num_rows,
-                "Number of rows didn't match for {}",
+                total_sub_row_count,
+                dataset.exhf.total_sub_rows(),
+                "Number of sub-rows didn't match for {}",
                 name
+            );
+            println!(
+                "{} ({:?}) has a total of {} rows and {} sub-rows across {} pages",
+                name, language, total_row_count, total_sub_row_count, page_count
             );
         }
     }

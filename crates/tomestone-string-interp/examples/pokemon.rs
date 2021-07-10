@@ -61,35 +61,37 @@ fn main() {
                     eprintln!("error: couldn't read row");
                     process::exit(1);
                 };
-                if let &[Value::String(col1), Value::String(col2)] = &*row {
-                    let col2_cleaned = if col2.len() > 4 && &col2[..2] == b"(-" {
-                        // Skip name in "(-...-)" at the beginning of a line
-                        if let Some(pos) = col2.windows(2).position(|window| window == b"-)") {
-                            &col2[pos + 2..]
+                for sub_row in row {
+                    if let &[Value::String(col1), Value::String(col2)] = &*sub_row {
+                        let col2_cleaned = if col2.len() > 4 && &col2[..2] == b"(-" {
+                            // Skip name in "(-...-)" at the beginning of a line
+                            if let Some(pos) = col2.windows(2).position(|window| window == b"-)") {
+                                &col2[pos + 2..]
+                            } else {
+                                col2
+                            }
                         } else {
                             col2
+                        };
+                        for (i, (caps_name, prose_name)) in NAMES.iter().enumerate() {
+                            if col1
+                                .windows(caps_name.len())
+                                .any(|window| window == *caps_name)
+                                && col2_cleaned
+                                    .windows(prose_name.len())
+                                    .any(|window| window == *prose_name)
+                            {
+                                println!(
+                                    "{:?} {:?}",
+                                    String::from_utf8_lossy(col1),
+                                    Text::parse(col2)
+                                );
+                                counters[i] += 1;
+                            }
                         }
                     } else {
-                        col2
-                    };
-                    for (i, (caps_name, prose_name)) in NAMES.iter().enumerate() {
-                        if col1
-                            .windows(caps_name.len())
-                            .any(|window| window == *caps_name)
-                            && col2_cleaned
-                                .windows(prose_name.len())
-                                .any(|window| window == *prose_name)
-                        {
-                            println!(
-                                "{:?} {:?}",
-                                String::from_utf8_lossy(col1),
-                                Text::parse(col2)
-                            );
-                            counters[i] += 1;
-                        }
+                        continue 'dataset;
                     }
-                } else {
-                    continue 'dataset;
                 }
             }
         }
