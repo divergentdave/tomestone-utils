@@ -83,7 +83,7 @@ mod tests {
             let (_, exhf) = super::exhf::parse_exhf(&exh_data).unwrap();
             for language in exhf.languages() {
                 let short_code = language.as_ref().map(Language::short_code);
-                for (page_start, _) in exhf.pages() {
+                for (page_start, _other) in exhf.pages() {
                     let exd_path = if let Some(short_code) = short_code {
                         format!("exd/{}_{}_{}.exd", name, page_start, short_code)
                     } else {

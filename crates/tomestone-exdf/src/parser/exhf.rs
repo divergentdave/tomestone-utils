@@ -28,6 +28,7 @@ pub struct Exhf {
     column_definitions: Vec<(ColumnFormat, u16)>,
     pages: Vec<(u32, u32)>,
     languages: Vec<Option<Language>>,
+    pub num_rows: u32,
 }
 
 impl Exhf {
@@ -42,6 +43,7 @@ impl Exhf {
             column_definitions,
             pages,
             languages,
+            num_rows: header.num_rows,
         }
     }
 
@@ -68,7 +70,7 @@ fn exhf_header(input: &[u8]) -> IResult<&[u8], ExhfHeader> {
             tag("EXHF"),
             tag("\x00\x03"),
             be_u16, // size of dataset chunk
-            be_u16, // number of datasets
+            be_u16, // number of columns
             be_u16, // number of pages
             be_u16, // number of lang codes
             be_u16, // unknown
