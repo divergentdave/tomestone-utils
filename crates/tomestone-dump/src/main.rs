@@ -613,7 +613,7 @@ fn main() {
             println!("{:?}", &dataset.exhf);
             for page_iter in dataset.page_iter() {
                 for res in page_iter {
-                    let (_row_number, row) = match res {
+                    let (row_number, row) = match res {
                         Ok(row) => row,
                         Err(e) => {
                             eprintln!("error: reading dataset failed: {}", e);
@@ -621,8 +621,7 @@ fn main() {
                         }
                     };
 
-                    let mut line = String::new();
-                    line.push('[');
+                    let mut line = format!("{} [", row_number);
                     for (i, value) in row.iter().enumerate() {
                         if i != 0 {
                             line.push_str(", ");
