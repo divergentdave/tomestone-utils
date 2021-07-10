@@ -7,6 +7,7 @@ use parser::{
 };
 use tomestone_sqpack::GameData;
 
+pub mod encoding;
 pub mod parser;
 
 #[derive(Debug)]
