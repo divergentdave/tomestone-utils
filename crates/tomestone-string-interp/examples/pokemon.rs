@@ -14,14 +14,15 @@ fn main() {
         eprintln!("error: set the environment variable FFXIV_INSTALL_DIR to the game's installation directory");
         process::exit(1);
     };
-    let game_data = if let Ok(game_data) = GameData::new(&root) {
-        game_data
-    } else {
-        eprintln!(
-            "error: couldn't read the directory {:?} (from environment variable FFXIV_INSTALL_DIR)",
-            root
+    let game_data = match GameData::new(&root) {
+        Ok(game_data) => game_data,
+        Err(e) => {
+            eprintln!(
+            "error: couldn't read the directory {:?} (from environment variable FFXIV_INSTALL_DIR), {}",
+            root, e
         );
-        process::exit(1);
+            process::exit(1);
+        }
     };
 
     let root_list = if let Ok(root_list) = RootList::open(&game_data) {
