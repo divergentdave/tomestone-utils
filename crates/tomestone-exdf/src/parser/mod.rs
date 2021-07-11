@@ -27,13 +27,13 @@ pub fn parse_row<'a>(
         .map(|sub_row_index| {
             let sub_row_start: usize =
                 TryInto::<usize>::try_into(sub_row_index).unwrap() * row_size;
-            exhf.column_definitions()
+            exhf.columns_table_order()
                 .iter()
                 .map(
-                    |(format, offset)| -> Result<Value<'a>, nom::Err<nom::error::Error<&'a [u8]>>> {
-                        let offset = sub_row_start + TryInto::<usize>::try_into(*offset).unwrap();
+                    |column_def| -> Result<Value<'a>, nom::Err<nom::error::Error<&'a [u8]>>> {
+                        let offset = sub_row_start + column_def.offset;
                         let input = &row_data.data[offset..];
-                        Ok(match format {
+                        Ok(match column_def.format {
                             ColumnFormat::String => {
                                 let value: usize = be_u32(input)?.1.try_into().unwrap();
                                 let row_end = sub_row_start + row_size;

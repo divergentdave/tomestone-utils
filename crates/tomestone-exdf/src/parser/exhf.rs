@@ -12,7 +12,7 @@ use nom::{
 
 use tomestone_common::null_padding;
 
-use crate::{Cardinality, ColumnFormat, Language};
+use crate::{Cardinality, ColumnDefinition, ColumnFormat, Language};
 
 #[derive(Debug, Clone)]
 struct ExhfHeader {
@@ -27,7 +27,8 @@ struct ExhfHeader {
 #[derive(Debug)]
 pub struct Exhf {
     row_size: u16,
-    column_definitions: Vec<(ColumnFormat, u16)>,
+    columns_table_order: Vec<ColumnDefinition>,
+    columns_offset_order: Vec<ColumnDefinition>,
     pages: Vec<(u32, u32)>,
     languages: Vec<Option<Language>>,
     total_sub_rows: u32,
@@ -37,13 +38,16 @@ pub struct Exhf {
 impl Exhf {
     fn new(
         header: ExhfHeader,
-        column_definitions: Vec<(ColumnFormat, u16)>,
+        column_definitions: Vec<ColumnDefinition>,
         pages: Vec<(u32, u32)>,
         languages: Vec<Option<Language>>,
     ) -> Exhf {
+        let mut columns_offset_order = column_definitions.clone();
+        columns_offset_order.sort_by_key(|def| def.offset);
         Exhf {
             row_size: header.row_size,
-            column_definitions,
+            columns_table_order: column_definitions,
+            columns_offset_order,
             pages,
             languages,
             total_sub_rows: header.total_sub_rows,
@@ -51,8 +55,12 @@ impl Exhf {
         }
     }
 
-    pub fn column_definitions(&self) -> &[(ColumnFormat, u16)] {
-        &self.column_definitions
+    pub fn columns_table_order(&self) -> &[ColumnDefinition] {
+        &self.columns_table_order
+    }
+
+    pub fn columns_offset_order(&self) -> &[ColumnDefinition] {
+        &self.columns_offset_order
     }
 
     pub fn pages(&self) -> &[(u32, u32)] {
@@ -148,6 +156,15 @@ pub fn parse_exhf(input: &[u8]) -> IResult<&[u8], Exhf> {
         )),
         move |(column_definitions, pages, languages)| {
             let header = header.clone();
+            let column_definitions = column_definitions
+                .into_iter()
+                .enumerate()
+                .map(|(index, (format, offset))| ColumnDefinition {
+                    format,
+                    offset: offset.into(),
+                    index,
+                })
+                .collect();
             Exhf::new(header, column_definitions, pages, languages)
         },
     )(input)

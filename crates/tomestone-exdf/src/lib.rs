@@ -75,6 +75,7 @@ pub enum Cardinality {
     Multiple,
 }
 
+/// Data type and encoding of a column.
 #[derive(Debug, Clone, Copy)]
 pub enum ColumnFormat {
     String,
@@ -107,6 +108,16 @@ impl ColumnFormat {
             _ => Err(EnumParseError),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ColumnDefinition {
+    /// Data type of the column.
+    format: ColumnFormat,
+    /// Offset of the column inside the fixed-width portion of an encoded row.
+    offset: usize,
+    /// Index of the column in the table's schema.
+    index: usize,
 }
 
 pub enum Value<'a> {

@@ -25,10 +25,10 @@ pub fn encode_row(row: &Vec<Vec<Value<'_>>>, header: &Exhf) -> Vec<u8> {
     let mut string_data_offset_relative: u32 = 0;
     let mut string_data_offset_vec = 6 + row_size * row.len();
     for sub_row in row.iter() {
-        for (value, (format, column_offset)) in sub_row.iter().zip(header.column_definitions()) {
-            let column_offset: usize = (*column_offset).try_into().unwrap();
-            let off = fixed_data_offset + column_offset;
-            match (value, format) {
+        for column_def in header.columns_offset_order() {
+            let off = fixed_data_offset + column_def.offset;
+            let value = &sub_row[column_def.index];
+            match (value, column_def.format) {
                 (Value::String(val), crate::ColumnFormat::String) => {
                     data[off..off + 4].copy_from_slice(
                         &TryInto::<u32>::try_into(string_data_offset_relative)
