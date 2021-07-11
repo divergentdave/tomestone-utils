@@ -657,8 +657,8 @@ fn main() {
                     };
 
                     let mut line = format!("{} [[", row_number);
-                    for (sub_row_idx, sub_row) in row.iter().enumerate() {
-                        if sub_row_idx != 0 {
+                    for (sub_row_counter, (_sub_row_index, sub_row)) in row.iter().enumerate() {
+                        if sub_row_counter != 0 {
                             line.push_str("], [");
                         }
                         for (i, value) in sub_row.iter().enumerate() {

@@ -151,7 +151,7 @@ mod tests {
     use tomestone_sqpack::{Category, Expansion, GameData};
 
     use super::{exdf_header, Exdf};
-    use crate::{parser::exhf::parse_exhf, Dataset, Language};
+    use crate::{parser::exhf::parse_exhf, Dataset, Language, RootList};
 
     #[test]
     fn exdf_game_data() {
@@ -233,6 +233,13 @@ mod tests {
         }
     }
 
+    fn trim_trailing_nulls(input: &[u8]) -> &[u8] {
+        match input.iter().rev().position(|x| *x != 0) {
+            Some(pos) => &input[..input.len() - pos],
+            None => &[],
+        }
+    }
+
     #[test]
     #[ignore = "slow test"]
     fn exd_round_trip_rows() {
@@ -245,21 +252,36 @@ mod tests {
         };
         let game_data = GameData::new(root).unwrap();
 
-        let dataset = Dataset::load(&game_data, "fcauthority", Language::English).unwrap();
+        let root_list = RootList::open(&game_data).unwrap();
+        for name in root_list.iter() {
+            let dataset = Dataset::load(&game_data, name, Language::English).unwrap();
 
-        for (page_1, page_2) in dataset.page_iter().zip(dataset.page_iter()) {
-            for (res_parsed, res_raw) in page_1.zip(page_2.exdf_iter) {
-                let (number_1, row) = res_parsed.unwrap();
-                let (number_2, row_data) = res_raw.unwrap();
-                assert_eq!(number_1, number_2);
-                let encoded = crate::encoding::encode_row(&row, &dataset.exhf);
-                assert_eq!(
-                    row_data.data,
-                    &encoded[6..],
-                    "real length: {}, length from re-encoding: {}",
-                    row_data.data.len(),
-                    encoded.len() - 6
-                );
+            for (page_1, page_2) in dataset.page_iter().zip(dataset.page_iter()) {
+                for (res_parsed, res_raw) in page_1.zip(page_2.exdf_iter) {
+                    let (number_1, row) = res_parsed.unwrap();
+                    let (number_2, row_data) = res_raw.unwrap();
+                    assert_eq!(number_1, number_2);
+                    let encoded = crate::encoding::encode_row(&row, &dataset.exhf);
+                    let encoded_inner = &encoded[6..];
+                    if row_data.data.len() != encoded_inner.len() {
+                        println!(
+                            "{} ({:?}) real length: {}, length from re-encoding: {}",
+                            name,
+                            dataset.exhf.cardinality(),
+                            row_data.data.len(),
+                            encoded_inner.len()
+                        );
+                    }
+                    assert_eq!(
+                        trim_trailing_nulls(row_data.data),
+                        trim_trailing_nulls(encoded_inner),
+                        "data set {}, {:?}, {} sub-rows, {:?}",
+                        name,
+                        row,
+                        row.len(),
+                        dataset.exhf
+                    );
+                }
             }
         }
     }

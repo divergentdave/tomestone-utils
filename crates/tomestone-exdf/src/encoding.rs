@@ -1,20 +1,23 @@
 use std::convert::TryInto;
 
-use crate::{parser::exhf::Exhf, Value};
+use crate::{parser::exhf::Exhf, Cardinality, Value};
 
 // TODO, future work: write new code to pre-compute file sizes, and then encode in-place with one allocation.
 
-pub fn encode_row(row: &Vec<Vec<Value<'_>>>, header: &Exhf) -> Vec<u8> {
-    let mut inner_length: usize =
-        TryInto::<usize>::try_into(header.row_size()).unwrap() * row.len();
-    for sub_row in row.iter() {
+pub fn encode_row(row: &Vec<(u16, Vec<Value<'_>>)>, header: &Exhf) -> Vec<u8> {
+    let row_size: usize = header.row_size().into();
+    let mut inner_length: usize = match header.cardinality() {
+        Cardinality::Single => row_size * row.len(),
+        Cardinality::Multiple => (row_size + 2) * row.len(),
+    };
+    for (_sub_row_index, sub_row) in row.iter() {
         for value in sub_row.iter() {
             if let Value::String(data) = value {
                 inner_length += data.len() + 1;
             }
         }
     }
-    let outer_length = ((inner_length + 6) + 1) / 2 * 2;
+    let outer_length = inner_length + 6;
     let inner_length: u32 = inner_length.try_into().unwrap();
 
     let mut data = vec![0; outer_length];
@@ -24,7 +27,12 @@ pub fn encode_row(row: &Vec<Vec<Value<'_>>>, header: &Exhf) -> Vec<u8> {
     let mut fixed_data_offset = 6;
     let mut string_data_offset_relative: u32 = 0;
     let mut string_data_offset_vec = 6 + row_size * row.len();
-    for sub_row in row.iter() {
+    for (sub_row_index, sub_row) in row.iter() {
+        if let Cardinality::Multiple = header.cardinality() {
+            data[fixed_data_offset..fixed_data_offset + 2]
+                .copy_from_slice(&sub_row_index.to_be_bytes());
+            fixed_data_offset += 2;
+        }
         for column_def in header.columns_offset_order() {
             let off = fixed_data_offset + column_def.offset;
             let value = &sub_row[column_def.index];

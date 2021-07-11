@@ -109,7 +109,7 @@ fn main() {
                         eprintln!("error: couldn't read row");
                         process::exit(1);
                     };
-                    for sub_row in row.iter() {
+                    for (_sub_row_index, sub_row) in row.iter() {
                         for value in sub_row.iter() {
                             if let Value::String(data) = value {
                                 match Text::parse(data) {

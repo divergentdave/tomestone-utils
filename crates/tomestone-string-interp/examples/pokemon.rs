@@ -62,7 +62,7 @@ fn main() {
                     eprintln!("error: couldn't read row");
                     process::exit(1);
                 };
-                for sub_row in row {
+                for (_sub_row_index, sub_row) in row {
                     if let &[Value::String(col1), Value::String(col2)] = &*sub_row {
                         let col2_cleaned = if col2.len() > 4 && &col2[..2] == b"(-" {
                             // Skip name in "(-...-)" at the beginning of a line

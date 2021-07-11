@@ -207,7 +207,7 @@ pub struct DatasetPageIter<'a> {
 }
 
 impl<'a> Iterator for DatasetPageIter<'a> {
-    type Item = Result<(u32, Vec<Vec<Value<'a>>>), Error>;
+    type Item = Result<(u32, Vec<(u16, Vec<Value<'a>>)>), Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let (row_number, row_data) = match self.exdf_iter.next()? {

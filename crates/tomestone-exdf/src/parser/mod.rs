@@ -16,18 +16,31 @@ pub mod exhf;
 pub fn parse_row<'a>(
     row_data: RawDataRow<'a>,
     exhf: &Exhf,
-) -> Result<Vec<Vec<Value<'a>>>, nom::error::ErrorKind> {
-    if let Cardinality::Single = exhf.cardinality() {
-        if row_data.sub_row_count != 1 {
-            return Err(nom::error::ErrorKind::Verify);
-        }
-    }
+) -> Result<Vec<(u16, Vec<Value<'a>>)>, nom::error::ErrorKind> {
     let row_size: usize = exhf.row_size().try_into().unwrap();
+    let (is_multiple, wrapped_sub_row_length, values_offset) = match exhf.cardinality() {
+        Cardinality::Single => {
+            if row_data.sub_row_count != 1 {
+                return Err(nom::error::ErrorKind::Verify);
+            }
+            (false, row_size, 0)
+        }
+        Cardinality::Multiple => (true, row_size + 2, 2),
+    };
     (0..row_data.sub_row_count)
-        .map(|sub_row_index| {
-            let sub_row_start: usize =
-                TryInto::<usize>::try_into(sub_row_index).unwrap() * row_size;
-            exhf.columns_table_order()
+        .map(|sub_row_counter| {
+            let sub_row_start_precursor =
+                TryInto::<usize>::try_into(sub_row_counter).unwrap() * wrapped_sub_row_length;
+            let sub_row_index = if is_multiple {
+                be_u16(&row_data.data[sub_row_start_precursor..])
+                    .map_err(|_: nom::Err<nom::error::Error<&'a [u8]>>| nom::error::ErrorKind::Eof)?
+                    .1
+            } else {
+                0
+            };
+            let sub_row_start = sub_row_start_precursor + values_offset;
+            let sub_row = exhf
+                .columns_table_order()
                 .iter()
                 .map(
                     |column_def| -> Result<Value<'a>, nom::Err<nom::error::Error<&'a [u8]>>> {
@@ -75,9 +88,10 @@ pub fn parse_row<'a>(
                 .map_err(|e| match e {
                     nom::Err::Incomplete(_) => unreachable!(),
                     nom::Err::Error(e) | nom::Err::Failure(e) => e.code,
-                })
+                })?;
+            Ok((sub_row_index, sub_row))
         })
-        .collect::<Result<Vec<Vec<Value<'a>>>, nom::error::ErrorKind>>()
+        .collect::<Result<Vec<(u16, Vec<Value<'a>>)>, nom::error::ErrorKind>>()
 }
 
 #[cfg(test)]

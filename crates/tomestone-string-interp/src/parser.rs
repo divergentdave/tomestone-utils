@@ -352,7 +352,7 @@ mod tests {
                 for page in dataset.page_iter() {
                     for res in page {
                         let (i, row) = res.unwrap();
-                        for sub_row in row {
+                        for (_sub_row_index, sub_row) in row {
                             for value in sub_row {
                                 if let Value::String(data) = value {
                                     let res = tagged_text(data);

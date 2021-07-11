@@ -112,7 +112,7 @@ fn main() {
         for page in dataset.page_iter() {
             for res in page {
                 let (i, row) = res.unwrap();
-                for sub_row in row {
+                for (_sub_row_idx, sub_row) in row {
                     for value in sub_row {
                         if let Value::String(data) = value {
                             match Text::parse(data) {
