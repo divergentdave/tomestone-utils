@@ -18,6 +18,9 @@ fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + Ref
     let sqpack_dir = PathBuf::from(root).join("game").join("sqpack");
     for expansion in Expansion::iter_all() {
         let path = sqpack_dir.join(expansion.name());
+        if !path.is_dir() {
+            continue;
+        }
         for res in std::fs::read_dir(path).unwrap() {
             let file_entry = res.unwrap();
             let path = file_entry.path();
