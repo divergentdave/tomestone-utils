@@ -6,22 +6,25 @@ use crate::{parser::exhf::Exhf, Cardinality, Value};
 
 pub fn encode_row(row: &Vec<(u16, Vec<Value<'_>>)>, header: &Exhf) -> Vec<u8> {
     let row_size: usize = header.row_size().into();
-    let mut inner_length: usize = match header.cardinality() {
+    let inner_length_fixed: usize = match header.cardinality() {
         Cardinality::Single => row_size * row.len(),
         Cardinality::Multiple => (row_size + 2) * row.len(),
     };
+    let mut inner_length_variable: usize = 0;
     for (_sub_row_index, sub_row) in row.iter() {
         for value in sub_row.iter() {
             if let Value::String(data) = value {
-                inner_length += data.len() + 1;
+                inner_length_variable += data.len() + 1;
             }
         }
     }
     let outer_length = match header.cardinality() {
-        Cardinality::Single => ((inner_length + 6) + 3) / 4 * 4,
-        Cardinality::Multiple => (inner_length + 3) / 4 * 4 + 6,
+        Cardinality::Single => ((inner_length_fixed + inner_length_variable + 6) + 3) / 4 * 4,
+        Cardinality::Multiple => (inner_length_fixed + inner_length_variable + 3) / 4 * 4 + 6,
     };
-    let inner_length: u32 = inner_length.try_into().unwrap();
+    let inner_length: u32 = (inner_length_fixed + inner_length_variable)
+        .try_into()
+        .unwrap();
 
     let mut data = vec![0; outer_length];
     data[..4].copy_from_slice(&inner_length.to_be_bytes());
