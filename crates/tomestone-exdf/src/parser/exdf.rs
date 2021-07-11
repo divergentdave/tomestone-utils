@@ -265,11 +265,13 @@ mod tests {
                     let encoded_inner = &encoded[6..];
                     if row_data.data.len() != encoded_inner.len() {
                         println!(
-                            "{} ({:?}) real length: {}, length from re-encoding: {}",
+                            "{} ({:?}) real length: {}, length from re-encoding: {} ({} => {} modulo 4)",
                             name,
                             dataset.exhf.cardinality(),
                             row_data.data.len(),
-                            encoded_inner.len()
+                            encoded_inner.len(),
+                            row_data.data.len() % 4,
+                            encoded_inner.len() % 4,
                         );
                     }
                     assert_eq!(

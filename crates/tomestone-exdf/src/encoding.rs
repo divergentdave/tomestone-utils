@@ -17,7 +17,10 @@ pub fn encode_row(row: &Vec<(u16, Vec<Value<'_>>)>, header: &Exhf) -> Vec<u8> {
             }
         }
     }
-    let outer_length = inner_length + 6;
+    let outer_length = match header.cardinality() {
+        Cardinality::Single => ((inner_length + 6) + 3) / 4 * 4,
+        Cardinality::Multiple => (inner_length + 3) / 4 * 4 + 6,
+    };
     let inner_length: u32 = inner_length.try_into().unwrap();
 
     let mut data = vec![0; outer_length];
