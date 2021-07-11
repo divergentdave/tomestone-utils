@@ -5,7 +5,8 @@ use crate::{parser::exhf::Exhf, Value};
 // TODO, future work: write new code to pre-compute file sizes, and then encode in-place with one allocation.
 
 pub fn encode_row(row: &Vec<Vec<Value<'_>>>, header: &Exhf) -> Vec<u8> {
-    let mut inner_length: usize = TryInto::<usize>::try_into(header.row_size()).unwrap();
+    let mut inner_length: usize =
+        TryInto::<usize>::try_into(header.row_size()).unwrap() * row.len();
     for sub_row in row.iter() {
         for value in sub_row.iter() {
             if let Value::String(data) = value {
@@ -13,7 +14,7 @@ pub fn encode_row(row: &Vec<Vec<Value<'_>>>, header: &Exhf) -> Vec<u8> {
             }
         }
     }
-    let outer_length = ((inner_length + 6) + 3) / 4 * 4;
+    let outer_length = ((inner_length + 6) + 1) / 2 * 2;
     let inner_length: u32 = inner_length.try_into().unwrap();
 
     let mut data = vec![0; outer_length];
