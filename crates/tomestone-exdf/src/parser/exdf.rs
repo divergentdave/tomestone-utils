@@ -151,7 +151,7 @@ mod tests {
     use tomestone_sqpack::{Category, Expansion, GameData};
 
     use super::{exdf_header, Exdf};
-    use crate::parser::exhf::parse_exhf;
+    use crate::{parser::exhf::parse_exhf, Dataset, Language};
 
     #[test]
     fn exdf_game_data() {
@@ -229,6 +229,37 @@ mod tests {
                         assert_eq!(file.len(), expected_len);
                     }
                 }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "slow test"]
+    fn exd_round_trip_rows() {
+        dotenv::dotenv().ok();
+        // Don't test anything if the game directory isn't provided
+        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+            root
+        } else {
+            return;
+        };
+        let game_data = GameData::new(root).unwrap();
+
+        let dataset = Dataset::load(&game_data, "fcauthority", Language::English).unwrap();
+
+        for (page_1, page_2) in dataset.page_iter().zip(dataset.page_iter()) {
+            for (res_parsed, res_raw) in page_1.zip(page_2.exdf_iter) {
+                let (number_1, row) = res_parsed.unwrap();
+                let (number_2, row_data) = res_raw.unwrap();
+                assert_eq!(number_1, number_2);
+                let encoded = crate::encoding::encode_row(&row, &dataset.exhf);
+                assert_eq!(
+                    row_data.data,
+                    &encoded[6..],
+                    "real length: {}, length from re-encoding: {}",
+                    row_data.data.len(),
+                    encoded.len() - 6
+                );
             }
         }
     }
