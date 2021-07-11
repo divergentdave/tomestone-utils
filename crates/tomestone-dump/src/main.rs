@@ -107,7 +107,7 @@ fn lookup<'a>(
     }
 }
 
-fn write_file_name<W: Write>(
+fn write_file_name_1<W: Write>(
     writer: &mut W,
     statements: &mut PreparedStatements<'_>,
     hash: IndexHash1,
@@ -130,6 +130,21 @@ fn write_file_name<W: Write>(
     Ok(())
 }
 
+fn write_file_name_2<W: Write>(
+    writer: &mut W,
+    statements: &mut PreparedStatements<'_>,
+    hash: IndexHash2,
+) -> Result<(), tomestone_sqpack::Error> {
+    let matches = statements.index_2_lookup(hash)?;
+    match matches.len() {
+        0 => write!(writer, "<{:08x}>", hash.path_crc),
+        1 => write!(writer, "{}", matches[0]),
+        _ => write!(writer, "{:?}", matches),
+    }
+    .unwrap();
+    Ok(())
+}
+
 fn list_files(
     game_data: &GameData,
     category: Category,
@@ -139,11 +154,19 @@ fn list_files(
     let stdout = stdout();
     let mut locked = stdout.lock();
     for id in game_data.iter_packs_category_expansion(category, expansion) {
-        let index = game_data.get_index_1(&id).unwrap()?;
-        for entry in index.iter() {
-            let hash = entry.hash();
-            write_file_name(&mut locked, statements, hash)?;
-            locked.write_all(b"\n").unwrap();
+        if let Some(Ok(index)) = game_data.get_index_1(&id) {
+            for entry in index.iter() {
+                let hash = entry.hash();
+                write_file_name_1(&mut locked, statements, hash)?;
+                locked.write_all(b"\n").unwrap();
+            }
+        } else {
+            let index = game_data.get_index_2(&id).unwrap()?;
+            for entry in index.iter() {
+                let hash = entry.hash();
+                write_file_name_2(&mut locked, statements, hash)?;
+                locked.write_all(b"\n").unwrap();
+            }
         }
     }
     Ok(())
@@ -263,13 +286,24 @@ fn do_grep(
     let stdout = stdout();
     let mut locked = stdout.lock();
     for pack_id in game_data.iter_packs_category_expansion(category, expansion) {
-        let index = game_data.get_index_1(&pack_id).unwrap()?;
-        for res in game_data.iter_files(pack_id, &index)? {
-            let (hash, file) = res?;
-            if re.is_match(&file) {
-                locked.write_all(b"File ").unwrap();
-                write_file_name(&mut locked, statements, hash)?;
-                locked.write_all(b" matches\n").unwrap();
+        if let Some(Ok(index)) = game_data.get_index_1(&pack_id) {
+            for res in game_data.iter_files(pack_id, &index)? {
+                let (hash, file) = res?;
+                if re.is_match(&file) {
+                    locked.write_all(b"File ").unwrap();
+                    write_file_name_1(&mut locked, statements, hash)?;
+                    locked.write_all(b" matches\n").unwrap();
+                }
+            }
+        } else {
+            let index = game_data.get_index_2(&pack_id).unwrap()?;
+            for res in game_data.iter_files(pack_id, &index)? {
+                let (hash, file) = res?;
+                if re.is_match(&file) {
+                    locked.write_all(b"File ").unwrap();
+                    write_file_name_2(&mut locked, statements, hash)?;
+                    locked.write_all(b" matches\n").unwrap();
+                }
             }
         }
     }
@@ -302,7 +336,7 @@ fn discover_paths(game_data: &GameData) -> Result<(), tomestone_exdf::Error> {
     ] {
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(*category, *expansion) {
-                let index = game_data.get_index_1(&pack_id).unwrap()?;
+                let index = game_data.get_index_2(&pack_id).unwrap()?;
                 indices.insert(pack_id, index);
             }
         }

@@ -472,6 +472,9 @@ fn list_packs(root_path: &Path) -> io::Result<BTreeSet<SqPackId>> {
     let mut ids = BTreeSet::new();
     for expansion in Expansion::iter_all() {
         let expansion_dir = sqpack_dir.join(expansion.name());
+        if !expansion_dir.is_dir() {
+            continue;
+        }
         for entry in expansion_dir.read_dir()? {
             if let Ok(name) = entry?.file_name().into_string() {
                 if let Some(caps) = RE.captures(&name) {
@@ -656,9 +659,10 @@ impl GameData {
         let crc = crc32(path.to_lowercase().as_bytes());
 
         for id in self.iter_packs_category_expansion(category, expansion) {
-            let index = self.get_index_1(&id).unwrap()?;
-            if index.contains_folder(&crc) {
-                return Ok(true);
+            if let Some(Ok(index)) = self.get_index_1(&id) {
+                if index.contains_folder(&crc) {
+                    return Ok(true);
+                }
             }
         }
         Ok(false)
