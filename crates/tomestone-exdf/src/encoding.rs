@@ -4,11 +4,7 @@ use crate::{parser::exhf::Exhf, Cardinality, Value};
 
 // TODO, future work: write new code to pre-compute file sizes, and then encode in-place with one allocation.
 
-pub fn encode_row(
-    row: &Vec<(u16, Vec<Value<'_>>)>,
-    header: &Exhf,
-    padding_offset: usize,
-) -> Vec<u8> {
+pub fn encode_row(row: &Vec<(u16, Vec<Value<'_>>)>, header: &Exhf, padding_offset: u32) -> Vec<u8> {
     let row_size: usize = header.row_size().into();
     let inner_length_fixed: usize = match header.cardinality() {
         Cardinality::Single => row_size * row.len(),
@@ -22,16 +18,16 @@ pub fn encode_row(
             }
         }
     }
-    let outer_length = match header.cardinality() {
-        Cardinality::Single => {
-            ((inner_length_fixed + inner_length_variable + 6 + padding_offset) + 3) / 4 * 4
-                - padding_offset
-        }
-        Cardinality::Multiple => ((inner_length_fixed + inner_length_variable) + 3) / 4 * 4 + 6,
-    };
-    let inner_length: u32 = (inner_length_fixed + inner_length_variable)
+    let inner_length_unpadded: u32 = (inner_length_fixed + inner_length_variable)
         .try_into()
         .unwrap();
+    let inner_length = match header.cardinality() {
+        Cardinality::Single => {
+            ((inner_length_unpadded + padding_offset + 2) + 3) / 4 * 4 - padding_offset - 2
+        }
+        Cardinality::Multiple => ((inner_length_unpadded + 3) / 4 * 4),
+    };
+    let outer_length = TryInto::<usize>::try_into(inner_length).unwrap() + 6;
 
     let mut data = vec![0; outer_length];
     data[..4].copy_from_slice(&inner_length.to_be_bytes());
@@ -96,6 +92,50 @@ pub fn encode_row(
         }
         fixed_data_offset += row_size;
     }
+
+    data
+}
+
+pub fn encode_exdf_page(
+    name: &str,
+    header: &Exhf,
+    rows: &[(u32, Vec<(u16, Vec<Value<'_>>)>)],
+) -> Vec<u8> {
+    const HEADER_LENGTH: u32 = 32;
+
+    let padding_offset = match name {
+        "Attributive"
+        | "GCRankGridaniaFemaleText"
+        | "GCRankGridaniaMaleText"
+        | "GCRankLimsaFemaleText"
+        | "GCRankLimsaMaleText"
+        | "GCRankUldahFemaleText"
+        | "GCRankUldahMaleText"
+        | "HWDDevLevelWebText"
+        | "PartyContentTransient" => 2,
+        _ => 0,
+    };
+
+    let offsets_len: u32 = TryInto::<u32>::try_into(rows.len()).unwrap() * 8;
+
+    let mut offsets_section = Vec::with_capacity(offsets_len.try_into().unwrap());
+    let mut data_section = Vec::new();
+    for (number, row) in rows {
+        let mut encoded_row = encode_row(row, header, padding_offset);
+        let row_offset: u32 = data_section.len().try_into().unwrap();
+        data_section.append(&mut encoded_row);
+        offsets_section.extend_from_slice(&number.to_be_bytes());
+        offsets_section
+            .extend_from_slice(&(HEADER_LENGTH + offsets_len + row_offset).to_be_bytes());
+    }
+
+    let data_len: u32 = data_section.len().try_into().unwrap();
+    let mut data = vec![0; HEADER_LENGTH as usize];
+    data[..6].copy_from_slice(b"EXDF\x00\x02");
+    data[8..12].copy_from_slice(&offsets_len.to_be_bytes());
+    data[12..16].copy_from_slice(&data_len.to_be_bytes());
+    data.append(&mut offsets_section);
+    data.append(&mut data_section);
 
     data
 }

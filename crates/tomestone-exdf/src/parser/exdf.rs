@@ -281,4 +281,29 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    #[ignore = "slow test"]
+    fn exd_round_trip_pages() {
+        dotenv::dotenv().ok();
+        // Don't test anything if the game directory isn't provided
+        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+            root
+        } else {
+            return;
+        };
+        let game_data = GameData::new(root).unwrap();
+
+        let root_list = RootList::open(&game_data).unwrap();
+        for name in root_list.iter() {
+            let dataset = Dataset::load(&game_data, name, Language::English).unwrap();
+
+            for (page_1, page_2) in dataset.page_iter().zip(dataset.page_iter()) {
+                let rows = page_1.map(|res| res.unwrap()).collect::<Vec<_>>();
+                let encoded_data = crate::encoding::encode_exdf_page(name, &dataset.exhf, &rows);
+                let original_data = page_2.exdf_iter.data;
+                assert_eq!(original_data, encoded_data, "{} {:#?}", name, rows);
+            }
+        }
+    }
 }
