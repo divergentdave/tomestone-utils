@@ -233,13 +233,6 @@ mod tests {
         }
     }
 
-    fn trim_trailing_nulls(input: &[u8]) -> &[u8] {
-        match input.iter().rev().position(|x| *x != 0) {
-            Some(pos) => &input[..input.len() - pos],
-            None => &[],
-        }
-    }
-
     #[test]
     #[ignore = "slow test"]
     fn exd_round_trip_rows() {
@@ -254,6 +247,18 @@ mod tests {
 
         let root_list = RootList::open(&game_data).unwrap();
         for name in root_list.iter() {
+            let padding_offset = match name {
+                "Attributive"
+                | "GCRankGridaniaFemaleText"
+                | "GCRankGridaniaMaleText"
+                | "GCRankLimsaFemaleText"
+                | "GCRankLimsaMaleText"
+                | "GCRankUldahFemaleText"
+                | "GCRankUldahMaleText"
+                | "HWDDevLevelWebText"
+                | "PartyContentTransient" => 2,
+                _ => 0,
+            };
             let dataset = Dataset::load(&game_data, name, Language::English).unwrap();
 
             for (page_1, page_2) in dataset.page_iter().zip(dataset.page_iter()) {
@@ -261,22 +266,11 @@ mod tests {
                     let (number_1, row) = res_parsed.unwrap();
                     let (number_2, row_data) = res_raw.unwrap();
                     assert_eq!(number_1, number_2);
-                    let encoded = crate::encoding::encode_row(&row, &dataset.exhf);
+                    let encoded = crate::encoding::encode_row(&row, &dataset.exhf, padding_offset);
                     let encoded_inner = &encoded[6..];
-                    if row_data.data.len() != encoded_inner.len() {
-                        println!(
-                            "{} ({:?}) real length: {}, length from re-encoding: {} ({} => {} modulo 4)",
-                            name,
-                            dataset.exhf.cardinality(),
-                            row_data.data.len(),
-                            encoded_inner.len(),
-                            row_data.data.len() % 4,
-                            encoded_inner.len() % 4,
-                        );
-                    }
                     assert_eq!(
-                        trim_trailing_nulls(row_data.data),
-                        trim_trailing_nulls(encoded_inner),
+                        row_data.data,
+                        encoded_inner,
                         "data set {}, {:?}, {} sub-rows, {:?}",
                         name,
                         row,

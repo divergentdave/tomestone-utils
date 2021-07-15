@@ -4,7 +4,11 @@ use crate::{parser::exhf::Exhf, Cardinality, Value};
 
 // TODO, future work: write new code to pre-compute file sizes, and then encode in-place with one allocation.
 
-pub fn encode_row(row: &Vec<(u16, Vec<Value<'_>>)>, header: &Exhf) -> Vec<u8> {
+pub fn encode_row(
+    row: &Vec<(u16, Vec<Value<'_>>)>,
+    header: &Exhf,
+    padding_offset: usize,
+) -> Vec<u8> {
     let row_size: usize = header.row_size().into();
     let inner_length_fixed: usize = match header.cardinality() {
         Cardinality::Single => row_size * row.len(),
@@ -19,8 +23,11 @@ pub fn encode_row(row: &Vec<(u16, Vec<Value<'_>>)>, header: &Exhf) -> Vec<u8> {
         }
     }
     let outer_length = match header.cardinality() {
-        Cardinality::Single => ((inner_length_fixed + inner_length_variable + 6) + 3) / 4 * 4,
-        Cardinality::Multiple => (inner_length_fixed + inner_length_variable + 3) / 4 * 4 + 6,
+        Cardinality::Single => {
+            ((inner_length_fixed + inner_length_variable + 6 + padding_offset) + 3) / 4 * 4
+                - padding_offset
+        }
+        Cardinality::Multiple => ((inner_length_fixed + inner_length_variable) + 3) / 4 * 4 + 6,
     };
     let inner_length: u32 = (inner_length_fixed + inner_length_variable)
         .try_into()
