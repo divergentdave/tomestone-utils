@@ -22,6 +22,8 @@ struct ExhfHeader {
     num_language_codes: u16,
     total_sub_rows: u32,
     cardinality: Cardinality,
+    unknown_flag: bool,
+    unknown_number: u16,
 }
 
 #[derive(Debug)]
@@ -33,6 +35,8 @@ pub struct Exhf {
     languages: Vec<Option<Language>>,
     total_sub_rows: u32,
     cardinality: Cardinality,
+    unknown_flag: bool,
+    unknown_number: u16,
 }
 
 impl Exhf {
@@ -52,6 +56,8 @@ impl Exhf {
             languages,
             total_sub_rows: header.total_sub_rows,
             cardinality: header.cardinality,
+            unknown_flag: header.unknown_flag,
+            unknown_number: header.unknown_number,
         }
     }
 
@@ -82,6 +88,14 @@ impl Exhf {
     pub fn cardinality(&self) -> Cardinality {
         self.cardinality
     }
+
+    pub fn unknown_flag(&self) -> bool {
+        self.unknown_flag
+    }
+
+    pub fn unknown_number(&self) -> u16 {
+        self.unknown_number
+    }
 }
 
 fn exhf_header(input: &[u8]) -> IResult<&[u8], ExhfHeader> {
@@ -106,7 +120,7 @@ fn exhf_header(input: &[u8]) -> IResult<&[u8], ExhfHeader> {
             num_columns,
             num_pages,
             num_language_codes,
-            _,
+            unknown_field,
             cardinality,
             _,
             total_sub_rows,
@@ -119,6 +133,8 @@ fn exhf_header(input: &[u8]) -> IResult<&[u8], ExhfHeader> {
                 num_language_codes,
                 total_sub_rows,
                 cardinality,
+                unknown_flag: unknown_field & 0x4000 != 0,
+                unknown_number: unknown_field & 0x3fff,
             }
         },
     )(input)

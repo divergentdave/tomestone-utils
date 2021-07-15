@@ -139,3 +139,88 @@ pub fn encode_exdf_page(
 
     data
 }
+
+pub fn encode_exhf(header: &Exhf) -> Vec<u8> {
+    const HEADER_LENGTH: u32 = 32;
+    let mut data = Vec::with_capacity(
+        HEADER_LENGTH as usize
+            + header.columns_table_order().len() * 4
+            + header.pages().len() * 8
+            + header.languages().len() * 2,
+    );
+    data.resize(HEADER_LENGTH as usize, 0);
+    data[..6].copy_from_slice(b"EXHF\x00\x03");
+    data[6..8].copy_from_slice(&header.row_size().to_be_bytes());
+    data[8..10].copy_from_slice(
+        &TryInto::<u16>::try_into(header.columns_table_order().len())
+            .unwrap()
+            .to_be_bytes(),
+    );
+    data[10..12].copy_from_slice(
+        &TryInto::<u16>::try_into(header.pages().len())
+            .unwrap()
+            .to_be_bytes(),
+    );
+    data[12..14].copy_from_slice(
+        &TryInto::<u16>::try_into(header.languages().len())
+            .unwrap()
+            .to_be_bytes(),
+    );
+    data[14..16].copy_from_slice(
+        &(((header.unknown_flag() as u16) << 14) | header.unknown_number()).to_be_bytes(),
+    );
+    data[17] = match header.cardinality() {
+        Cardinality::Single => 1,
+        Cardinality::Multiple => 2,
+    };
+    data[20..24].copy_from_slice(&header.total_sub_rows().to_be_bytes());
+    for column in header.columns_table_order() {
+        data.extend_from_slice(&column.format.to_u16().to_be_bytes());
+        data.extend_from_slice(
+            &TryInto::<u16>::try_into(column.offset)
+                .unwrap()
+                .to_be_bytes(),
+        );
+    }
+    for (page_start, page_size) in header.pages() {
+        data.extend_from_slice(&page_start.to_be_bytes());
+        data.extend_from_slice(&page_size.to_be_bytes());
+    }
+    for opt in header.languages() {
+        let value = match opt {
+            Some(language) => *language as u16,
+            None => 0,
+        };
+        data.extend_from_slice(&value.to_le_bytes());
+    }
+    data
+}
+
+#[cfg(test)]
+mod tests {
+    use tomestone_sqpack::GameData;
+
+    use crate::{parser::exhf::parse_exhf, RootList};
+
+    #[test]
+    #[ignore = "slow test"]
+    fn exh_round_trip() {
+        dotenv::dotenv().ok();
+        // Don't test anything if the game directory isn't provided
+        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+            root
+        } else {
+            return;
+        };
+        let game_data = GameData::new(root).unwrap();
+
+        let root_list = RootList::open(&game_data).unwrap();
+        for name in root_list.iter() {
+            let exh_path = format!("exd/{}.exh", name);
+            let exh_data = game_data.lookup_path_data(&exh_path).unwrap().unwrap();
+            let exhf = parse_exhf(&exh_data).unwrap().1;
+            let encoded = crate::encoding::encode_exhf(&exhf);
+            assert_eq!(exh_data, encoded);
+        }
+    }
+}
