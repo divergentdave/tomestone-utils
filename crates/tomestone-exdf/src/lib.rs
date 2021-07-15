@@ -109,9 +109,9 @@ impl ColumnFormat {
         }
     }
 
-    pub fn to_u16(&self) -> u16 {
+    pub fn to_u16(self) -> u16 {
         match self {
-            &ColumnFormat::String => 0,
+            ColumnFormat::String => 0,
             ColumnFormat::Bool => 1,
             ColumnFormat::I8 => 2,
             ColumnFormat::U8 => 3,
@@ -121,7 +121,7 @@ impl ColumnFormat {
             ColumnFormat::U32 => 7,
             ColumnFormat::Float => 9,
             ColumnFormat::I16x4 => 0xb,
-            ColumnFormat::Bitflag(bit) => *bit as u16 + 0x19,
+            ColumnFormat::Bitflag(bit) => bit as u16 + 0x19,
         }
     }
 }
