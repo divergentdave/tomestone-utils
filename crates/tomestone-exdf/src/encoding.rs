@@ -1,18 +1,18 @@
 use std::convert::TryInto;
 
-use crate::{parser::exhf::Exhf, Cardinality, Value};
+use crate::{parser::exhf::Exhf, Cardinality, Row, SubRow, Value};
 
 // TODO, future work: write new code to pre-compute file sizes, and then encode in-place with one allocation.
 
-pub fn encode_row(row: &[(u16, Vec<Value<'_>>)], header: &Exhf, padding_offset: u32) -> Vec<u8> {
+pub fn encode_row(row: &[SubRow], header: &Exhf, padding_offset: u32) -> Vec<u8> {
     let row_size: usize = header.row_size().into();
     let inner_length_fixed: usize = match header.cardinality() {
         Cardinality::Single => row_size * row.len(),
         Cardinality::Multiple => (row_size + 2) * row.len(),
     };
     let mut inner_length_variable: usize = 0;
-    for (_sub_row_index, sub_row) in row.iter() {
-        for value in sub_row.iter() {
+    for sub_row in row.iter() {
+        for value in sub_row.cells.iter() {
             if let Value::String(data) = value {
                 inner_length_variable += data.len() + 1;
             }
@@ -36,15 +36,15 @@ pub fn encode_row(row: &[(u16, Vec<Value<'_>>)], header: &Exhf, padding_offset: 
     let mut fixed_data_offset = 6;
     let mut string_data_offset_relative: u32 = 0;
     let mut string_data_offset_vec = 6 + row_size * row.len();
-    for (sub_row_index, sub_row) in row.iter() {
+    for sub_row in row.iter() {
         if let Cardinality::Multiple = header.cardinality() {
             data[fixed_data_offset..fixed_data_offset + 2]
-                .copy_from_slice(&sub_row_index.to_be_bytes());
+                .copy_from_slice(&sub_row.number.to_be_bytes());
             fixed_data_offset += 2;
         }
         for column_def in header.columns_offset_order() {
             let off = fixed_data_offset + column_def.offset;
-            let value = &sub_row[column_def.index];
+            let value = &sub_row.cells[column_def.index];
             match (value, column_def.format) {
                 (Value::String(val), crate::ColumnFormat::String) => {
                     data[off..off + 4].copy_from_slice(
@@ -96,11 +96,7 @@ pub fn encode_row(row: &[(u16, Vec<Value<'_>>)], header: &Exhf, padding_offset: 
     data
 }
 
-pub fn encode_exdf_page(
-    name: &str,
-    header: &Exhf,
-    rows: &[(u32, Vec<(u16, Vec<Value<'_>>)>)],
-) -> Vec<u8> {
+pub fn encode_exdf_page(name: &str, header: &Exhf, rows: &[Row]) -> Vec<u8> {
     const HEADER_LENGTH: u32 = 32;
 
     let padding_offset = match name {
@@ -120,11 +116,11 @@ pub fn encode_exdf_page(
 
     let mut offsets_section = Vec::with_capacity(offsets_len.try_into().unwrap());
     let mut data_section = Vec::new();
-    for (number, row) in rows {
-        let mut encoded_row = encode_row(row, header, padding_offset);
+    for row in rows {
+        let mut encoded_row = encode_row(&row.sub_rows, header, padding_offset);
         let row_offset: u32 = data_section.len().try_into().unwrap();
         data_section.append(&mut encoded_row);
-        offsets_section.extend_from_slice(&number.to_be_bytes());
+        offsets_section.extend_from_slice(&row.number.to_be_bytes());
         offsets_section
             .extend_from_slice(&(HEADER_LENGTH + offsets_len + row_offset).to_be_bytes());
     }

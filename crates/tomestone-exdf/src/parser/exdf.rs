@@ -263,18 +263,19 @@ mod tests {
 
             for (page_1, page_2) in dataset.page_iter().zip(dataset.page_iter()) {
                 for (res_parsed, res_raw) in page_1.zip(page_2.exdf_iter) {
-                    let (number_1, row) = res_parsed.unwrap();
-                    let (number_2, row_data) = res_raw.unwrap();
-                    assert_eq!(number_1, number_2);
-                    let encoded = crate::encoding::encode_row(&row, &dataset.exhf, padding_offset);
+                    let row = res_parsed.unwrap();
+                    let (number_from_raw, row_data) = res_raw.unwrap();
+                    assert_eq!(row.number, number_from_raw);
+                    let encoded =
+                        crate::encoding::encode_row(&row.sub_rows, &dataset.exhf, padding_offset);
                     let encoded_inner = &encoded[6..];
                     assert_eq!(
                         row_data.data,
                         encoded_inner,
                         "data set {}, {:?}, {} sub-rows, {:?}",
                         name,
-                        row,
-                        row.len(),
+                        row.sub_rows,
+                        row.sub_rows.len(),
                         dataset.exhf
                     );
                 }

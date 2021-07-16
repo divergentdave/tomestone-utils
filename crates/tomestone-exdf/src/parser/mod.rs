@@ -6,7 +6,7 @@ use nom::{
     sequence::tuple,
 };
 
-use crate::{Cardinality, ColumnFormat, RawDataRow, Value};
+use crate::{Cardinality, ColumnFormat, RawDataRow, SubRow, Value};
 
 use self::exhf::Exhf;
 
@@ -16,7 +16,7 @@ pub mod exhf;
 pub fn parse_row<'a>(
     row_data: RawDataRow<'a>,
     exhf: &Exhf,
-) -> Result<Vec<(u16, Vec<Value<'a>>)>, nom::error::ErrorKind> {
+) -> Result<Vec<SubRow<'a>>, nom::error::ErrorKind> {
     let row_size: usize = exhf.row_size().try_into().unwrap();
     let (is_multiple, wrapped_sub_row_length, values_offset) = match exhf.cardinality() {
         Cardinality::Single => {
@@ -89,9 +89,12 @@ pub fn parse_row<'a>(
                     nom::Err::Incomplete(_) => unreachable!(),
                     nom::Err::Error(e) | nom::Err::Failure(e) => e.code,
                 })?;
-            Ok((sub_row_index, sub_row))
+            Ok(SubRow {
+                number: sub_row_index,
+                cells: sub_row,
+            })
         })
-        .collect::<Result<Vec<(u16, Vec<Value<'a>>)>, nom::error::ErrorKind>>()
+        .collect::<Result<Vec<SubRow<'a>>, nom::error::ErrorKind>>()
 }
 
 #[cfg(test)]

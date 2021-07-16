@@ -351,13 +351,16 @@ mod tests {
                 let dataset = Dataset::load(&game_data, name, *language).unwrap();
                 for page in dataset.page_iter() {
                     for res in page {
-                        let (i, row) = res.unwrap();
-                        for (_sub_row_index, sub_row) in row {
-                            for value in sub_row {
+                        let row = res.unwrap();
+                        for sub_row in row.sub_rows {
+                            for value in sub_row.cells {
                                 if let Value::String(data) = value {
                                     let res = tagged_text(data);
                                     if res.is_err() {
-                                        eprintln!("Error while parsing {} row {}", name, i);
+                                        eprintln!(
+                                            "Error while parsing {} row {}",
+                                            name, row.number
+                                        );
                                         eprintln!("{:02x?}", data);
                                     }
                                     res.unwrap();

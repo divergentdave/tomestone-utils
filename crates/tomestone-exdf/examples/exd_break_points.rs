@@ -54,9 +54,9 @@ fn main() {
                 let mut sub_row_count = 0;
                 let mut last_row_number = None;
                 for res in page {
-                    let row_number = if let Ok((row_number, row)) = res {
-                        sub_row_count += TryInto::<u32>::try_into(row.len()).unwrap();
-                        row_number
+                    let row_number = if let Ok(row) = res {
+                        sub_row_count += TryInto::<u32>::try_into(row.sub_rows.len()).unwrap();
+                        row.number
                     } else {
                         eprintln!("error: couldn't read data set row");
                         process::exit(1);

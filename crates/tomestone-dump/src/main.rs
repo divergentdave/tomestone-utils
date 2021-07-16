@@ -648,7 +648,7 @@ fn main() {
             println!("{:?}", &dataset.exhf);
             for page_iter in dataset.page_iter() {
                 for res in page_iter {
-                    let (row_number, row) = match res {
+                    let row = match res {
                         Ok(row) => row,
                         Err(e) => {
                             eprintln!("error: reading dataset failed: {}", e);
@@ -656,12 +656,12 @@ fn main() {
                         }
                     };
 
-                    let mut line = format!("{} [[", row_number);
-                    for (sub_row_counter, (_sub_row_index, sub_row)) in row.iter().enumerate() {
+                    let mut line = format!("{} [[", row.number);
+                    for (sub_row_counter, sub_row) in row.sub_rows.iter().enumerate() {
                         if sub_row_counter != 0 {
                             line.push_str("], [");
                         }
-                        for (i, value) in sub_row.iter().enumerate() {
+                        for (i, value) in sub_row.cells.iter().enumerate() {
                             if i != 0 {
                                 line.push_str(", ");
                             }

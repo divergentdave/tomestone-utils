@@ -212,6 +212,18 @@ pub struct RawDataRow<'a> {
     sub_row_count: u16,
 }
 
+#[derive(Debug)]
+pub struct SubRow<'a> {
+    pub number: u16,
+    pub cells: Vec<Value<'a>>,
+}
+
+#[derive(Debug)]
+pub struct Row<'a> {
+    pub number: u32,
+    pub sub_rows: Vec<SubRow<'a>>,
+}
+
 struct DatasetPage {
     _row_start: u32,
     exdf: Exdf,
@@ -223,7 +235,7 @@ pub struct DatasetPageIter<'a> {
 }
 
 impl<'a> Iterator for DatasetPageIter<'a> {
-    type Item = Result<(u32, Vec<(u16, Vec<Value<'a>>)>), Error>;
+    type Item = Result<Row<'a>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let (row_number, row_data) = match self.exdf_iter.next()? {
@@ -231,7 +243,10 @@ impl<'a> Iterator for DatasetPageIter<'a> {
             Err(e) => return Some(Err(e.into())),
         };
         match parse_row(row_data, &self.exhf) {
-            Ok(row) => Some(Ok((row_number, row))),
+            Ok(row) => Some(Ok(Row {
+                number: row_number,
+                sub_rows: row,
+            })),
             Err(e) => Some(Err(e.into())),
         }
     }

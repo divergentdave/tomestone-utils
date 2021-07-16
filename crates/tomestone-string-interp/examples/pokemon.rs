@@ -56,14 +56,14 @@ fn main() {
 
         for page in dataset.page_iter() {
             for res in page {
-                let (_, row) = if let Ok(tuple) = res {
+                let row = if let Ok(tuple) = res {
                     tuple
                 } else {
                     eprintln!("error: couldn't read row");
                     process::exit(1);
                 };
-                for (_sub_row_index, sub_row) in row {
-                    if let &[Value::String(col1), Value::String(col2)] = &*sub_row {
+                for sub_row in row.sub_rows {
+                    if let &[Value::String(col1), Value::String(col2)] = &*sub_row.cells {
                         let col2_cleaned = if col2.len() > 4 && &col2[..2] == b"(-" {
                             // Skip name in "(-...-)" at the beginning of a line
                             if let Some(pos) = col2.windows(2).position(|window| window == b"-)") {

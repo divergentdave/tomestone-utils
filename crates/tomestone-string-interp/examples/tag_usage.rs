@@ -157,14 +157,14 @@ fn main() {
 
             for page in dataset.page_iter() {
                 for res in page {
-                    let (i, row) = if let Ok(tuple) = res {
+                    let row = if let Ok(tuple) = res {
                         tuple
                     } else {
                         eprintln!("error: couldn't read row");
                         process::exit(1);
                     };
-                    for (_sub_row_index, sub_row) in row.iter() {
-                        for value in sub_row.iter() {
+                    for sub_row in row.sub_rows.iter() {
+                        for value in sub_row.cells.iter() {
                             if let Value::String(data) = value {
                                 match Text::parse(data) {
                                     Ok(text) => {
@@ -173,7 +173,7 @@ fn main() {
                                     Err(e) => {
                                         eprintln!(
                                             "error: failed to parse {} row {}: {}",
-                                            name, i, e
+                                            name, row.number, e
                                         );
                                         process::exit(1);
                                     }

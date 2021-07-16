@@ -111,23 +111,26 @@ fn main() {
 
         for page in dataset.page_iter() {
             for res in page {
-                let (i, row) = res.unwrap();
-                for (_sub_row_idx, sub_row) in row {
-                    for value in sub_row {
+                let row = res.unwrap();
+                for sub_row in row.sub_rows {
+                    for value in sub_row.cells {
                         if let Value::String(data) = value {
                             match Text::parse(data) {
                                 Ok(text) => {
                                     let mut visitor = GenderConditionalTextVisitor::new();
                                     text.accept(&mut visitor);
                                     if !visitor.ifs.is_empty() {
-                                        println!("{} row {}: {:?}", name, i, text);
+                                        println!("{} row {}: {:?}", name, row.number, text);
                                     }
                                     for if_tag in visitor.ifs.into_iter() {
                                         if_tag_set.insert(if_tag);
                                     }
                                 }
                                 Err(e) => {
-                                    eprintln!("error: failed to parse {} row {}: {}", name, i, e);
+                                    eprintln!(
+                                        "error: failed to parse {} row {}: {}",
+                                        name, row.number, e
+                                    );
                                     process::exit(1);
                                 }
                             }
