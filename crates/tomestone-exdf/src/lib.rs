@@ -136,6 +136,7 @@ pub struct ColumnDefinition {
     index: usize,
 }
 
+#[derive(PartialEq)]
 pub enum Value<'a> {
     String(&'a [u8]),
     Bool(bool),

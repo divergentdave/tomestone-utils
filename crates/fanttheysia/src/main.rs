@@ -1,76 +1,9 @@
 use std::{collections::HashSet, process};
 
+use fanttheysia::GenderConditionalTextVisitor;
 use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::GameData;
-use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
-
-struct GenderExpressionVisitor {
-    flag: bool,
-}
-
-impl GenderExpressionVisitor {
-    fn new() -> GenderExpressionVisitor {
-        GenderExpressionVisitor { flag: false }
-    }
-}
-
-impl Visitor for GenderExpressionVisitor {
-    fn visit_expression(&mut self, expr: &Expression) {
-        if let Expression::PlayerParameter(child_expr) = expr {
-            if **child_expr == Expression::Integer(4) {
-                self.flag = true;
-                return;
-            }
-        }
-        self.recurse_expression(expr);
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct IfSegment {
-    condition: Expression,
-    true_value: Expression,
-    false_value: Expression,
-}
-
-struct GenderConditionalTextVisitor {
-    ifs: Vec<IfSegment>,
-}
-
-impl GenderConditionalTextVisitor {
-    fn new() -> GenderConditionalTextVisitor {
-        GenderConditionalTextVisitor { ifs: vec![] }
-    }
-}
-
-impl Visitor for GenderConditionalTextVisitor {
-    fn visit_tag(&mut self, tag: &Segment) {
-        if let Segment::If {
-            condition,
-            true_value,
-            false_value,
-        } = tag
-        {
-            let mut expression_visitor = GenderExpressionVisitor::new();
-            condition.accept(&mut expression_visitor);
-            if expression_visitor.flag {
-                self.ifs.push(IfSegment {
-                    condition: condition.clone(),
-                    true_value: true_value.clone(),
-                    false_value: false_value.clone(),
-                });
-            } else {
-                self.recurse_tag(tag);
-            }
-        } else {
-            self.recurse_tag(tag);
-        }
-    }
-
-    fn visit_expression(&mut self, expr: &Expression) {
-        self.recurse_expression(expr);
-    }
-}
+use tomestone_string_interp::{Text, TreeNode};
 
 fn main() {
     // just CLI-based diagnostics and exploration at this point
@@ -152,5 +85,90 @@ fn main() {
     println!(
         "Total of {} unique conditional text fragments",
         if_tag_set.len()
+    );
+    println!();
+
+    let title_dataset = if let Ok(dataset) = Dataset::load(&game_data, "Title", Language::English) {
+        dataset
+    } else {
+        eprintln!("error: couldn't load data file Title");
+        process::exit(1);
+    };
+
+    let mut achievement_title_diffs = 0;
+    for page in title_dataset.page_iter() {
+        for res in page {
+            let row = res.unwrap();
+            for sub_row in row.sub_rows {
+                if sub_row.cells[0] != sub_row.cells[1] {
+                    println!("Title row {}: {:?}", row.number, &sub_row.cells[0..2]);
+                    achievement_title_diffs += 1;
+                }
+            }
+        }
+    }
+
+    println!();
+
+    println!(
+        "Total of {} differing achievement titles",
+        achievement_title_diffs
+    );
+    println!();
+
+    let mut gc_rank_diffs = 0;
+    for (female_dataset_name, male_dataset_name) in [
+        ("GCRankGridaniaFemaleText", "GCRankGridaniaMaleText"),
+        ("GCRankLimsaFemaleText", "GCRankLimsaMaleText"),
+        ("GCRankUldahFemaleText", "GCRankUldahMaleText"),
+    ] {
+        let female_dataset = if let Ok(dataset) =
+            Dataset::load(&game_data, female_dataset_name, Language::English)
+        {
+            dataset
+        } else {
+            eprintln!("error: couldn't load data file {}", female_dataset_name);
+            process::exit(1);
+        };
+        let male_dataset =
+            if let Ok(dataset) = Dataset::load(&game_data, male_dataset_name, Language::English) {
+                dataset
+            } else {
+                eprintln!("error: couldn't load data file {}", male_dataset_name);
+                process::exit(1);
+            };
+
+        for (female_page, male_page) in female_dataset.page_iter().zip(male_dataset.page_iter()) {
+            for (female_res, male_res) in female_page.zip(male_page) {
+                let female_row = female_res.unwrap();
+                let male_row = male_res.unwrap();
+                for (female_sub_row, male_sub_row) in female_row
+                    .sub_rows
+                    .into_iter()
+                    .zip(male_row.sub_rows.into_iter())
+                {
+                    if female_sub_row.cells[0] != male_sub_row.cells[0]
+                        || female_sub_row.cells[2] != male_sub_row.cells[2]
+                    {
+                        println!(
+                            "{}/{} row {}: {:?} {:?} {:?} {:?}",
+                            female_dataset_name,
+                            male_dataset_name,
+                            female_row.number,
+                            female_sub_row.cells[0],
+                            male_sub_row.cells[0],
+                            female_sub_row.cells[2],
+                            male_sub_row.cells[2]
+                        );
+                        gc_rank_diffs += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    println!(
+        "Total of {} differing Grand Company rank names",
+        gc_rank_diffs
     );
 }

@@ -449,6 +449,10 @@ pub struct Text {
 }
 
 impl Text {
+    pub fn new(segments: Vec<Segment>) -> Text {
+        Text { segments }
+    }
+
     pub fn parse(input: &[u8]) -> Result<Text, Error> {
         match nom::combinator::complete(parser::tagged_text)(input) {
             Ok((_, text)) => Ok(text),

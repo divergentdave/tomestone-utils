@@ -316,7 +316,7 @@ pub fn tagged_text(mut input: &[u8]) -> IResult<&[u8], Text, Error> {
             input = &input[input.len()..input.len()];
         }
     }
-    Ok((input, Text { segments }))
+    Ok((input, Text::new(segments)))
 }
 
 #[cfg(test)]
