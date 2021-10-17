@@ -333,6 +333,9 @@ fn index_entry_2(input: &[u8]) -> IResult<&[u8], IndexEntry2> {
     })(input)
 }
 
+/// `GrowableBufReader` adds buffering to a reader, and allows callers to dynamically request a
+/// larger buffer on the fly. EOF handling is decoupled from consuming the buffer, so callers can
+/// see when the buffer cannot be grown anymore, without having to mark it all as consumed first.
 pub struct GrowableBufReader<R: Read> {
     inner: R,
     buf: Vec<u8>,
@@ -423,6 +426,10 @@ impl<R: Read> BufRead for GrowableBufReader<R> {
     }
 }
 
+/// Apply a streaming parser to a stream wrapped in `GrowableBufReader`. If the parser returns an
+/// `Incomplete` value, the `GrowableBufReader` will be filled, and the parser will be re-ran,
+/// until parsing succeeds. Upon return, the position tracked by `GrowableBufReader` will point
+/// after the data that the parser consumed.
 pub fn drive_streaming_parser<R, F, O>(
     reader: &mut GrowableBufReader<R>,
     mut parser: F,
@@ -460,6 +467,9 @@ where
     }
 }
 
+/// Apply a streaming parser to a seekable stream. This function uses its own buffer, rather than
+/// the one from `GrowableBufReader`. Upon return, the stream's position will be right after the
+/// bytes consumed by the parser.
 pub fn drive_streaming_parser_smaller<RS, F, O>(mut reader: RS, mut parser: F) -> Result<O, Error>
 where
     RS: Read + Seek,
