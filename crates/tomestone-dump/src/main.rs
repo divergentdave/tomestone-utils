@@ -19,6 +19,13 @@ use tomestone_sqpack::{
 };
 use tomestone_string_interp::Text;
 
+/// Looks up a file by any combination of folders, filenames, their CRCs, or path CRCs, and
+/// returns the contents of the file. This function is permissive with regards to formatting,
+/// to ease use from the command line. Folder and filename CRCs can be entered with or without
+/// angle brackets, separated with a forward slash, or space-separated into separate arguments.
+///
+/// If a full path is given, and the file is successfully found, the path will be saved to the
+/// CRC database, so that it can be used in future file listings.
 fn lookup<'a>(
     game_data: &GameData,
     statements: Option<&mut PreparedStatements<'_>>,
@@ -107,6 +114,9 @@ fn lookup<'a>(
     }
 }
 
+/// Given a folder CRC and file name CRC, print out as much of the path as is known in the CRC
+/// database. This may be the full path, or the folder name and the file name CRC, or two CRCs,
+/// etc. In the event of a CRC collision, all possible matches will be printed.
 fn write_file_name_1<W: Write>(
     writer: &mut W,
     statements: &mut PreparedStatements<'_>,
@@ -130,6 +140,9 @@ fn write_file_name_1<W: Write>(
     Ok(())
 }
 
+/// Given a path CRC, print out the corresponding path, if it's known in the CRC database, or
+/// the given CRC. In the event of a CRC collision, all possible matches will be printed, though it
+/// seems that FFXIV wouldn't allow collisions in the same sqpack file.
 fn write_file_name_2<W: Write>(
     writer: &mut W,
     statements: &mut PreparedStatements<'_>,
@@ -145,6 +158,8 @@ fn write_file_name_2<W: Write>(
     Ok(())
 }
 
+/// List all files in a given category and expansion, printing paths if they are known to the CRC
+/// database, or CRC hashes otherwise. The listing will be printed to standard output.
 fn list_files(
     game_data: &GameData,
     category: Category,
@@ -172,6 +187,8 @@ fn list_files(
     Ok(())
 }
 
+/// Print the given bytes as a hex dump, with four groups of four bytes each on the left, and the
+/// ASCII representation (of any printable ASCII bytes) on the right.
 fn write_hex_dump<W: Write>(data: &[u8], mut writer: W) -> io::Result<()> {
     let mut hex_buf = [0u8; 32];
     let mut line_buf = [0u8; 54];
@@ -233,12 +250,16 @@ fn write_hex_dump<W: Write>(data: &[u8], mut writer: W) -> io::Result<()> {
     Ok(())
 }
 
+/// This is a convenience function to use `write_hex_dump()` with standard output.
 fn print_hex_dump(data: &[u8]) {
     let stdout = stdout();
     let locked = stdout.lock();
     write_hex_dump(data, locked).unwrap();
 }
 
+/// Parse a folder path into `Category` and `Expansion` enums. This maps the first one or two
+/// components of paths to the enums, and the corresponding hexadecimal numbers of these enums
+/// are then used to identify which sqpack files hold the items in question.
 fn parse_repository_path(path: Option<&str>) -> Option<(Category, Expansion)> {
     if let Some(path) = path {
         let segments: Vec<_> = path.split('/').collect();
@@ -276,6 +297,8 @@ fn parse_repository_path(path: Option<&str>) -> Option<(Category, Expansion)> {
     }
 }
 
+/// This is a helper function to search all files in one set of sqpack files for a pattern, and
+/// print any matching filenames to standard output.
 fn do_grep(
     game_data: &GameData,
     statements: &mut PreparedStatements<'_>,
@@ -310,6 +333,8 @@ fn do_grep(
     Ok(())
 }
 
+/// This regular expression will find any complete file paths that are stored as null-terminated
+/// strings.
 static PATH_DISCOVERY_RE: Lazy<BytesRegex> = Lazy::new(|| {
     BytesRegex::new(
         "((?:common|bgcommon|bg|cut|chara|shader|ui|sound|vfx|ui_script|exd|game_script|music|\
@@ -318,6 +343,8 @@ static PATH_DISCOVERY_RE: Lazy<BytesRegex> = Lazy::new(|| {
     .unwrap()
 });
 
+/// Apply various heuristics to find, guess, and derive paths of files, check if they exist, and
+/// save them in the CRC database.
 fn discover_paths(game_data: &GameData) -> Result<(), tomestone_exdf::Error> {
     let db = PathDb::open().map_err::<tomestone_sqpack::Error, _>(From::from)?;
     let mut statements = db
@@ -431,6 +458,7 @@ fn discover_paths(game_data: &GameData) -> Result<(), tomestone_exdf::Error> {
     Ok(())
 }
 
+/// Convenience method to open the path CRC database.
 fn open_db() -> PathDb {
     match PathDb::open() {
         Ok(db) => db,
