@@ -108,7 +108,9 @@ pub fn integrity_checked_header<
     )(input)
 }
 
-fn sqpack_header_outer(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
+pub(crate) fn sqpack_header_outer(
+    input: &[u8],
+) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
     integrity_checked_header(input, |_| Ok((b"", 1024usize)), sqpack_header_inner)
 }
 

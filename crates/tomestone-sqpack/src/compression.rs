@@ -1,3 +1,6 @@
+use std::io::Read;
+
+use flate2::{read::DeflateEncoder, Compression};
 use miniz_oxide::inflate::{
     core::{
         decompress, inflate_flags::TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF, DecompressorOxide,
@@ -23,4 +26,13 @@ pub fn decompress_sqpack_block(
     } else {
         Ok(decompressed)
     }
+}
+
+pub fn compress_sqpack_block(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+    // This uses libz instead of miniz so that recompressed streams will match the original files,
+    // simplifying comparisons.
+    let mut deflater = DeflateEncoder::new(data, Compression::best());
+    let mut compressed = Vec::new();
+    deflater.read_to_end(&mut compressed)?;
+    Ok(compressed)
 }

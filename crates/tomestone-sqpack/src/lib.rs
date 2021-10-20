@@ -13,7 +13,8 @@ use pathdb::DbError;
 use regex::Regex;
 
 mod compression;
-mod parser;
+mod encoding;
+pub(crate) mod parser;
 pub mod pathdb;
 
 pub(crate) const SHA1_OUTPUT_SIZE: usize = 20;
@@ -733,7 +734,26 @@ impl GameData {
 
 #[cfg(test)]
 mod tests {
-    use crate::Expansion;
+    use std::{convert::TryInto, fs::File};
+
+    use nom::{
+        bytes::streaming::{tag, take},
+        combinator::{map, peek, verify},
+        multi::length_value,
+        number::streaming::le_u32,
+        sequence::{pair, tuple},
+        IResult,
+    };
+    use sha1::{Digest, Sha1};
+    use tomestone_common::null_padding;
+
+    use crate::{
+        parser::{
+            drive_streaming_parser, integrity_checked_header, sqpack_header_outer,
+            GrowableBufReader,
+        },
+        Expansion, GameData,
+    };
 
     #[test]
     fn expansion_round_trip() {
@@ -788,5 +808,108 @@ mod tests {
             Expansion::from_u8(Expansion::Ex4 as u8).unwrap(),
             Expansion::Ex4
         );
+    }
+
+    fn data_header_inner(input: &[u8]) -> IResult<&[u8], (u32, u64, u32, u32, [u8; 20])> {
+        map(
+            tuple((
+                le_u32,
+                null_padding(4),
+                tag(b"\x10\x00\x00\x00"),
+                le_u32,
+                le_u32,
+                null_padding(4),
+                le_u32,
+                null_padding(4),
+                take(20usize),
+            )),
+            |(size, _, _, data_size, dat_number, _, max_file_size, _, data_hash)| {
+                (
+                    size,
+                    (data_size as u64) * 128,
+                    dat_number,
+                    max_file_size,
+                    data_hash.try_into().unwrap(),
+                )
+            },
+        )(input)
+    }
+
+    fn data_header_outer(input: &[u8]) -> IResult<&[u8], (u32, u64, u32, u32, [u8; 20])> {
+        integrity_checked_header(
+            input,
+            map(le_u32, |size| size.try_into().unwrap()),
+            data_header_inner,
+        )
+    }
+
+    /// A parser function that performs a strict validation of a .dat0/.dat1/etc. file. In normal
+    /// operation, dat files are only read one data entry at a time, making use of the indexes, and
+    /// the headers are entirely ignored. For testing purposes, this reads and checks all headers
+    /// in the file, and returns nothing.
+    fn validate_data_file(input: &[u8]) -> IResult<&[u8], ()> {
+        map(
+            verify(
+                pair(
+                    sqpack_header_outer,
+                    length_value(
+                        peek(map(data_header_outer, |data_header| {
+                            data_header.0 as u64 + data_header.1
+                        })),
+                        pair(data_header_outer, |input| Ok((&b""[..], input))),
+                    ),
+                ),
+                |(_sqpack_header, (data_header, data))| {
+                    let hash_from_header = data_header.4;
+                    let mut hash = Sha1::new();
+                    hash.update(data);
+                    let hash_value = &*hash.finalize();
+
+                    if hash_from_header == [0; 20] {
+                        // uh oh, 120100 is an empty data file, and it looks fine,
+                        // but 130000 is empty and has only two sha1 hashes in it,
+                        // something funny is going on
+                        eprintln!("null hash");
+                        true
+                    } else if hash_value == hash_from_header {
+                        eprintln!("hash of rest of file matches (was {} bytes)", data.len());
+                        true
+                    } else {
+                        eprintln!("didn't find hash match (data was {} bytes)", data.len());
+                        eprintln!("{:x?}", hash_from_header);
+                        eprintln!("{:x?}", hash_value);
+                        eprintln!("data starts with {:02x?}...", &data[..32]);
+                        false
+                    }
+                },
+            ),
+            |_| (),
+        )(input)
+    }
+
+    #[test]
+    #[ignore = "slow test"]
+    fn sqpack_dat_validation() {
+        dotenv::dotenv().ok();
+        // Don't test anything if the game directory isn't provided
+        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+            root
+        } else {
+            return;
+        };
+        let game_data = GameData::new(root).unwrap();
+
+        for pack_id in game_data.iter_packs() {
+            for i in 0.. {
+                let path = game_data.build_data_path(pack_id, i);
+                if path.is_file() {
+                    let file = File::open(path).unwrap();
+                    let mut reader = GrowableBufReader::new(file);
+                    drive_streaming_parser(&mut reader, validate_data_file).unwrap();
+                } else {
+                    break;
+                }
+            }
+        }
     }
 }
