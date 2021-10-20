@@ -59,7 +59,7 @@ fn sqpack_header_inner(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, Sq
             platform_id,
             null_padding(3),
             le_u32, // note that this doesn't seem to match header size for .dat2 files
-            le_u32,
+            verify(le_u32, |version| *version == 0 || *version == 1),
             sqpack_type,
             le_u32,
             le_u32,
