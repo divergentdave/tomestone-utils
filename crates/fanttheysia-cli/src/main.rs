@@ -1,6 +1,6 @@
 use std::{collections::HashSet, process};
 
-use fanttheysia::GenderConditionalTextVisitor;
+use fanttheysia_cli::GenderConditionalTextVisitor;
 use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::GameData;
 use tomestone_string_interp::{Text, TreeNode};

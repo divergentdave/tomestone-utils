@@ -1,0 +1,11 @@
+[package]
+name = "fanttheysia-webapp-frontend"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+dotenv = "0.15.0"
+tomestone-exdf = { path = "../tomestone-exdf" }
+tomestone-sqpack = { path = "../tomestone-sqpack" }
+tomestone-string-interp = { path = "../tomestone-string-interp" }
+yew = "0.18.0"
