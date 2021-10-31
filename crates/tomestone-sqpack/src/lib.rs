@@ -12,6 +12,8 @@ use parser::{decompress_file, load_index_1, load_index_2};
 use pathdb::DbError;
 use regex::Regex;
 
+use crate::encoding::{PackSetWriter, RealPackIO};
+
 mod compression;
 mod encoding;
 pub(crate) mod parser;
@@ -67,7 +69,7 @@ impl From<DbError> for Error {
 #[derive(Debug)]
 pub struct EnumParseError;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlatformId {
     Win32 = 0,
     Ps3 = 1,
@@ -732,9 +734,29 @@ impl GameData {
     }
 }
 
+pub fn write_packs<I: Iterator<Item = (SqPackId, Vec<u8>)>>(
+    base: PathBuf,
+    platform_id: PlatformId,
+    packs: I,
+) -> Result<(), Error> {
+    for (pack_id, blob) in packs {
+        let io = RealPackIO::new(base.clone(), platform_id, pack_id)?;
+        let mut writer = PackSetWriter::new(io, PlatformId::Win32)?;
+        writer.add_file("todo", &blob)?;
+        writer.finalize()?;
+    }
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{convert::TryInto, fs::File};
+    use std::{
+        collections::BTreeMap,
+        convert::TryInto,
+        fs::File,
+        io::{Cursor, Read, Seek, Write},
+        sync::{Arc, RwLock},
+    };
 
     use nom::{
         bytes::streaming::{tag, take},
@@ -748,11 +770,13 @@ mod tests {
     use tomestone_common::null_padding;
 
     use crate::{
+        encoding::{PackIO, PackSetWriter},
         parser::{
             drive_streaming_parser, integrity_checked_header, sqpack_header_outer,
             GrowableBufReader,
         },
-        Expansion, GameData,
+        DataLocator, Expansion, GameData, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1,
+        IndexHash2,
     };
 
     #[test]
@@ -866,19 +890,11 @@ mod tests {
                     let hash_value = &*hash.finalize();
 
                     if hash_from_header == [0; 20] {
-                        // uh oh, 120100 is an empty data file, and it looks fine,
-                        // but 130000 is empty and has only two sha1 hashes in it,
-                        // something funny is going on
-                        eprintln!("null hash");
+                        // special case for 130000.win32.dat0
                         true
                     } else if hash_value == hash_from_header {
-                        eprintln!("hash of rest of file matches (was {} bytes)", data.len());
                         true
                     } else {
-                        eprintln!("didn't find hash match (data was {} bytes)", data.len());
-                        eprintln!("{:x?}", hash_from_header);
-                        eprintln!("{:x?}", hash_value);
-                        eprintln!("data starts with {:02x?}...", &data[..32]);
                         false
                     }
                 },
@@ -910,6 +926,301 @@ mod tests {
                     break;
                 }
             }
+        }
+    }
+
+    #[derive(Clone)]
+    struct MockFile {
+        inner: Arc<RwLock<Cursor<Vec<u8>>>>,
+    }
+
+    impl MockFile {
+        fn new() -> MockFile {
+            MockFile {
+                inner: Arc::new(RwLock::new(Cursor::new(Vec::new()))),
+            }
+        }
+    }
+
+    impl<'a> Write for MockFile {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.inner.write().unwrap().write(buf)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.inner.write().unwrap().flush()
+        }
+    }
+
+    impl<'a> Seek for MockFile {
+        fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+            self.inner.write().unwrap().seek(pos)
+        }
+    }
+
+    struct MockedPackIO {
+        index: MockFile,
+        index2: MockFile,
+        files: Vec<MockFile>,
+    }
+
+    impl MockedPackIO {
+        fn new() -> MockedPackIO {
+            MockedPackIO {
+                index: MockFile::new(),
+                index2: MockFile::new(),
+                files: Vec::new(),
+            }
+        }
+    }
+
+    impl PackIO for MockedPackIO {
+        type F = MockFile;
+
+        fn open_index_file(&mut self) -> Result<Self::F, std::io::Error> {
+            Ok(self.index.clone())
+        }
+
+        fn open_index2_file(&mut self) -> Result<Self::F, std::io::Error> {
+            Ok(self.index2.clone())
+        }
+
+        fn open_dat_file(&mut self, number: u32) -> Result<Self::F, std::io::Error> {
+            if number <= self.files.len().try_into().unwrap() {
+                self.files
+                    .resize_with((number + 1).try_into().unwrap(), || MockFile {
+                        inner: Arc::new(RwLock::new(Cursor::new(Vec::new()))),
+                    })
+            }
+            Ok(self.files[TryInto::<usize>::try_into(number).unwrap()].clone())
+        }
+    }
+
+    fn print_hexdump_diff(label: &str, left: &[u8], right: &[u8]) {
+        const ROW_SIZE: usize = 8;
+        const DUMP_LENGTH: usize = 256;
+
+        assert_ne!(left, right);
+
+        let first_difference_pos = left.iter().zip(right.iter()).position(|(l, r)| *l != *r);
+        if left.len() == right.len() {
+            if let Some(first_difference_pos) = first_difference_pos {
+                println!(
+                    "{0} differs in length, and the first other difference is at {1} (0x{1:0x})",
+                    label, first_difference_pos
+                );
+            } else {
+                println!(
+                    "{} differs in length, one file is truncated ({} vs. {})",
+                    label,
+                    left.len(),
+                    right.len()
+                );
+            }
+        } else {
+            println!(
+                "{0} differs, and the first difference is at {1} (0x{1:0x})",
+                label,
+                first_difference_pos.unwrap()
+            );
+        }
+
+        /*
+          0xAAAAAAAA: XXXX XXXX XXXX XXXX ........ | XXXX XXXX XXXX XXXX ........n
+          012345678901234567890123456789012345678901234567890123456789012345678901
+        */
+        let stdout = std::io::stdout();
+        let mut locked = stdout.lock();
+        let start_pos = first_difference_pos.unwrap() / ROW_SIZE * ROW_SIZE;
+        let mut hex_buf = [0u8; 16];
+        let mut address_buf = [0u8; 8];
+        let mut line_buf = [b' '; 72];
+        line_buf[0] = b'0';
+        line_buf[1] = b'x';
+        line_buf[10] = b':';
+        line_buf[71] = b'\n';
+        let mut address = start_pos;
+        for (left_chunk, right_chunk) in left[start_pos..]
+            .chunks(ROW_SIZE)
+            .zip(right[start_pos..].chunks(ROW_SIZE))
+            .take(DUMP_LENGTH / ROW_SIZE)
+        {
+            hex::encode_to_slice(
+                TryInto::<u32>::try_into(address).unwrap().to_be_bytes(),
+                &mut address_buf,
+            )
+            .unwrap();
+            line_buf[2..10].copy_from_slice(&address_buf);
+            address += ROW_SIZE;
+
+            hex::encode_to_slice(left_chunk, &mut hex_buf[..left_chunk.len() * 2]).unwrap();
+            if left_chunk.len() * 2 < hex_buf.len() {
+                hex_buf[left_chunk.len() * 2..].fill(b' ');
+            }
+            line_buf[12..16].copy_from_slice(&hex_buf[..4]);
+            line_buf[17..21].copy_from_slice(&hex_buf[4..8]);
+            line_buf[22..26].copy_from_slice(&hex_buf[8..12]);
+            line_buf[27..31].copy_from_slice(&hex_buf[12..]);
+            for (src, dest) in left_chunk.iter().zip(line_buf[32..40].iter_mut()) {
+                if *src >= 0x20 && *src < 0x7f {
+                    *dest = *src;
+                } else {
+                    *dest = b'.';
+                }
+            }
+            for byte in line_buf[32 + left_chunk.len()..40].iter_mut() {
+                *byte = b' ';
+            }
+
+            hex::encode_to_slice(right_chunk, &mut hex_buf[..right_chunk.len() * 2]).unwrap();
+            if right_chunk.len() * 2 < hex_buf.len() {
+                hex_buf[right_chunk.len() * 2..].fill(b' ');
+            }
+            line_buf[43..47].copy_from_slice(&hex_buf[..4]);
+            line_buf[48..52].copy_from_slice(&hex_buf[4..8]);
+            line_buf[53..57].copy_from_slice(&hex_buf[8..12]);
+            line_buf[58..62].copy_from_slice(&hex_buf[12..]);
+            for (src, dest) in right_chunk.iter().zip(line_buf[63..71].iter_mut()) {
+                if *src >= 0x20 && *src < 0x7f {
+                    *dest = *src;
+                } else {
+                    *dest = b'.';
+                }
+            }
+            for byte in line_buf[63 + right_chunk.len()..71].iter_mut() {
+                *byte = b' ';
+            }
+
+            locked.write_all(&line_buf).unwrap();
+        }
+    }
+
+    #[test]
+    #[ignore = "slow test"]
+    fn sqpack_data_round_trip() {
+        dotenv::dotenv().ok();
+        // Don't test anything if the game directory isn't provided
+        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+            root
+        } else {
+            return;
+        };
+        let game_data = GameData::new(root).unwrap();
+
+        for pack_id in game_data.iter_packs() {
+            let mut original_index_file = Vec::new();
+            let path = game_data.build_index_path::<IndexEntry1>(pack_id);
+            File::open(path)
+                .unwrap()
+                .read_to_end(&mut original_index_file)
+                .unwrap();
+            let mut original_index2_file = Vec::new();
+            let path = game_data.build_index_path::<IndexEntry2>(pack_id);
+            File::open(path)
+                .unwrap()
+                .read_to_end(&mut original_index2_file)
+                .unwrap();
+            let mut original_dat_files = Vec::new();
+            for i in 0.. {
+                let path = game_data.build_data_path(pack_id, i);
+                if path.is_file() {
+                    let mut file_data = Vec::new();
+                    File::open(path)
+                        .unwrap()
+                        .read_to_end(&mut file_data)
+                        .unwrap();
+                    original_dat_files.push(file_data);
+                } else {
+                    break;
+                }
+            }
+
+            // TODOs
+            if original_dat_files.len() > 1 {
+                continue;
+            }
+            if original_dat_files.len() > 0 && original_dat_files[0].len() != 2048 {
+                continue;
+            }
+            // next shortest is 2083456!
+            dbg!(pack_id);
+
+            let mut original_entries: BTreeMap<
+                DataLocator,
+                (Option<IndexHash1>, Option<IndexHash2>),
+            > = BTreeMap::new();
+            let index_1 = game_data.get_index_1(&pack_id).unwrap().unwrap();
+            for index_entry in index_1.iter() {
+                let locator = index_entry.data_location();
+                assert!(original_entries
+                    .entry(locator)
+                    .or_default()
+                    .0
+                    .replace(index_entry.hash())
+                    .is_none());
+            }
+            let index_2 = game_data.get_index_2(&pack_id).unwrap().unwrap();
+            for index_entry in index_2.iter() {
+                let locator = index_entry.data_location();
+                assert!(original_entries
+                    .entry(locator)
+                    .or_default()
+                    .1
+                    .replace(index_entry.hash())
+                    .is_none());
+            }
+
+            // iter_files returns entries in the order of their location within the data file.
+            let all_files = game_data.iter_files(pack_id, index_2).unwrap().map(|res| {
+                let (hash, data) = res.unwrap();
+                (index_2.get(&hash).unwrap().data_location(), data)
+            });
+            let mocked_io = MockedPackIO::new();
+            let mut writer = PackSetWriter::new(mocked_io, crate::PlatformId::Win32).unwrap();
+            for (locator, data) in all_files {
+                let hashes = original_entries.get(&locator).unwrap();
+                let hash1 = hashes.0.unwrap();
+                let hash2 = hashes.1.unwrap();
+                writer.add_file_by_hashes(hash1, hash2, &data).unwrap();
+            }
+            let mocked_io = writer.finalize().unwrap();
+
+            let index_matches =
+                mocked_io.index.inner.read().unwrap().get_ref() == &original_index_file;
+            let index2_matches =
+                mocked_io.index2.inner.read().unwrap().get_ref() == &original_index2_file;
+            if !index_matches {
+                print_hexdump_diff(
+                    ".index",
+                    mocked_io.index.inner.read().unwrap().get_ref(),
+                    &original_index_file,
+                );
+            } else if !index2_matches {
+                print_hexdump_diff(
+                    ".index2",
+                    mocked_io.index2.inner.read().unwrap().get_ref(),
+                    &original_index2_file,
+                );
+            }
+            let mut dat_matches = mocked_io.files.len() == original_dat_files.len();
+            for (i, (new, original)) in mocked_io
+                .files
+                .iter()
+                .zip(original_dat_files.iter())
+                .enumerate()
+            {
+                let guard = new.inner.read().unwrap();
+                dat_matches &= guard.get_ref() == original;
+                if guard.get_ref() != original {
+                    print_hexdump_diff(
+                        &format!(".dat{}", i),
+                        new.inner.read().unwrap().get_ref(),
+                        original,
+                    );
+                    break;
+                }
+            }
+            assert!(index_matches && index2_matches && dat_matches)
         }
     }
 }

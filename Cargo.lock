@@ -2127,6 +2127,7 @@ dependencies = [
  "directories",
  "dotenv",
  "flate2",
+ "hex",
  "miniz_oxide",
  "nom",
  "once_cell",
