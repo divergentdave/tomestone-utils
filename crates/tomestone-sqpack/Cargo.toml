@@ -2,7 +2,7 @@
 name = "tomestone-sqpack"
 version = "0.1.0"
 authors = ["David Cook <divergentdave@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 flate2 = { version = "1.0.17", features = ["zlib"], default-features = false }
