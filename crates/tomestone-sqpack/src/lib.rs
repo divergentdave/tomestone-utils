@@ -1003,7 +1003,7 @@ mod tests {
         assert_ne!(left, right);
 
         let first_difference_pos = left.iter().zip(right.iter()).position(|(l, r)| *l != *r);
-        if left.len() == right.len() {
+        if left.len() != right.len() {
             if let Some(first_difference_pos) = first_difference_pos {
                 println!(
                     "{0} differs in length, and the first other difference is at {1} (0x{1:0x})",

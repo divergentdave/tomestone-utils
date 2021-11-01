@@ -8,7 +8,7 @@ use sha1::{Digest, Sha1};
 
 #[allow(unused)]
 use crate::compression::compress_sqpack_block;
-use crate::{IndexHash, IndexHash1, IndexHash2, PlatformId, SqPackId};
+use crate::{IndexHash, IndexHash1, IndexHash2, IndexType, PlatformId, SqPackId, SqPackType};
 
 pub trait PackIO {
     type F: Write + Seek;
@@ -69,41 +69,150 @@ impl PackIO for RealPackIO {
 pub struct PackSetWriter<IO: PackIO> {
     io: IO,
     index: IO::F,
-    index_header: [u8; 1024],
+    index_sqpack_header: SqPackHeader,
+    index_segment_headers: IndexHeader,
     index2: IO::F,
-    index2_header: [u8; 1024],
+    index2_sqpack_header: SqPackHeader,
+    index2_segment_headers: IndexHeader,
     dats: Vec<IO::F>,
 }
 
-fn sqpack_header_skeleton(platform_id: PlatformId) -> [u8; 1024] {
+struct SqPackHeader([u8; 1024]);
+
+#[derive(Default)]
+struct SegmentAccumulator {
+    offset: Option<u32>,
+    hash: Option<Sha1>,
+    length: u32,
+}
+
+struct IndexHeader {
+    buf: [u8; 1024],
+    segment_accumulators: [SegmentAccumulator; 4],
+}
+
+fn sqpack_header_skeleton(platform_id: PlatformId, pack_type: SqPackType) -> SqPackHeader {
     let mut header = [0u8; 1024];
     header[..6].copy_from_slice(b"SqPack");
     header[8..12].copy_from_slice(&(platform_id as u32).to_le_bytes());
     header[12..16].copy_from_slice(&1024u32.to_le_bytes());
-    header
+    header[16..20].copy_from_slice(&1u32.to_le_bytes());
+    header[20..24].copy_from_slice(&(pack_type as u32).to_le_bytes());
+    // date?
+    // unknown?
+    header[32..36].copy_from_slice(b"\xff\xff\xff\xff");
+    SqPackHeader(header)
 }
 
-fn sqpack_header_finalize(header: &mut [u8; 1024]) {
+fn sqpack_header_finalize(header: &mut SqPackHeader) {
     let mut sha = Sha1::new();
-    sha.update(&header[..0x3c0]);
+    sha.update(&header.0[..0x3c0]);
     let hash = sha.finalize();
-    header[0x3c0..0x3d4].copy_from_slice(&hash);
+    header.0[0x3c0..0x3d4].copy_from_slice(&hash);
+}
+
+fn index_segment_headers_skeleton() -> IndexHeader {
+    let mut header = [0u8; 1024];
+    header[..4].copy_from_slice(&1024u32.to_le_bytes());
+    header[4..8].copy_from_slice(&(IndexType::Files as u32).to_le_bytes());
+    let segment_accumulators: [SegmentAccumulator; 4] = [
+        SegmentAccumulator {
+            offset: Some(2048),
+            hash: Some(Sha1::new()),
+            length: 0,
+        },
+        SegmentAccumulator {
+            offset: None,
+            hash: Some(Sha1::new()),
+            length: 0,
+        },
+        SegmentAccumulator {
+            offset: None,
+            hash: Some(Sha1::new()),
+            length: 0,
+        },
+        SegmentAccumulator {
+            offset: None,
+            hash: Some(Sha1::new()),
+            length: 0,
+        },
+    ];
+    IndexHeader {
+        buf: header,
+        segment_accumulators,
+    }
+}
+
+fn index_segment_headers_finalize(header: &mut IndexHeader) {
+    header.segment_accumulators[1].offset = Some(0);
+    header.segment_accumulators[2].offset = Some(0);
+    header.segment_accumulators[3].offset = Some(0);
+
+    header.buf[8..12]
+        .copy_from_slice(&header.segment_accumulators[0].offset.unwrap().to_le_bytes());
+    header.buf[12..16].copy_from_slice(&header.segment_accumulators[0].length.to_le_bytes());
+    header.buf[16..36].copy_from_slice(
+        &header.segment_accumulators[0]
+            .hash
+            .take()
+            .unwrap()
+            .finalize(),
+    );
+
+    header.buf[84..88]
+        .copy_from_slice(&header.segment_accumulators[1].offset.unwrap().to_le_bytes());
+    header.buf[88..92].copy_from_slice(&header.segment_accumulators[1].length.to_le_bytes());
+    header.buf[92..112].copy_from_slice(
+        &header.segment_accumulators[1]
+            .hash
+            .take()
+            .unwrap()
+            .finalize(),
+    );
+
+    header.buf[156..160]
+        .copy_from_slice(&header.segment_accumulators[2].offset.unwrap().to_le_bytes());
+    header.buf[160..164].copy_from_slice(&header.segment_accumulators[2].length.to_le_bytes());
+    header.buf[164..184].copy_from_slice(
+        &header.segment_accumulators[2]
+            .hash
+            .take()
+            .unwrap()
+            .finalize(),
+    );
+
+    header.buf[228..232]
+        .copy_from_slice(&header.segment_accumulators[3].offset.unwrap().to_le_bytes());
+    header.buf[232..236].copy_from_slice(&header.segment_accumulators[3].length.to_le_bytes());
+    header.buf[236..256].copy_from_slice(
+        &header.segment_accumulators[3]
+            .hash
+            .take()
+            .unwrap()
+            .finalize(),
+    );
 }
 
 impl<IO: PackIO> PackSetWriter<IO> {
     pub fn new(mut io: IO, platform_id: PlatformId) -> Result<Self, io::Error> {
         let mut index = io.open_index_file()?;
-        let index_header = sqpack_header_skeleton(platform_id);
-        index.write_all(&index_header)?;
+        let index_sqpack_header = sqpack_header_skeleton(platform_id, SqPackType::Index);
+        index.write_all(&index_sqpack_header.0)?;
+        let index_segment_headers = index_segment_headers_skeleton();
+        index.write_all(&index_segment_headers.buf)?;
         let mut index2 = io.open_index2_file()?;
-        let index2_header = sqpack_header_skeleton(platform_id);
-        index2.write_all(&index2_header)?;
+        let index2_sqpack_header = sqpack_header_skeleton(platform_id, SqPackType::Index);
+        index2.write_all(&index2_sqpack_header.0)?;
+        let index2_segment_headers = index_segment_headers_skeleton();
+        index2.write_all(&index2_segment_headers.buf)?;
         Ok(PackSetWriter {
             io,
             index,
-            index_header,
+            index_sqpack_header,
+            index_segment_headers,
             index2,
-            index2_header,
+            index2_sqpack_header,
+            index2_segment_headers,
             dats: Vec::new(),
         })
     }
@@ -124,13 +233,16 @@ impl<IO: PackIO> PackSetWriter<IO> {
     }
 
     pub fn finalize(mut self) -> Result<IO, io::Error> {
-        sqpack_header_finalize(&mut self.index_header);
         self.index.seek(SeekFrom::Start(0))?;
-        self.index.write_all(&self.index_header)?;
+        sqpack_header_finalize(&mut self.index_sqpack_header);
+        self.index.write_all(&self.index_sqpack_header.0)?;
+        index_segment_headers_finalize(&mut self.index_segment_headers);
+        self.index.write_all(&self.index_segment_headers.buf)?;
 
-        sqpack_header_finalize(&mut self.index2_header);
         self.index2.seek(SeekFrom::Start(0))?;
-        self.index2.write_all(&self.index2_header)?;
+        sqpack_header_finalize(&mut self.index2_sqpack_header);
+        self.index2.write_all(&self.index2_sqpack_header.0)?;
+        self.index2.write_all(&self.index2_segment_headers.buf)?;
 
         Ok(self.io)
     }
