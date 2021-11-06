@@ -21,8 +21,8 @@ use tomestone_common::null_padding;
 
 use crate::{
     compression::decompress_sqpack_block, DataBlocks, DataLocator, Error, Index, IndexEntry,
-    IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader, IndexType, PlatformId,
-    SqPackType, SHA1_OUTPUT_SIZE,
+    IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader, PlatformId, SqPackType,
+    SHA1_OUTPUT_SIZE,
 };
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
@@ -116,17 +116,14 @@ pub(crate) fn sqpack_header_outer(
 
 fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
     map(
-        tuple((
-            map_opt(le_u32, IndexType::parse),
-            le_u32,
-            le_u32,
-            take(SHA1_OUTPUT_SIZE),
-        )),
-        |(index_type, offset, size, hash): (IndexType, u32, u32, &[u8])| IndexSegmentHeader {
-            index_type,
-            offset,
-            size,
-            hash: hash.try_into().unwrap(),
+        tuple((le_u32, le_u32, le_u32, take(SHA1_OUTPUT_SIZE))),
+        |(dat_file_count_or_other, offset, size, hash): (u32, u32, u32, &[u8])| {
+            IndexSegmentHeader {
+                dat_file_count_or_other,
+                offset,
+                size,
+                hash: hash.try_into().unwrap(),
+            }
         },
     )(input)
 }

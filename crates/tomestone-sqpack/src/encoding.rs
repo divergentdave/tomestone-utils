@@ -9,9 +9,7 @@ use sha1::{Digest, Sha1};
 
 #[allow(unused)]
 use crate::compression::compress_sqpack_block;
-use crate::{
-    DataLocator, IndexHash, IndexHash1, IndexHash2, IndexType, PlatformId, SqPackId, SqPackType,
-};
+use crate::{DataLocator, IndexHash, IndexHash1, IndexHash2, PlatformId, SqPackId, SqPackType};
 
 pub trait PackIO {
     type F: Write + Seek;
@@ -106,8 +104,8 @@ fn sqpack_header_finalize(header: &mut SqPackHeader) {
 fn index_segment_headers_skeleton() -> IndexHeader {
     let mut header = [0u8; 1024];
     header[..4].copy_from_slice(&1024u32.to_le_bytes());
-    header[4..8].copy_from_slice(&(IndexType::Files as u32).to_le_bytes());
-    header[80..84].copy_from_slice(&(IndexType::Files as u32).to_le_bytes()); // why are there two of these?
+    header[4..8].copy_from_slice(&1u32.to_le_bytes());
+    header[80..84].copy_from_slice(&1u32.to_le_bytes());
     let segment_accumulators: [SegmentAccumulator; 4] = [
         SegmentAccumulator {
             offset: Some(2048),

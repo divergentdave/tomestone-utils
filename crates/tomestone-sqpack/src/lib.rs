@@ -109,34 +109,8 @@ impl SqPackType {
 }
 
 #[derive(Debug)]
-pub enum IndexType {
-    Zero = 0,
-    Files = 1,
-    Two = 2,
-    Three = 3,
-    Four = 4,
-    Five = 5,
-    Six = 6,
-}
-
-impl IndexType {
-    pub fn parse(value: u32) -> Option<IndexType> {
-        match value {
-            0 => Some(IndexType::Zero),
-            1 => Some(IndexType::Files),
-            2 => Some(IndexType::Two),
-            3 => Some(IndexType::Three),
-            4 => Some(IndexType::Four),
-            5 => Some(IndexType::Five),
-            6 => Some(IndexType::Six),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct IndexSegmentHeader {
-    pub index_type: IndexType,
+    pub dat_file_count_or_other: u32,
     pub offset: u32,
     pub size: u32,
     pub hash: [u8; SHA1_OUTPUT_SIZE],
