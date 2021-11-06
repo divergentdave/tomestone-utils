@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs::File,
     io::{self, Seek, SeekFrom, Write},
     path::PathBuf,
@@ -8,7 +9,9 @@ use sha1::{Digest, Sha1};
 
 #[allow(unused)]
 use crate::compression::compress_sqpack_block;
-use crate::{IndexHash, IndexHash1, IndexHash2, IndexType, PlatformId, SqPackId, SqPackType};
+use crate::{
+    DataLocator, IndexHash, IndexHash1, IndexHash2, IndexType, PlatformId, SqPackId, SqPackType,
+};
 
 pub trait PackIO {
     type F: Write + Seek;
@@ -66,17 +69,6 @@ impl PackIO for RealPackIO {
     }
 }
 
-pub struct PackSetWriter<IO: PackIO> {
-    io: IO,
-    index: IO::F,
-    index_sqpack_header: SqPackHeader,
-    index_segment_headers: IndexHeader,
-    index2: IO::F,
-    index2_sqpack_header: SqPackHeader,
-    index2_segment_headers: IndexHeader,
-    dats: Vec<IO::F>,
-}
-
 struct SqPackHeader([u8; 1024]);
 
 #[derive(Default)]
@@ -115,6 +107,7 @@ fn index_segment_headers_skeleton() -> IndexHeader {
     let mut header = [0u8; 1024];
     header[..4].copy_from_slice(&1024u32.to_le_bytes());
     header[4..8].copy_from_slice(&(IndexType::Files as u32).to_le_bytes());
+    header[80..84].copy_from_slice(&(IndexType::Files as u32).to_le_bytes()); // why are there two of these?
     let segment_accumulators: [SegmentAccumulator; 4] = [
         SegmentAccumulator {
             offset: Some(2048),
@@ -144,9 +137,31 @@ fn index_segment_headers_skeleton() -> IndexHeader {
 }
 
 fn index_segment_headers_finalize(header: &mut IndexHeader) {
-    header.segment_accumulators[1].offset = Some(0);
+    header.segment_accumulators[1].offset = Some(2048 + header.segment_accumulators[0].length);
+    header.segment_accumulators[1].length = 256; // what is this? data is ffffffff ffffffff 00000000 ffffffff, then zeros
+    header.segment_accumulators[1]
+        .hash
+        .as_mut()
+        .unwrap()
+        .update(&[0xff; 8]);
+    header.segment_accumulators[1]
+        .hash
+        .as_mut()
+        .unwrap()
+        .update(&[0; 4]);
+    header.segment_accumulators[1]
+        .hash
+        .as_mut()
+        .unwrap()
+        .update(&[0xff; 4]);
+    header.segment_accumulators[1]
+        .hash
+        .as_mut()
+        .unwrap()
+        .update(&[0; 240]);
     header.segment_accumulators[2].offset = Some(0);
-    header.segment_accumulators[3].offset = Some(0);
+    header.segment_accumulators[3].offset =
+        Some(2048 + header.segment_accumulators[0].length + header.segment_accumulators[1].length);
 
     header.buf[8..12]
         .copy_from_slice(&header.segment_accumulators[0].offset.unwrap().to_le_bytes());
@@ -191,6 +206,25 @@ fn index_segment_headers_finalize(header: &mut IndexHeader) {
             .unwrap()
             .finalize(),
     );
+
+    let mut sha = Sha1::new();
+    sha.update(&header.buf[..0x3c0]);
+    let hash = sha.finalize();
+    header.buf[0x3c0..0x3d4].copy_from_slice(&hash);
+}
+
+pub struct PackSetWriter<IO: PackIO> {
+    io: IO,
+    index: IO::F,
+    index_sqpack_header: SqPackHeader,
+    index_segment_headers: IndexHeader,
+    index2: IO::F,
+    index2_sqpack_header: SqPackHeader,
+    index2_segment_headers: IndexHeader,
+    dats: Vec<IO::F>,
+    entries: BTreeMap<IndexHash1, DataLocator>,
+    entries2: BTreeMap<IndexHash2, DataLocator>,
+    file_size_limit: u32,
 }
 
 impl<IO: PackIO> PackSetWriter<IO> {
@@ -214,6 +248,9 @@ impl<IO: PackIO> PackSetWriter<IO> {
             index2_sqpack_header,
             index2_segment_headers,
             dats: Vec::new(),
+            entries: BTreeMap::new(),
+            entries2: BTreeMap::new(),
+            file_size_limit: 2000000000,
         })
     }
 
@@ -229,10 +266,21 @@ impl<IO: PackIO> PackSetWriter<IO> {
         hash2: IndexHash2,
         data: &[u8],
     ) -> Result<(), io::Error> {
+        let locator = DataLocator {
+            data_file_id: 0,
+            offset: 0,
+        };
+        assert!(self.entries.insert(hash1, locator).is_none());
+        assert!(self.entries2.insert(hash2, locator).is_none());
         todo!();
     }
 
     pub fn finalize(mut self) -> Result<IO, io::Error> {
+        self.index.write_all(&[0xff; 8])?;
+        self.index.write_all(&[0; 4])?;
+        self.index.write_all(&[0xff; 4])?;
+        self.index.write_all(&[0; 240])?;
+
         self.index.seek(SeekFrom::Start(0))?;
         sqpack_header_finalize(&mut self.index_sqpack_header);
         self.index.write_all(&self.index_sqpack_header.0)?;
