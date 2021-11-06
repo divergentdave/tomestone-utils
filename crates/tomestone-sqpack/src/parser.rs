@@ -10,7 +10,7 @@ use nom::{
     bytes::streaming::{tag, take},
     combinator::{complete, map, map_opt, map_parser, map_res, peek, verify},
     error::{ErrorKind, ParseError},
-    multi::{count, length_value},
+    multi::{count, length_data, length_value},
     number::streaming::{le_u16, le_u32, le_u8},
     sequence::tuple,
     Err, IResult, Needed,
@@ -280,9 +280,9 @@ fn type_4_block_table<'a>(
 
 fn data_entry_headers(start_position: u32) -> impl FnMut(&[u8]) -> IResult<&[u8], DataBlocks> {
     move |input: &[u8]| {
-        let (_, (header_length, header_common)) = data_entry_header_common(input)?;
-        let (input, header_data) = take(TryInto::<usize>::try_into(header_length).unwrap())(input)?;
-        let (header_data, _) = complete(data_entry_header_common)(header_data)?;
+        let (input, header_data) = length_data(peek(le_u32))(input)?;
+        let (header_data, (header_length, header_common)) =
+            complete(data_entry_header_common)(header_data)?;
         let base_position = start_position + header_length;
         let blocks = match header_common.content_type {
             DataContentType::Empty => DataBlocks::Empty,
