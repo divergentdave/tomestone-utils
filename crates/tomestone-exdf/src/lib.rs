@@ -1,5 +1,6 @@
 use std::{fmt, str::FromStr, string::FromUtf8Error};
 
+use nom::Finish;
 use parser::{
     exdf::{Exdf, ExdfIterator},
     exhf::{parse_exhf, Exhf},
@@ -266,11 +267,10 @@ impl Dataset {
             Ok(None) => return Err(Error::NoSuchFile),
             Err(e) => return Err(Error::Sqpack(e)),
         };
-        let exhf = match parse_exhf(&exh_data) {
-            Ok((_, exhf)) => exhf,
-            Err(nom::Err::Incomplete(_)) => unreachable!(),
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => return Err(Error::Nom(e.code)),
-        };
+        let exhf = parse_exhf(&exh_data)
+            .finish()
+            .map_err(|e| Error::Nom(e.code))?
+            .1;
 
         let short_code = if exhf.languages().contains(&Some(language)) {
             Some(language.short_code())

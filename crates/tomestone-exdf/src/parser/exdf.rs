@@ -7,7 +7,7 @@ use nom::{
     multi::{count, length_value},
     number::complete::{be_u16, be_u32},
     sequence::{pair, tuple},
-    IResult,
+    Finish, IResult,
 };
 
 use tomestone_common::null_padding;
@@ -36,17 +36,11 @@ pub struct Exdf {
 impl Exdf {
     pub fn new(data: Vec<u8>) -> Result<Exdf, nom::error::ErrorKind> {
         let input = &data;
-        let (input, header) = match exdf_header(input) {
-            Ok((input, header)) => (input, header),
-            Err(nom::Err::Incomplete(_)) => unreachable!(),
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => return Err(e.code),
-        };
+        let (input, header) = exdf_header(input).finish().map_err(|e| e.code)?;
         let offset_entry_count = TryInto::<usize>::try_into(header.offset_table_size / 8).unwrap();
-        let (_input, offsets) = match count(offset_entry, offset_entry_count)(input) {
-            Ok((input, offsets)) => (input, offsets),
-            Err(nom::Err::Incomplete(_)) => unreachable!(),
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => return Err(e.code),
-        };
+        let (_input, offsets) = count(offset_entry, offset_entry_count)(input)
+            .finish()
+            .map_err(|e| e.code)?;
         Ok(Exdf {
             data,
             header,
@@ -62,11 +56,11 @@ impl Exdf {
             Ok(offset_idx) => {
                 let offset =
                     TryInto::<usize>::try_into(self.offsets[offset_idx].data_offset).unwrap();
-                match data_row(&self.data[offset..]) {
-                    Ok((_, row_contents)) => Some(Ok(row_contents)),
-                    Err(nom::Err::Incomplete(_)) => unreachable!(),
-                    Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Some(Err(e)),
-                }
+                Some(
+                    data_row(&self.data[offset..])
+                        .finish()
+                        .map(|(_, row_contents)| row_contents),
+                )
             }
             Err(_) => None,
         }
@@ -91,11 +85,11 @@ impl<'a, 'b> Iterator for ExdfIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let entry = self.offsets.next()?;
         let offset = TryInto::<usize>::try_into(entry.data_offset).unwrap();
-        match data_row(&self.data[offset..]) {
-            Ok((_, row_contents)) => Some(Ok((entry.row_number, row_contents))),
-            Err(nom::Err::Incomplete(_)) => unreachable!(),
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Some(Err(e)),
-        }
+        Some(
+            data_row(&self.data[offset..])
+                .finish()
+                .map(|(_, row_contents)| (entry.row_number, row_contents)),
+        )
     }
 }
 

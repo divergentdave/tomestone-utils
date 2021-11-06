@@ -1,5 +1,7 @@
 use std::{fmt, num::NonZeroU8, string::FromUtf8Error};
 
+use nom::Finish;
+
 mod encoding;
 mod parser;
 mod types;
@@ -454,11 +456,9 @@ impl Text {
     }
 
     pub fn parse(input: &[u8]) -> Result<Text, Error> {
-        match nom::combinator::complete(parser::tagged_text)(input) {
-            Ok((_, text)) => Ok(text),
-            Err(nom::Err::Incomplete(_)) => unreachable!(),
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(e),
-        }
+        nom::combinator::complete(parser::tagged_text)(input)
+            .finish()
+            .map(|(_, text)| text)
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, encoding::EncodeError> {
