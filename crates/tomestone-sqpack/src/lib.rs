@@ -110,7 +110,6 @@ impl SqPackType {
 
 #[derive(Debug)]
 pub struct IndexSegmentHeader {
-    pub dat_file_count_or_other: u32,
     pub offset: u32,
     pub size: u32,
     pub hash: [u8; SHA1_OUTPUT_SIZE],

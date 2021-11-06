@@ -116,45 +116,51 @@ pub(crate) fn sqpack_header_outer(
 
 fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
     map(
-        tuple((le_u32, le_u32, le_u32, take(SHA1_OUTPUT_SIZE))),
-        |(dat_file_count_or_other, offset, size, hash): (u32, u32, u32, &[u8])| {
-            IndexSegmentHeader {
-                dat_file_count_or_other,
-                offset,
-                size,
-                hash: hash.try_into().unwrap(),
-            }
+        tuple((le_u32, le_u32, take(SHA1_OUTPUT_SIZE))),
+        |(offset, size, hash): (u32, u32, &[u8])| IndexSegmentHeader {
+            offset,
+            size,
+            hash: hash.try_into().unwrap(),
         },
     )(input)
 }
 
-fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, [IndexSegmentHeader; 4])> {
+fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, u32, [IndexSegmentHeader; 4])> {
     integrity_checked_header(
         input,
         map(le_u32, |size| size.try_into().unwrap()),
         map(
             tuple((
                 le_u32,
+                tag(b"\x01\x00\x00\x00"),
                 index_segment_header,
                 null_padding(44),
+                le_u32,
                 index_segment_header,
                 null_padding(40),
+                null_padding(4),
                 index_segment_header,
                 null_padding(40),
+                null_padding(4),
                 index_segment_header,
             )),
             |(
                 size,
+                _,
                 segment_header_1,
                 _,
+                number_of_dat_files,
                 segment_header_2,
                 _,
+                _,
                 segment_header_3,
+                _,
                 _,
                 segment_header_4,
             )| {
                 (
                     size,
+                    number_of_dat_files,
                     [
                         segment_header_1,
                         segment_header_2,
@@ -517,7 +523,7 @@ fn load_index_reader<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
 
     bufreader.seek(SeekFrom::Start(size.into()))?;
     let index_header = drive_streaming_parser(bufreader, index_segment_headers)?;
-    let first_segment_header = &index_header.1[0];
+    let first_segment_header = &index_header.2[0];
 
     bufreader.seek(SeekFrom::Start(first_segment_header.offset.into()))?;
     let entry_count = first_segment_header.size / I::SIZE;

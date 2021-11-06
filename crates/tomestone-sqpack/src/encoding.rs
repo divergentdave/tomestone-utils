@@ -288,6 +288,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
         self.index2.seek(SeekFrom::Start(0))?;
         sqpack_header_finalize(&mut self.index2_sqpack_header);
         self.index2.write_all(&self.index2_sqpack_header.0)?;
+        index_segment_headers_finalize(&mut self.index2_segment_headers);
         self.index2.write_all(&self.index2_segment_headers.buf)?;
 
         Ok(self.io)
