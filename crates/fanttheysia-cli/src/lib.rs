@@ -4,7 +4,7 @@ use tomestone_string_interp::{Expression, Segment, TreeNode, Visitor};
 ///
 /// # Example
 /// ```
-/// use fanttheysia::GenderExpressionVisitor;
+/// use fanttheysia_cli::GenderExpressionVisitor;
 /// use tomestone_string_interp::{Expression, TreeNode};
 ///
 /// let expression = Expression::Equal(Box::new((
@@ -54,7 +54,7 @@ pub struct IfSegment {
 ///
 /// # Example
 /// ```
-/// use fanttheysia::GenderConditionalTextVisitor;
+/// use fanttheysia_cli::GenderConditionalTextVisitor;
 /// use tomestone_string_interp::{Expression, Segment, Text, TreeNode};
 ///
 /// let text = Text::new(vec![Segment::Literal("Good morning, ".to_string()), Segment::If {
