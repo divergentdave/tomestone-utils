@@ -1081,6 +1081,30 @@ mod tests {
         let game_data = GameData::new(root).unwrap();
 
         for pack_id in game_data.iter_packs() {
+            // TODOs
+            let mut skip = false;
+            for i in 0.. {
+                let path = game_data.build_data_path(pack_id, i);
+                if path.is_file() {
+                    let size = path.metadata().unwrap().len();
+                    if size != 2048 {
+                        skip = true;
+                        break;
+                        // next shortest is 2083456!
+                    }
+                    if i > 0 {
+                        skip = true;
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            if skip {
+                continue;
+            }
+            dbg!(pack_id);
+
             let mut original_index_file = Vec::new();
             let path = game_data.build_index_path::<IndexEntry1>(pack_id);
             File::open(path)
@@ -1107,16 +1131,6 @@ mod tests {
                     break;
                 }
             }
-
-            // TODOs
-            if original_dat_files.len() > 1 {
-                continue;
-            }
-            if original_dat_files.len() > 0 && original_dat_files[0].len() != 2048 {
-                continue;
-            }
-            // next shortest is 2083456!
-            dbg!(pack_id);
 
             let mut original_entries: BTreeMap<
                 DataLocator,
