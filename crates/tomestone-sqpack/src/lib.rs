@@ -714,7 +714,7 @@ pub fn write_packs<I: Iterator<Item = (SqPackId, Vec<u8>)>>(
 ) -> Result<(), Error> {
     for (pack_id, blob) in packs {
         let io = RealPackIO::new(base.clone(), platform_id, pack_id)?;
-        let mut writer = PackSetWriter::new(io, PlatformId::Win32)?;
+        let mut writer = PackSetWriter::new(io, PlatformId::Win32, pack_id)?;
         writer.add_file("todo", &blob)?;
         writer.finalize()?;
     }
@@ -1163,7 +1163,8 @@ mod tests {
                 (index_2.get(&hash).unwrap().data_location(), data)
             });
             let mocked_io = MockedPackIO::new();
-            let mut writer = PackSetWriter::new(mocked_io, crate::PlatformId::Win32).unwrap();
+            let mut writer =
+                PackSetWriter::new(mocked_io, crate::PlatformId::Win32, pack_id).unwrap();
             for (locator, data) in all_files {
                 let hashes = original_entries.get(&locator).unwrap();
                 let hash1 = hashes.0.unwrap();
