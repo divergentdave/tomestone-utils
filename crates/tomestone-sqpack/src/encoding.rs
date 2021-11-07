@@ -9,14 +9,16 @@ use sha1::{Digest, Sha1};
 
 #[allow(unused)]
 use crate::compression::compress_sqpack_block;
-use crate::{DataLocator, IndexHash, IndexHash1, IndexHash2, PlatformId, SqPackId, SqPackType};
+use crate::{
+    compression, DataLocator, IndexHash, IndexHash1, IndexHash2, PlatformId, SqPackId, SqPackType,
+};
 
 pub trait PackIO {
     type F: Write + Seek;
 
     fn open_index_file(&mut self) -> Result<Self::F, io::Error>;
     fn open_index2_file(&mut self) -> Result<Self::F, io::Error>;
-    fn open_dat_file(&mut self, number: u32) -> Result<Self::F, io::Error>;
+    fn open_dat_file(&mut self, number: u8) -> Result<Self::F, io::Error>;
 }
 
 pub struct RealPackIO {
@@ -58,7 +60,7 @@ impl PackIO for RealPackIO {
         )))
     }
 
-    fn open_dat_file(&mut self, number: u32) -> Result<File, io::Error> {
+    fn open_dat_file(&mut self, number: u8) -> Result<File, io::Error> {
         assert_eq!(self.platform_id, PlatformId::Win32);
         File::create(self.base.join(self.pack_id.expansion.name()).join(format!(
             "{:02x}{:02x}{:02x}.win32.dat{}",
@@ -220,6 +222,8 @@ pub struct PackSetWriter<IO: PackIO> {
     index2_sqpack_header: SqPackHeader,
     index2_segment_headers: IndexHeader,
     dats: Vec<IO::F>,
+    dat_file_number: u8,
+    dat_file_position: u32,
     entries: BTreeMap<IndexHash1, DataLocator>,
     entries2: BTreeMap<IndexHash2, DataLocator>,
     file_size_limit: u32,
@@ -246,6 +250,8 @@ impl<IO: PackIO> PackSetWriter<IO> {
             index2_sqpack_header,
             index2_segment_headers,
             dats: Vec::new(),
+            dat_file_number: 0,
+            dat_file_position: 2048,
             entries: BTreeMap::new(),
             entries2: BTreeMap::new(),
             file_size_limit: 2000000000,
@@ -264,13 +270,38 @@ impl<IO: PackIO> PackSetWriter<IO> {
         hash2: IndexHash2,
         data: &[u8],
     ) -> Result<(), io::Error> {
-        let locator = DataLocator {
-            data_file_id: 0,
-            offset: 0,
+        // for now, assume the data entry has the binary type, and there is one data block
+        let entry_header_size = std::cmp::max(128, 24 + 8 * 1);
+        let block_header_size = 16;
+        let compressed = compression::compress_sqpack_block(data)?;
+        let compressed_size: u32 = compressed.len().try_into().unwrap();
+        let total_size = (entry_header_size + block_header_size + compressed_size + 7) / 8 * 8;
+        let need_new_file = if let Some(f) = self.dats.last_mut() {
+            let current_file_size = f.stream_position()?;
+            if current_file_size + total_size as u64 > self.file_size_limit as u64 {
+                self.dat_file_number += 1;
+                self.dat_file_position = 2048;
+                true
+            } else {
+                false
+            }
+        } else {
+            true
         };
+        if need_new_file {
+            self.dats.push(self.io.open_dat_file(self.dat_file_number)?);
+        }
+
+        let locator = DataLocator {
+            data_file_id: self.dat_file_number,
+            offset: self.dat_file_position,
+        };
+
+        self.dat_file_position += total_size;
+
         assert!(self.entries.insert(hash1, locator).is_none());
         assert!(self.entries2.insert(hash2, locator).is_none());
-        todo!();
+        Ok(())
     }
 
     pub fn finalize(mut self) -> Result<IO, io::Error> {

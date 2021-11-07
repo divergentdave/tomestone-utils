@@ -958,7 +958,7 @@ mod tests {
             Ok(self.index2.clone())
         }
 
-        fn open_dat_file(&mut self, number: u32) -> Result<Self::F, std::io::Error> {
+        fn open_dat_file(&mut self, number: u8) -> Result<Self::F, std::io::Error> {
             if number <= self.files.len().try_into().unwrap() {
                 self.files
                     .resize_with((number + 1).try_into().unwrap(), || MockFile {

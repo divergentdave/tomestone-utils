@@ -137,11 +137,9 @@ fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, u32, [IndexSegmen
                 null_padding(44),
                 le_u32,
                 index_segment_header,
-                null_padding(40),
-                null_padding(4),
+                null_padding(44),
                 index_segment_header,
-                null_padding(40),
-                null_padding(4),
+                null_padding(44),
                 index_segment_header,
             )),
             |(
@@ -152,9 +150,7 @@ fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, u32, [IndexSegmen
                 number_of_dat_files,
                 segment_header_2,
                 _,
-                _,
                 segment_header_3,
-                _,
                 _,
                 segment_header_4,
             )| {
