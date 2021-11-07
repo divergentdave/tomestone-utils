@@ -71,18 +71,6 @@ impl PackIO for RealPackIO {
 
 struct SqPackHeader([u8; 1024]);
 
-#[derive(Default)]
-struct SegmentAccumulator {
-    offset: Option<u32>,
-    hash: Option<Sha1>,
-    length: u32,
-}
-
-struct IndexHeader {
-    buf: [u8; 1024],
-    segment_accumulators: [SegmentAccumulator; 4],
-}
-
 fn sqpack_header_skeleton(platform_id: PlatformId, pack_type: SqPackType) -> SqPackHeader {
     let mut header = [0u8; 1024];
     header[..6].copy_from_slice(b"SqPack");
@@ -101,6 +89,18 @@ fn sqpack_header_finalize(header: &mut SqPackHeader) {
     sha.update(&header.0[..0x3c0]);
     let hash = sha.finalize();
     header.0[0x3c0..0x3d4].copy_from_slice(&hash);
+}
+
+#[derive(Default)]
+struct SegmentAccumulator {
+    offset: Option<u32>,
+    hash: Option<Sha1>,
+    length: u32,
+}
+
+struct IndexHeader {
+    buf: [u8; 1024],
+    segment_accumulators: [SegmentAccumulator; 4],
 }
 
 fn index_segment_headers_skeleton() -> IndexHeader {
@@ -211,15 +211,45 @@ fn index_segment_headers_finalize(
     header.buf[0x3c0..0x3d4].copy_from_slice(&hash);
 }
 
+struct DataHeader {
+    buf: [u8; 1024],
+}
+
+fn data_header_skeleton(dat_file_number: u8) -> DataHeader {
+    let mut header = [0u8; 1024];
+    header[..4].copy_from_slice(&1024u32.to_le_bytes());
+    header[8..12].copy_from_slice(&16u32.to_le_bytes());
+    header[16] = dat_file_number + 1;
+    header[24..28].copy_from_slice(&2000000000u32.to_le_bytes());
+    DataHeader { buf: header }
+}
+
+fn data_header_finalize(header: &mut DataHeader, data_section_hash: &mut Option<Sha1>) {
+    header.buf[32..52].copy_from_slice(&data_section_hash.take().unwrap().finalize());
+
+    let mut sha = Sha1::new();
+    sha.update(&header.buf[..0x3c0]);
+    let hash = sha.finalize();
+    header.buf[0x3c0..0x3d4].copy_from_slice(&hash);
+}
+
+struct DatFileRecord<IO: PackIO> {
+    file: IO::F,
+    sqpack_header: SqPackHeader,
+    data_header: DataHeader,
+    data_section_hash: Option<Sha1>,
+}
+
 pub struct PackSetWriter<IO: PackIO> {
     io: IO,
+    platform_id: PlatformId,
     index: IO::F,
     index_sqpack_header: SqPackHeader,
     index_segment_headers: IndexHeader,
     index2: IO::F,
     index2_sqpack_header: SqPackHeader,
     index2_segment_headers: IndexHeader,
-    dats: Vec<IO::F>,
+    dats: Vec<DatFileRecord<IO>>,
     dat_file_number: u8,
     dat_file_position: u32,
     entries: BTreeMap<IndexHash1, DataLocator>,
@@ -239,8 +269,9 @@ impl<IO: PackIO> PackSetWriter<IO> {
         index2.write_all(&index2_sqpack_header.0)?;
         let index2_segment_headers = index_segment_headers_skeleton();
         index2.write_all(&index2_segment_headers.buf)?;
-        Ok(PackSetWriter {
+        let mut writer = PackSetWriter {
             io,
+            platform_id,
             index,
             index_sqpack_header,
             index_segment_headers,
@@ -253,7 +284,24 @@ impl<IO: PackIO> PackSetWriter<IO> {
             entries: BTreeMap::new(),
             entries2: BTreeMap::new(),
             file_size_limit: 2000000000,
-        })
+        };
+        writer.create_new_dat_file()?;
+        Ok(writer)
+    }
+
+    fn create_new_dat_file(&mut self) -> Result<(), io::Error> {
+        let mut file = self.io.open_dat_file(self.dat_file_number)?;
+        let sqpack_header = sqpack_header_skeleton(self.platform_id, SqPackType::Data);
+        file.write_all(&sqpack_header.0)?;
+        let data_header = data_header_skeleton(self.dat_file_number);
+        file.write_all(&data_header.buf)?;
+        self.dats.push(DatFileRecord {
+            file,
+            sqpack_header,
+            data_header,
+            data_section_hash: Some(Sha1::new()),
+        });
+        Ok(())
     }
 
     pub fn add_file(&mut self, path: &str, data: &[u8]) -> Result<(), io::Error> {
@@ -274,20 +322,11 @@ impl<IO: PackIO> PackSetWriter<IO> {
         let compressed = compression::compress_sqpack_block(data)?;
         let compressed_size: u32 = compressed.len().try_into().unwrap();
         let total_size = (entry_header_size + block_header_size + compressed_size + 7) / 8 * 8;
-        let need_new_file = if let Some(f) = self.dats.last_mut() {
-            let current_file_size = f.stream_position()?;
-            if current_file_size + total_size as u64 > self.file_size_limit as u64 {
-                self.dat_file_number += 1;
-                self.dat_file_position = 2048;
-                true
-            } else {
-                false
-            }
-        } else {
-            true
-        };
-        if need_new_file {
-            self.dats.push(self.io.open_dat_file(self.dat_file_number)?);
+        let current_file_size = self.dats.last_mut().unwrap().file.stream_position()?;
+        if current_file_size + total_size as u64 > self.file_size_limit as u64 {
+            self.dat_file_number += 1;
+            self.dat_file_position = 2048;
+            self.create_new_dat_file()?;
         }
 
         let locator = DataLocator {
@@ -332,6 +371,20 @@ impl<IO: PackIO> PackSetWriter<IO> {
             false,
         );
         self.index2.write_all(&self.index2_segment_headers.buf)?;
+
+        for DatFileRecord {
+            file,
+            sqpack_header: header,
+            data_header,
+            data_section_hash,
+        } in self.dats.iter_mut()
+        {
+            file.seek(SeekFrom::Start(0))?;
+            sqpack_header_finalize(header);
+            file.write_all(&header.0)?;
+            data_header_finalize(data_header, data_section_hash);
+            file.write_all(&data_header.buf)?;
+        }
 
         Ok(self.io)
     }
