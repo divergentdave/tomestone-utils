@@ -1190,6 +1190,13 @@ mod tests {
                 );
             }
             let mut dat_matches = mocked_io.files.len() == original_dat_files.len();
+            if !dat_matches {
+                println!(
+                    "Wrong number of .dat files, expected {}, got {}",
+                    original_dat_files.len(),
+                    mocked_io.files.len()
+                );
+            }
             for (i, (new, original)) in mocked_io
                 .files
                 .iter()

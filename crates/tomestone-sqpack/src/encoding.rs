@@ -136,32 +136,26 @@ fn index_segment_headers_skeleton() -> IndexHeader {
     }
 }
 
-fn index_segment_headers_finalize(header: &mut IndexHeader) {
+fn index_segment_headers_finalize(
+    header: &mut IndexHeader,
+    second_segment: &[u8],
+    folder_segment_present: bool,
+) {
     header.segment_accumulators[1].offset = Some(2048 + header.segment_accumulators[0].length);
-    header.segment_accumulators[1].length = 256; // what is this? data is ffffffff ffffffff 00000000 ffffffff, then zeros
+    header.segment_accumulators[1].length = 256;
     header.segment_accumulators[1]
         .hash
         .as_mut()
         .unwrap()
-        .update(&[0xff; 8]);
-    header.segment_accumulators[1]
-        .hash
-        .as_mut()
-        .unwrap()
-        .update(&[0; 4]);
-    header.segment_accumulators[1]
-        .hash
-        .as_mut()
-        .unwrap()
-        .update(&[0xff; 4]);
-    header.segment_accumulators[1]
-        .hash
-        .as_mut()
-        .unwrap()
-        .update(&[0; 240]);
+        .update(second_segment);
     header.segment_accumulators[2].offset = Some(0);
-    header.segment_accumulators[3].offset =
-        Some(2048 + header.segment_accumulators[0].length + header.segment_accumulators[1].length);
+    if folder_segment_present {
+        header.segment_accumulators[3].offset = Some(
+            2048 + header.segment_accumulators[0].length + header.segment_accumulators[1].length,
+        );
+    } else {
+        header.segment_accumulators[3].offset = Some(0);
+    }
 
     header.buf[8..12]
         .copy_from_slice(&header.segment_accumulators[0].offset.unwrap().to_le_bytes());
@@ -206,6 +200,10 @@ fn index_segment_headers_finalize(header: &mut IndexHeader) {
             .unwrap()
             .finalize(),
     );
+    if !folder_segment_present {
+        // what is this? comes after fourth segment header and another 44 null bytes.
+        header.buf[300] = 2;
+    }
 
     let mut sha = Sha1::new();
     sha.update(&header.buf[..0x3c0]);
@@ -305,21 +303,34 @@ impl<IO: PackIO> PackSetWriter<IO> {
     }
 
     pub fn finalize(mut self) -> Result<IO, io::Error> {
-        self.index.write_all(&[0xff; 8])?;
-        self.index.write_all(&[0; 4])?;
-        self.index.write_all(&[0xff; 4])?;
-        self.index.write_all(&[0; 240])?;
+        let mut index_second_segment = [0; 256];
+        index_second_segment[0..8].fill(0xff);
+        index_second_segment[12..16].fill(0xff);
+        self.index.write_all(&index_second_segment)?;
 
         self.index.seek(SeekFrom::Start(0))?;
         sqpack_header_finalize(&mut self.index_sqpack_header);
         self.index.write_all(&self.index_sqpack_header.0)?;
-        index_segment_headers_finalize(&mut self.index_segment_headers);
+        index_segment_headers_finalize(
+            &mut self.index_segment_headers,
+            &index_second_segment,
+            true,
+        );
         self.index.write_all(&self.index_segment_headers.buf)?;
+
+        let mut index2_second_segment = [0; 256];
+        index2_second_segment[0..4].fill(0xff);
+        index2_second_segment[12..16].fill(0xff);
+        self.index2.write_all(&index2_second_segment)?;
 
         self.index2.seek(SeekFrom::Start(0))?;
         sqpack_header_finalize(&mut self.index2_sqpack_header);
         self.index2.write_all(&self.index2_sqpack_header.0)?;
-        index_segment_headers_finalize(&mut self.index2_segment_headers);
+        index_segment_headers_finalize(
+            &mut self.index2_segment_headers,
+            &index2_second_segment,
+            false,
+        );
         self.index2.write_all(&self.index2_segment_headers.buf)?;
 
         Ok(self.io)
