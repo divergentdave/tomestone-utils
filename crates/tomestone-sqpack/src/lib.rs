@@ -863,42 +863,17 @@ mod tests {
         }
     }
 
-    fn print_hexdump_diff(label: &str, left: &[u8], right: &[u8]) {
-        const ROW_SIZE: usize = 8;
-        const DUMP_LENGTH: usize = 256;
+    const ROW_SIZE: usize = 8;
+    const DUMP_LENGTH: usize = 256;
 
-        assert_ne!(left, right);
-
-        let first_difference_pos = left.iter().zip(right.iter()).position(|(l, r)| *l != *r);
-        if left.len() != right.len() {
-            if let Some(first_difference_pos) = first_difference_pos {
-                println!(
-                    "{0} differs in length, and the first other difference is at {1} (0x{1:0x})",
-                    label, first_difference_pos
-                );
-            } else {
-                println!(
-                    "{} differs in length, one file is truncated ({} vs. {})",
-                    label,
-                    left.len(),
-                    right.len()
-                );
-            }
-        } else {
-            println!(
-                "{0} differs, and the first difference is at {1} (0x{1:0x})",
-                label,
-                first_difference_pos.unwrap()
-            );
-        }
-
+    fn print_hexdump_diff_inner(start_pos: usize, left: &[u8], right: &[u8]) {
         /*
           0xAAAAAAAA: XXXX XXXX XXXX XXXX ........ | XXXX XXXX XXXX XXXX ........n
           012345678901234567890123456789012345678901234567890123456789012345678901
         */
         let stdout = std::io::stdout();
         let mut locked = stdout.lock();
-        let start_pos = first_difference_pos.unwrap() / ROW_SIZE * ROW_SIZE;
+        let start_pos = start_pos / ROW_SIZE * ROW_SIZE;
         let mut hex_buf = [0u8; 16];
         let mut address_buf = [0u8; 8];
         let mut line_buf = [b' '; 72];
@@ -959,6 +934,66 @@ mod tests {
             }
 
             locked.write_all(&line_buf).unwrap();
+        }
+    }
+
+    fn print_hexdump_diff(label: &str, left: &[u8], right: &[u8]) {
+        assert_ne!(left, right);
+
+        let first_difference_pos = left.iter().zip(right.iter()).position(|(l, r)| *l != *r);
+        if left.len() != right.len() {
+            if let Some(first_difference_pos) = first_difference_pos {
+                println!(
+                    "{0} differs in length, and the first other difference is at {1} (0x{1:0x})",
+                    label, first_difference_pos
+                );
+            } else {
+                println!(
+                    "{} differs in length, one file is truncated ({} vs. {})",
+                    label,
+                    left.len(),
+                    right.len()
+                );
+                return;
+            }
+        } else {
+            println!(
+                "{0} differs, and the first difference is at {1} (0x{1:0x})",
+                label,
+                first_difference_pos.unwrap()
+            );
+        }
+
+        print_hexdump_diff_inner(first_difference_pos.unwrap(), left, right);
+
+        // try to reconstruct header sizes, and possibly print a second hexdump diff after them.
+        if left.len() < 16 {
+            return;
+        }
+        let sqpack_header_size = u32::from_le_bytes(left[12..16].try_into().unwrap()) as usize;
+        if left.len() < sqpack_header_size + 4 {
+            return;
+        }
+        let dat_or_index_header_size = u32::from_le_bytes(
+            left[sqpack_header_size..sqpack_header_size + 4]
+                .try_into()
+                .unwrap(),
+        ) as usize;
+        let headers_guess = sqpack_header_size + dat_or_index_header_size;
+        if first_difference_pos.unwrap() < headers_guess {
+            let next_difference_pos = left
+                .iter()
+                .zip(right.iter())
+                .skip(headers_guess)
+                .position(|(l, r)| *l != *r)
+                .map(|pos| pos + headers_guess);
+            if let Some(next_difference_pos) = next_difference_pos {
+                println!(
+                    "Next difference after headers (?) is at {0} (0x{0:0x})",
+                    next_difference_pos
+                );
+                print_hexdump_diff_inner(next_difference_pos, left, right);
+            }
         }
     }
 
