@@ -491,6 +491,10 @@ impl DataLocator {
             offset: (packed & !0xf) << 3,
         }
     }
+
+    fn to_u32(self) -> u32 {
+        ((self.data_file_id as u32 & 7) << 1) | ((self.offset >> 3) & !0xf)
+    }
 }
 
 pub struct GameData {
@@ -734,7 +738,7 @@ mod tests {
     use crate::{
         encoding::{PackIO, PackSetWriter},
         DataLocator, Expansion, GameData, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1,
-        IndexHash2,
+        IndexHash2, SqPackId,
     };
 
     #[test]

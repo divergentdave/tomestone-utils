@@ -374,6 +374,17 @@ impl<IO: PackIO> PackSetWriter<IO> {
     }
 
     pub fn finalize(mut self) -> Result<IO, io::Error> {
+        // write file index entries into the first segment of the body.
+        let mut entry_buffer = [0; 16];
+        for (hash, locator) in self.entries {
+            entry_buffer[0..4].copy_from_slice(&hash.filename_crc.to_le_bytes());
+            entry_buffer[4..8].copy_from_slice(&hash.folder_crc.to_le_bytes());
+            entry_buffer[8..12].copy_from_slice(&locator.to_u32().to_le_bytes());
+            self.index.write_all(&entry_buffer)?;
+            self.index_segment_headers.segment_accumulators[0].length += 16;
+        }
+
+        // unknown data in the second segment.
         let mut index_second_segment = [0; 256];
         index_second_segment[0..8].fill(0xff);
         index_second_segment[12..16].fill(0xff);
@@ -390,6 +401,16 @@ impl<IO: PackIO> PackSetWriter<IO> {
         );
         self.index.write_all(&self.index_segment_headers.buf)?;
 
+        // write file index entries into the first segment of the body.
+        let mut entry_buffer = [0; 8];
+        for (hash, locator) in self.entries2 {
+            entry_buffer[0..4].copy_from_slice(&hash.path_crc.to_le_bytes());
+            entry_buffer[4..8].copy_from_slice(&locator.to_u32().to_le_bytes());
+            self.index2.write_all(&entry_buffer)?;
+            self.index2_segment_headers.segment_accumulators[0].length += 16;
+        }
+
+        // unknown data in the second segment.
         let mut index2_second_segment = [0; 256];
         index2_second_segment[0..4].fill(0xff);
         index2_second_segment[12..16].fill(0xff);

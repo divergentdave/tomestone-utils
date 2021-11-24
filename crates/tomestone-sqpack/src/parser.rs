@@ -581,7 +581,7 @@ mod tests {
     };
 
     use super::{sqpack_header_inner, sqpack_header_outer};
-    use crate::{PlatformId, SqPackType};
+    use crate::{DataLocator, PlatformId, SqPackType};
 
     #[test]
     fn test_null_padding() {
@@ -802,6 +802,12 @@ mod tests {
             sqpack_header_outer(data).unwrap(),
             (&b""[..], (PlatformId::Win32, 1024, 1, SqPackType::Index))
         );
+    }
+
+    #[test]
+    fn test_locator_roundtrip() {
+        let locator = DataLocator::from_u32(0x260);
+        assert_eq!(locator.to_u32(), 0x260);
     }
 }
 
