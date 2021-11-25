@@ -254,6 +254,8 @@ struct DatFileRecord<IO: PackIO> {
     data_section_hash: Option<Sha1>,
 }
 
+const ENTRY_ALIGNMENT: u32 = 128;
+
 pub struct PackSetWriter<IO: PackIO> {
     io: IO,
     platform_id: PlatformId,
@@ -361,10 +363,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             self.create_new_dat_file()?;
         }
 
-        let locator = DataLocator {
-            data_file_id: self.dat_file_number,
-            offset: self.dat_file_position,
-        };
+        let locator = DataLocator::new(self.dat_file_number, self.dat_file_position);
 
         let mut entry_header_buf = vec![0; entry_header_size as usize];
         entry_header_buf[0] = 0x80; // data entry header length
@@ -399,6 +398,11 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
         assert_eq!(total_size as u64, position_after - position_before);
         self.dat_file_position += total_size;
+
+        // Next entry needs to be aligned by 128, not 8, so seek ahead further.
+        self.dat_file_position =
+            (self.dat_file_position + ENTRY_ALIGNMENT - 1) / ENTRY_ALIGNMENT * ENTRY_ALIGNMENT;
+        dat_file.seek(SeekFrom::Start(self.dat_file_position as u64))?;
 
         assert!(self.entries.insert(hash1, locator).is_none());
         assert!(self.entries2.insert(hash2, locator).is_none());

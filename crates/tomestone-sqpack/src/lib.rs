@@ -478,21 +478,42 @@ fn list_packs(root_path: &Path) -> io::Result<BTreeSet<SqPackId>> {
     Ok(ids)
 }
 
+/// This represents a pointer from one of the index tables to an entry in one of the data files.
+/// It consists of a number identifying which data file, and an offset within that file. The
+/// file number must be between 0 and 7, and the offset must be aligned to 128, due to how these
+/// two fields are packed into their representation as a single 32-bit field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DataLocator {
-    pub data_file_id: u8,
-    pub offset: u32,
+    data_file_id: u8,
+    offset: u32,
 }
 
 impl DataLocator {
-    fn from_u32(packed: u32) -> DataLocator {
+    pub fn new(data_file_id: u8, offset: u32) -> DataLocator {
+        assert_eq!(offset & 0x7f, 0);
+        assert!(data_file_id < 8);
+        DataLocator {
+            data_file_id,
+            offset,
+        }
+    }
+
+    pub fn data_file_id(&self) -> u8 {
+        self.data_file_id
+    }
+
+    pub fn offset(&self) -> u32 {
+        self.offset
+    }
+
+    pub fn from_u32(packed: u32) -> DataLocator {
         DataLocator {
             data_file_id: ((packed & 0xf) >> 1).try_into().unwrap(),
             offset: (packed & !0xf) << 3,
         }
     }
 
-    fn to_u32(self) -> u32 {
+    pub fn to_u32(self) -> u32 {
         ((self.data_file_id as u32 & 7) << 1) | ((self.offset >> 3) & !0xf)
     }
 }
@@ -547,9 +568,9 @@ impl GameData {
 
     fn fetch_data(&self, pack_id: SqPackId, data_locator: DataLocator) -> Result<Vec<u8>, Error> {
         // TODO: reuse of opened files
-        let path = self.build_data_path(pack_id, data_locator.data_file_id);
+        let path = self.build_data_path(pack_id, data_locator.data_file_id());
         let mut file = File::open(path)?;
-        decompress_file(&mut file, data_locator.offset)
+        decompress_file(&mut file, data_locator.offset())
     }
 
     pub fn iter_files<'a, I: IndexEntry>(
@@ -573,8 +594,8 @@ impl GameData {
             Ok((
                 entry.hash(),
                 decompress_file(
-                    &mut files[TryInto::<usize>::try_into(locator.data_file_id).unwrap()],
-                    locator.offset,
+                    &mut files[TryInto::<usize>::try_into(locator.data_file_id()).unwrap()],
+                    locator.offset(),
                 )?,
             ))
         }))
