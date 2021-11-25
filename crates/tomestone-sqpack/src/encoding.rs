@@ -366,6 +366,38 @@ impl<IO: PackIO> PackSetWriter<IO> {
             offset: self.dat_file_position,
         };
 
+        let mut entry_header_buf = vec![0; entry_header_size as usize];
+        entry_header_buf[0] = 0x80; // data entry header length
+        entry_header_buf[4] = 2; // content type, binary
+        entry_header_buf[8..12].copy_from_slice(&u32::to_le_bytes(data.len().try_into().unwrap()));
+        entry_header_buf[12] = 2; // unknown
+        entry_header_buf[16] = 1; // block buffer size
+        entry_header_buf[20] = 1; // number of blocks
+
+        // next, block table, assume only one entry with offset zero
+        entry_header_buf[28..30].copy_from_slice(&u16::to_le_bytes(0x80)); // block size
+        entry_header_buf[30..32]
+            .copy_from_slice(&u16::to_le_bytes(data.len().try_into().unwrap_or_default())); // uncompressed size
+
+        let dat_file = &mut self.dats.last_mut().unwrap().file;
+        let position_before = dat_file.stream_position()?;
+        dat_file.write_all(&entry_header_buf)?;
+
+        // the block itself is next, offset of 0 means immediately after data entry header.
+        let mut block_header_buf = [0; 16];
+        block_header_buf[0] = 16;
+        block_header_buf[8..12].copy_from_slice(&compressed_size.to_le_bytes());
+        block_header_buf[12..16].copy_from_slice(&u32::to_le_bytes(data.len().try_into().unwrap()));
+
+        dat_file.write_all(&block_header_buf)?;
+
+        // compressed data is next
+        dat_file.write_all(&compressed)?;
+        let padding_length = (compressed_size + 7) / 8 * 8 - compressed_size;
+        dat_file.write_all(&[0; 7][..padding_length as usize])?;
+        let position_after = dat_file.stream_position()?;
+
+        assert_eq!(total_size as u64, position_after - position_before);
         self.dat_file_position += total_size;
 
         assert!(self.entries.insert(hash1, locator).is_none());
