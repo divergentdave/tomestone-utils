@@ -222,7 +222,7 @@ fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeade
                 DataEntryHeaderCommon {
                     content_type,
                     uncompressed_size,
-                    block_buffer_size,
+                    block_buffer_size: block_buffer_size << 7,
                     num_blocks,
                 },
             )

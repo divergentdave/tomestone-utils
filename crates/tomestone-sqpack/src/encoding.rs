@@ -254,7 +254,11 @@ struct DatFileRecord<IO: PackIO> {
     data_section_hash: Option<Sha1>,
 }
 
-const ENTRY_ALIGNMENT: u32 = 128;
+struct CompressionBlock {
+    original_len: usize,
+    compressed: Vec<u8>,
+    block_size: u16,
+}
 
 pub struct PackSetWriter<IO: PackIO> {
     io: IO,
@@ -350,12 +354,31 @@ impl<IO: PackIO> PackSetWriter<IO> {
         hash2: IndexHash2,
         data: &[u8],
     ) -> Result<(), io::Error> {
-        // for now, assume the data entry has the binary type, and there is one data block
-        let entry_header_size = std::cmp::max(128, 24 + 8 * 1);
-        let block_header_size = 16;
-        let compressed = compression::compress_sqpack_block(data)?;
-        let compressed_size: u32 = compressed.len().try_into().unwrap();
-        let total_size = (entry_header_size + block_header_size + compressed_size + 7) / 8 * 8;
+        // for now, assume the data entry has the binary type
+        let blocks: Vec<CompressionBlock> = data
+            .chunks(16000)
+            .map(|slice| {
+                let compressed = compression::compress_sqpack_block(slice)?;
+                let block_size =
+                    TryInto::<u16>::try_into((16 + compressed.len() + 127) / 128 * 128).unwrap();
+                Ok(CompressionBlock {
+                    original_len: slice.len(),
+                    compressed,
+                    block_size,
+                })
+            })
+            .collect::<Result<Vec<CompressionBlock>, io::Error>>()?;
+        let entry_header_size: u32 = (((24 + 8 * blocks.len()) + 127) / 128 * 128)
+            .try_into()
+            .unwrap();
+        let total_size: u32 = entry_header_size
+            + TryInto::<u32>::try_into(
+                blocks
+                    .iter()
+                    .map(|chunk| (16 + chunk.compressed.len() + 127) / 128 * 128)
+                    .sum::<usize>(),
+            )
+            .unwrap();
         let current_file_size = self.dats.last_mut().unwrap().file.stream_position()?;
         if current_file_size + total_size as u64 > self.file_size_limit as u64 {
             self.dat_file_number += 1;
@@ -365,43 +388,59 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
         let locator = DataLocator::new(self.dat_file_number, self.dat_file_position);
 
+        let block_buffer_size: u32 = blocks
+            .iter()
+            .map(|block| (block.block_size >> 7) as u32)
+            .sum();
         let mut entry_header_buf = vec![0; entry_header_size as usize];
-        entry_header_buf[0] = 0x80; // data entry header length
+        entry_header_buf[0..4].copy_from_slice(&u32::to_le_bytes(entry_header_size)); // data entry header length
         entry_header_buf[4] = 2; // content type, binary
         entry_header_buf[8..12].copy_from_slice(&u32::to_le_bytes(data.len().try_into().unwrap()));
-        entry_header_buf[12] = 2; // unknown
-        entry_header_buf[16] = 1; // block buffer size
-        entry_header_buf[20] = 1; // number of blocks
+        entry_header_buf[12..16].copy_from_slice(&u32::to_le_bytes(
+            block_buffer_size + (block_buffer_size + 9) / 10,
+        )); // unknown
+        entry_header_buf[16..20].copy_from_slice(&u32::to_le_bytes(block_buffer_size)); // block buffer size
+        entry_header_buf[20..24]
+            .copy_from_slice(&u32::to_le_bytes(blocks.len().try_into().unwrap())); // number of blocks
 
-        // next, block table, assume only one entry with offset zero
-        entry_header_buf[28..30].copy_from_slice(&u16::to_le_bytes(0x80)); // block size
-        entry_header_buf[30..32]
-            .copy_from_slice(&u16::to_le_bytes(data.len().try_into().unwrap_or_default())); // uncompressed size
+        // next, block table
+        let mut block_offset: u32 = 0;
+        for (i, block) in blocks.iter().enumerate() {
+            entry_header_buf[24 + i * 8..28 + i * 8].copy_from_slice(&block_offset.to_le_bytes()); // offset
+            entry_header_buf[28 + i * 8..30 + i * 8]
+                .copy_from_slice(&u16::to_le_bytes(block.block_size)); // block size
+            entry_header_buf[30 + i * 8..32 + i * 8]
+                .copy_from_slice(&u16::to_le_bytes(block.original_len.try_into().unwrap()));
+            block_offset += block.block_size as u32;
+        }
 
         let dat_file = &mut self.dats.last_mut().unwrap().file;
         let position_before = dat_file.stream_position()?;
         dat_file.write_all(&entry_header_buf)?;
 
-        // the block itself is next, offset of 0 means immediately after data entry header.
-        let mut block_header_buf = [0; 16];
-        block_header_buf[0] = 16;
-        block_header_buf[8..12].copy_from_slice(&compressed_size.to_le_bytes());
-        block_header_buf[12..16].copy_from_slice(&u32::to_le_bytes(data.len().try_into().unwrap()));
+        for block in blocks.iter() {
+            let compressed_size: u32 = block.compressed.len().try_into().unwrap();
+            // the block itself is next
+            let mut block_header_buf = [0; 16];
+            block_header_buf[0] = 16;
+            block_header_buf[8..12].copy_from_slice(&compressed_size.to_le_bytes());
+            block_header_buf[12..16]
+                .copy_from_slice(&u32::to_le_bytes(block.original_len.try_into().unwrap()));
 
-        dat_file.write_all(&block_header_buf)?;
+            dat_file.write_all(&block_header_buf)?;
 
-        // compressed data is next
-        dat_file.write_all(&compressed)?;
-        let padding_length = (compressed_size + 7) / 8 * 8 - compressed_size;
-        dat_file.write_all(&[0; 7][..padding_length as usize])?;
+            // compressed data is next
+            dat_file.write_all(&block.compressed)?;
+            // pad out before next block
+            let padding_length = (16 + compressed_size + 127) / 128 * 128 - (16 + compressed_size);
+            dat_file.write_all(&[0; 127][..padding_length as usize])?;
+        }
+
         let position_after = dat_file.stream_position()?;
-
         assert_eq!(total_size as u64, position_after - position_before);
         self.dat_file_position += total_size;
 
-        // Next entry needs to be aligned by 128, not 8, so seek ahead further.
-        self.dat_file_position =
-            (self.dat_file_position + ENTRY_ALIGNMENT - 1) / ENTRY_ALIGNMENT * ENTRY_ALIGNMENT;
+        self.dat_file_position += 0x80; // don't know why, but there seems to be extra space
         dat_file.seek(SeekFrom::Start(self.dat_file_position as u64))?;
 
         assert!(self.entries.insert(hash1, locator).is_none());
