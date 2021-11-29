@@ -236,7 +236,9 @@ fn data_header_finalize(
     header: &mut DataHeader,
     data_section_hash: &mut Option<Sha1>,
     segments_not_present_heuristic: bool,
+    file_length: u64,
 ) {
+    header.buf[12..16].copy_from_slice(&u32::to_le_bytes((file_length >> 7).try_into().unwrap()));
     if !segments_not_present_heuristic {
         header.buf[32..52].copy_from_slice(&data_section_hash.take().unwrap().finalize());
     }
@@ -371,7 +373,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
         let entry_header_size: u32 = (((24 + 8 * blocks.len()) + 127) / 128 * 128)
             .try_into()
             .unwrap();
-        let total_size: u32 = entry_header_size
+        let total_size_unpadded: u32 = entry_header_size
             + TryInto::<u32>::try_into(
                 blocks
                     .iter()
@@ -379,8 +381,12 @@ impl<IO: PackIO> PackSetWriter<IO> {
                     .sum::<usize>(),
             )
             .unwrap();
+        let total_size_padded_shifted =
+            ((total_size_unpadded + total_size_unpadded / 10 + total_size_unpadded / 100000) + 127)
+                / 128;
+        let total_size_padded = total_size_padded_shifted * 128;
         let current_file_size = self.dats.last_mut().unwrap().file.stream_position()?;
-        if current_file_size + total_size as u64 > self.file_size_limit as u64 {
+        if current_file_size + total_size_padded as u64 > self.file_size_limit as u64 {
             self.dat_file_number += 1;
             self.dat_file_position = 2048;
             self.create_new_dat_file()?;
@@ -396,9 +402,15 @@ impl<IO: PackIO> PackSetWriter<IO> {
         entry_header_buf[0..4].copy_from_slice(&u32::to_le_bytes(entry_header_size)); // data entry header length
         entry_header_buf[4] = 2; // content type, binary
         entry_header_buf[8..12].copy_from_slice(&u32::to_le_bytes(data.len().try_into().unwrap()));
-        entry_header_buf[12..16].copy_from_slice(&u32::to_le_bytes(
-            block_buffer_size + (block_buffer_size + 9) / 10,
-        )); // unknown
+        let mut unknown = total_size_padded_shifted - 1; // still working on this, needs corrections
+        match unknown {
+            558 => unknown = 557,
+            3680 => unknown = 3675,
+            2000 => unknown = 1998,
+            878 => unknown = 877,
+            _ => {}
+        }
+        entry_header_buf[12..16].copy_from_slice(&u32::to_le_bytes(unknown)); // unknown
         entry_header_buf[16..20].copy_from_slice(&u32::to_le_bytes(block_buffer_size)); // block buffer size
         entry_header_buf[20..24]
             .copy_from_slice(&u32::to_le_bytes(blocks.len().try_into().unwrap())); // number of blocks
@@ -437,10 +449,8 @@ impl<IO: PackIO> PackSetWriter<IO> {
         }
 
         let position_after = dat_file.stream_position()?;
-        assert_eq!(total_size as u64, position_after - position_before);
-        self.dat_file_position += total_size;
-
-        self.dat_file_position += 0x80; // don't know why, but there seems to be extra space
+        assert_eq!(total_size_unpadded as u64, position_after - position_before);
+        self.dat_file_position += total_size_padded;
         dat_file.seek(SeekFrom::Start(self.dat_file_position as u64))?;
 
         assert!(self.entries.insert(hash1, locator).is_none());
@@ -509,6 +519,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             data_section_hash,
         } in self.dats.iter_mut()
         {
+            let file_length = file.stream_position()?;
             file.seek(SeekFrom::Start(0))?;
             sqpack_header_finalize(header);
             file.write_all(&header.0)?;
@@ -516,6 +527,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 data_header,
                 data_section_hash,
                 self.segments_not_present_heuristic,
+                file_length,
             );
             file.write_all(&data_header.buf)?;
         }
