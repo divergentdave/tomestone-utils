@@ -196,7 +196,7 @@ struct DataEntryHeaderCommon {
     content_type: DataContentType,
     uncompressed_size: u32,
     block_buffer_size: u32,
-    num_blocks: u32,
+    num_blocks: u16,
 }
 
 fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeaderCommon)> {
@@ -207,7 +207,8 @@ fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeade
             le_u32,
             le_u32,
             le_u32,
-            le_u32,
+            le_u16,
+            le_u16,
         )),
         |(
             header_length,
@@ -216,6 +217,7 @@ fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeade
             _unknown,
             block_buffer_size,
             num_blocks,
+            _todo,
         )| {
             (
                 header_length,
@@ -231,7 +233,7 @@ fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeade
 }
 
 fn type_2_block_table<'a>(
-    num_blocks: u32,
+    num_blocks: u16,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(u32, u16, u16)>> {
     count(
         tuple((le_u32, le_u16, le_u16)),
@@ -240,7 +242,7 @@ fn type_2_block_table<'a>(
 }
 
 fn type_3_block_table<'a>(
-    _num_blocks: u32,
+    _num_blocks: u16,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (Vec<u32>, Vec<u32>, Vec<u32>, u16)> {
     tuple((
         count(le_u32, 11),
@@ -252,7 +254,7 @@ fn type_3_block_table<'a>(
 }
 
 fn type_4_block_table<'a>(
-    num_blocks: u32,
+    num_blocks: u16,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (Vec<(u32, u32, u32, u32, u32)>, Vec<u16>)> {
     move |input: &[u8]| {
         let (input, frame_infos) = count(
