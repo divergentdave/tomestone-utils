@@ -9,6 +9,7 @@ use sha1::{Digest, Sha1};
 
 #[allow(unused)]
 use crate::compression::compress_sqpack_block;
+use crate::sidetables::SideTableEntry;
 use crate::{
     compression, Category, DataLocator, Expansion, IndexHash, IndexHash1, IndexHash2, PlatformId,
     SqPackId, SqPackType,
@@ -278,6 +279,7 @@ pub struct PackSetWriter<IO: PackIO> {
     entries2: BTreeMap<IndexHash2, DataLocator>,
     file_size_limit: u32,
     segments_not_present_heuristic: bool,
+    side_table: BTreeMap<IndexHash2, SideTableEntry>,
 }
 
 impl<IO: PackIO> PackSetWriter<IO> {
@@ -324,9 +326,15 @@ impl<IO: PackIO> PackSetWriter<IO> {
             entries2: BTreeMap::new(),
             file_size_limit,
             segments_not_present_heuristic,
+            side_table: BTreeMap::new(),
         };
         writer.create_new_dat_file()?;
         Ok(writer)
+    }
+
+    #[allow(unused)]
+    pub fn set_side_table(&mut self, side_table: BTreeMap<IndexHash2, SideTableEntry>) {
+        self.side_table = side_table
     }
 
     fn create_new_dat_file(&mut self) -> Result<(), io::Error> {
@@ -384,7 +392,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
         let total_size_padded_shifted =
             ((total_size_unpadded + total_size_unpadded / 10 + total_size_unpadded / 100000) + 127)
                 / 128;
-        let total_size_padded = total_size_padded_shifted * 128;
+        let mut total_size_padded = total_size_padded_shifted * 128;
         let current_file_size = self.dats.last_mut().unwrap().file.stream_position()?;
         if current_file_size + total_size_padded as u64 > self.file_size_limit as u64 {
             self.dat_file_number += 1;
@@ -394,6 +402,14 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
         let locator = DataLocator::new(self.dat_file_number, self.dat_file_position);
 
+        let mut unknown = total_size_padded_shifted - 1; // still working on this, needs corrections
+        if let Some(entry) = self.side_table.get(&hash2) {
+            unknown = entry.unknown_entry_field;
+            if entry.padded_entry_size > total_size_unpadded {
+                total_size_padded = entry.padded_entry_size;
+            }
+        }
+
         let block_buffer_size: u32 = blocks
             .iter()
             .map(|block| (block.block_size >> 7) as u32)
@@ -402,14 +418,6 @@ impl<IO: PackIO> PackSetWriter<IO> {
         entry_header_buf[0..4].copy_from_slice(&u32::to_le_bytes(entry_header_size)); // data entry header length
         entry_header_buf[4] = 2; // content type, binary
         entry_header_buf[8..12].copy_from_slice(&u32::to_le_bytes(data.len().try_into().unwrap()));
-        let mut unknown = total_size_padded_shifted - 1; // still working on this, needs corrections
-        match unknown {
-            558 => unknown = 557,
-            3680 => unknown = 3675,
-            2000 => unknown = 1998,
-            878 => unknown = 877,
-            _ => {}
-        }
         entry_header_buf[12..16].copy_from_slice(&u32::to_le_bytes(unknown)); // unknown
         entry_header_buf[16..20].copy_from_slice(&u32::to_le_bytes(block_buffer_size)); // block buffer size
         entry_header_buf[20..24]
@@ -451,7 +459,8 @@ impl<IO: PackIO> PackSetWriter<IO> {
         let position_after = dat_file.stream_position()?;
         assert_eq!(total_size_unpadded as u64, position_after - position_before);
         self.dat_file_position += total_size_padded;
-        dat_file.seek(SeekFrom::Start(self.dat_file_position as u64))?;
+        dat_file.seek(SeekFrom::Start(self.dat_file_position as u64 - 1))?;
+        dat_file.write_all(b"\x00")?;
 
         assert!(self.entries.insert(hash1, locator).is_none());
         assert!(self.entries2.insert(hash2, locator).is_none());

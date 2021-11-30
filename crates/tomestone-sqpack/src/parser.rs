@@ -169,8 +169,8 @@ fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, u32, [IndexSegmen
     )
 }
 
-#[derive(Debug)]
-enum DataContentType {
+#[derive(Debug, Clone, Copy)]
+pub enum DataContentType {
     Empty = 1,
     Binary = 2,
     Model = 3,
@@ -179,7 +179,7 @@ enum DataContentType {
 }
 
 impl DataContentType {
-    fn parse(value: u32) -> Option<DataContentType> {
+    pub fn parse(value: u32) -> Option<DataContentType> {
         match value {
             0 => Some(DataContentType::Unsupported),
             1 => Some(DataContentType::Empty),
@@ -232,9 +232,9 @@ fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeade
     )(input)
 }
 
-fn type_2_block_table<'a>(
+pub fn type_2_block_table<'a>(
     num_blocks: u16,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(u32, u16, u16)>> {
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(u32, u16, u16)>, nom::error::Error<&'a [u8]>> {
     count(
         tuple((le_u32, le_u16, le_u16)),
         num_blocks.try_into().unwrap(),

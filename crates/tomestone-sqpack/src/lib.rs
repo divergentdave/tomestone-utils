@@ -18,6 +18,7 @@ mod compression;
 mod encoding;
 pub(crate) mod parser;
 pub mod pathdb;
+pub(crate) mod sidetables;
 
 pub(crate) const SHA1_OUTPUT_SIZE: usize = 20;
 
@@ -758,6 +759,7 @@ mod tests {
 
     use crate::{
         encoding::{PackIO, PackSetWriter},
+        sidetables::build_side_tables,
         DataLocator, Expansion, GameData, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1,
         IndexHash2, SqPackId,
     };
@@ -1112,9 +1114,12 @@ mod tests {
                 let (hash, data) = res.unwrap();
                 (index_2.get(&hash).unwrap().data_location(), data)
             });
+            let side_table = build_side_tables(&game_data, pack_id);
+
             let mocked_io = MockedPackIO::new();
             let mut writer =
                 PackSetWriter::new(mocked_io, crate::PlatformId::Win32, pack_id).unwrap();
+            writer.set_side_table(side_table);
             for (locator, data) in all_files {
                 let hashes = original_entries.get(&locator).unwrap();
                 let hash1 = hashes.0.unwrap();
