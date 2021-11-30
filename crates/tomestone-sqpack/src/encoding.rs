@@ -237,9 +237,9 @@ fn data_header_finalize(
     header: &mut DataHeader,
     data_section_hash: &mut Option<Sha1>,
     segments_not_present_heuristic: bool,
-    file_length: u64,
+    data_length: u64,
 ) {
-    header.buf[12..16].copy_from_slice(&u32::to_le_bytes((file_length >> 7).try_into().unwrap()));
+    header.buf[12..16].copy_from_slice(&u32::to_le_bytes((data_length >> 7).try_into().unwrap()));
     if !segments_not_present_heuristic {
         header.buf[32..52].copy_from_slice(&data_section_hash.take().unwrap().finalize());
     }
@@ -528,7 +528,8 @@ impl<IO: PackIO> PackSetWriter<IO> {
             data_section_hash,
         } in self.dats.iter_mut()
         {
-            let file_length = file.stream_position()?;
+            let data_length = file.stream_position()?
+                - TryInto::<u64>::try_into(header.0.len() + data_header.buf.len()).unwrap();
             file.seek(SeekFrom::Start(0))?;
             sqpack_header_finalize(header);
             file.write_all(&header.0)?;
@@ -536,7 +537,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 data_header,
                 data_section_hash,
                 self.segments_not_present_heuristic,
-                file_length,
+                data_length,
             );
             file.write_all(&data_header.buf)?;
         }
