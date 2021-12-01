@@ -440,9 +440,12 @@ impl<IO: PackIO> PackSetWriter<IO> {
             block_offset += block.block_size as u32;
         }
 
-        let dat_file = &mut self.dats.last_mut().unwrap().file;
+        let dat_file_record = &mut self.dats.last_mut().unwrap();
+        let dat_file = &mut dat_file_record.file;
+        let data_section_hash = dat_file_record.data_section_hash.as_mut().unwrap();
         let position_before = dat_file.stream_position()?;
         dat_file.write_all(&entry_header_buf)?;
+        data_section_hash.update(&entry_header_buf);
 
         for block in blocks.iter() {
             let compressed_size: u32 = block.compressed.len().try_into().unwrap();
@@ -454,19 +457,24 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 .copy_from_slice(&u32::to_le_bytes(block.original_len.try_into().unwrap()));
 
             dat_file.write_all(&block_header_buf)?;
+            data_section_hash.update(&block_header_buf);
 
             // compressed data is next
             dat_file.write_all(&block.compressed)?;
+            data_section_hash.update(&block.compressed);
             // pad out before next block
             let padding_length = (16 + compressed_size + 127) / 128 * 128 - (16 + compressed_size);
             dat_file.write_all(&[0; 127][..padding_length as usize])?;
+            data_section_hash.update(&[0; 127][..padding_length as usize]);
         }
 
         let position_after = dat_file.stream_position()?;
         assert_eq!(total_size_unpadded as u64, position_after - position_before);
         self.dat_file_position += total_size_padded;
-        dat_file.seek(SeekFrom::Start(self.dat_file_position as u64 - 1))?;
-        dat_file.write_all(b"\x00")?;
+        let padding =
+            vec![0; TryInto::<usize>::try_into(total_size_padded - total_size_unpadded).unwrap()]; // TODO: reuse buffers instead of allocating in one go
+        dat_file.write_all(&padding)?;
+        data_section_hash.update(&padding);
 
         assert!(self.entries.insert(hash1, locator).is_none());
         assert!(self.entries2.insert(hash2, locator).is_none());
