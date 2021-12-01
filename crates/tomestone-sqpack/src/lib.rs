@@ -1034,25 +1034,20 @@ mod tests {
 
         for pack_id in game_data.iter_packs() {
             // TODOs
-            let mut skip = false;
-            for i in 0.. {
-                let path = game_data.build_data_path(pack_id, i);
-                if path.is_file() {
-                    let size = path.metadata().unwrap().len();
-                    if size != 2048 {
-                        skip = true;
-                        break;
-                        // next shortest is 2083456!
-                    }
-                    if i > 0 {
-                        skip = true;
-                        break;
-                    }
-                } else {
-                    break;
+            if !(pack_id
+                == SqPackId {
+                    category: crate::Category::Bg,
+                    expansion: crate::Expansion::Ex3,
+                    number: 5,
+                }/*
+            || pack_id
+                == SqPackId {
+                    category: crate::Category::GameScript,
+                    expansion: crate::Expansion::Base,
+                    number: 0,
                 }
-            }
-            if skip {
+            */)
+            {
                 continue;
             }
             dbg!(pack_id);

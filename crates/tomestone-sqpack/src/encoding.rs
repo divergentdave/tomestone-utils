@@ -263,6 +263,12 @@ struct CompressionBlock {
     block_size: u16,
 }
 
+struct FolderEntry {
+    folder_crc: u32,
+    files_offset: u32,
+    files_span: u32,
+}
+
 pub struct PackSetWriter<IO: PackIO> {
     io: IO,
     platform_id: PlatformId,
@@ -468,15 +474,47 @@ impl<IO: PackIO> PackSetWriter<IO> {
     }
 
     pub fn finalize(mut self) -> Result<IO, io::Error> {
-        // write file index entries into the first segment of the body.
+        // Write file index entries into the first segment of the body, and
+        // save folder hashes and ranges for a later section.
         let mut entry_buffer = [0; 16];
+        let mut last_folder_crc = None;
+        let mut folder_table: Vec<FolderEntry> = Vec::new();
+        let seg_accum = &mut self.index_segment_headers.segment_accumulators[0];
         for (hash, locator) in self.entries {
+            if last_folder_crc != Some(hash.folder_crc) {
+                let files_offset = seg_accum.offset.unwrap() + seg_accum.length;
+                if let Some(last_folder) = folder_table.last_mut() {
+                    let span = files_offset - last_folder.files_offset;
+                    last_folder.files_span = span;
+                }
+                folder_table.push(FolderEntry {
+                    folder_crc: hash.folder_crc,
+                    files_offset: files_offset,
+                    files_span: 0,
+                });
+            }
             entry_buffer[0..4].copy_from_slice(&hash.filename_crc.to_le_bytes());
             entry_buffer[4..8].copy_from_slice(&hash.folder_crc.to_le_bytes());
             entry_buffer[8..12].copy_from_slice(&locator.to_u32().to_le_bytes());
             self.index.write_all(&entry_buffer)?;
-            self.index_segment_headers.segment_accumulators[0].length += 16;
+            seg_accum.length += 16;
+            seg_accum.hash.as_mut().unwrap().update(&entry_buffer);
+            last_folder_crc = Some(hash.folder_crc);
         }
+        if let Some(last_folder) = folder_table.last_mut() {
+            let span = (seg_accum.offset.unwrap() + seg_accum.length) - last_folder.files_offset;
+            last_folder.files_span = span;
+        }
+
+        // TODO: need to figure out where this comes from, hardcoded for now
+        folder_table.insert(
+            0,
+            FolderEntry {
+                folder_crc: 0,
+                files_offset: 0xa00,
+                files_span: 16,
+            },
+        );
 
         // unknown data in the second segment.
         let mut index_second_segment = [0; 256];
@@ -484,6 +522,19 @@ impl<IO: PackIO> PackSetWriter<IO> {
         index_second_segment[12..16].fill(0xff);
         self.index.write_all(&index_second_segment)?;
 
+        // folder segment
+        let mut entry_buffer = [0; 16];
+        let seg_accum = &mut self.index_segment_headers.segment_accumulators[3];
+        for folder in folder_table {
+            entry_buffer[0..4].copy_from_slice(&folder.folder_crc.to_le_bytes());
+            entry_buffer[4..8].copy_from_slice(&folder.files_offset.to_le_bytes());
+            entry_buffer[8..12].copy_from_slice(&folder.files_span.to_le_bytes());
+            self.index.write_all(&entry_buffer)?;
+            seg_accum.length += 16;
+            seg_accum.hash.as_mut().unwrap().update(&entry_buffer);
+        }
+
+        // write updated sqpack and index headers in first index file
         self.index.seek(SeekFrom::Start(0))?;
         sqpack_header_finalize(&mut self.index_sqpack_header);
         self.index.write_all(&self.index_sqpack_header.0)?;
@@ -497,11 +548,13 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
         // write file index entries into the first segment of the body.
         let mut entry_buffer = [0; 8];
+        let seg_accum = &mut self.index2_segment_headers.segment_accumulators[0];
         for (hash, locator) in self.entries2 {
             entry_buffer[0..4].copy_from_slice(&hash.path_crc.to_le_bytes());
             entry_buffer[4..8].copy_from_slice(&locator.to_u32().to_le_bytes());
             self.index2.write_all(&entry_buffer)?;
-            self.index2_segment_headers.segment_accumulators[0].length += 16;
+            seg_accum.length += 8;
+            seg_accum.hash.as_mut().unwrap().update(&entry_buffer);
         }
 
         // unknown data in the second segment.
