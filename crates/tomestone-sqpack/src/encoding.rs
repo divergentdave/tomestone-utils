@@ -15,6 +15,8 @@ use crate::{
     SqPackId, SqPackType,
 };
 
+static ZEROS: [u8; 4096] = [0; 4096];
+
 pub trait PackIO {
     type F: Write + Seek;
 
@@ -471,10 +473,14 @@ impl<IO: PackIO> PackSetWriter<IO> {
         let position_after = dat_file.stream_position()?;
         assert_eq!(total_size_unpadded as u64, position_after - position_before);
         self.dat_file_position += total_size_padded;
-        let padding =
-            vec![0; TryInto::<usize>::try_into(total_size_padded - total_size_unpadded).unwrap()]; // TODO: reuse buffers instead of allocating in one go
-        dat_file.write_all(&padding)?;
-        data_section_hash.update(&padding);
+        let padding_length =
+            TryInto::<usize>::try_into(total_size_padded - total_size_unpadded).unwrap();
+        for _ in 0..(padding_length / ZEROS.len()) {
+            dat_file.write_all(&ZEROS)?;
+            data_section_hash.update(&ZEROS);
+        }
+        dat_file.write_all(&ZEROS[..padding_length % ZEROS.len()])?;
+        data_section_hash.update(&ZEROS[..padding_length % ZEROS.len()]);
 
         assert!(self.entries.insert(hash1, locator).is_none());
         assert!(self.entries2.insert(hash2, locator).is_none());
