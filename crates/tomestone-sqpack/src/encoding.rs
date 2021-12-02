@@ -397,9 +397,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
                     .sum::<usize>(),
             )
             .unwrap();
-        let total_size_padded_shifted =
-            ((total_size_unpadded + total_size_unpadded / 10 + total_size_unpadded / 100000) + 127)
-                / 128;
+        let total_size_padded_shifted = (total_size_unpadded + 127) / 128;
         let mut total_size_padded = total_size_padded_shifted * 128;
         let current_file_size = self.dats.last_mut().unwrap().file.stream_position()?;
         if current_file_size + total_size_padded as u64 > self.file_size_limit as u64 {
