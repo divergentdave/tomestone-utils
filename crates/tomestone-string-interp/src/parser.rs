@@ -271,6 +271,13 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
         TODO_40 => contents(map(expression, Segment::Todo40))(input),
         FOREGROUND => contents(map(expression, Segment::Foreground))(input),
         GLOW => contents(map(expression, Segment::Glow))(input),
+        RUBY => contents(map(
+            pair(expression, expression),
+            |(annotated, annotation)| Segment::Ruby {
+                annotated,
+                annotation,
+            },
+        ))(input),
         ZERO_PADDED_VALUE => contents(map(pair(expression, expression), |(value, digits)| {
             Segment::ZeroPaddedValue { value, digits }
         }))(input),

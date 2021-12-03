@@ -183,6 +183,13 @@ pub trait Visitor {
             Segment::Todo40(expr) => expr.accept(self),
             Segment::Foreground(expr) => expr.accept(self),
             Segment::Glow(expr) => expr.accept(self),
+            Segment::Ruby {
+                annotated,
+                annotation,
+            } => {
+                annotated.accept(self);
+                annotation.accept(self);
+            }
             Segment::ZeroPaddedValue { value, digits } => {
                 value.accept(self);
                 digits.accept(self);
@@ -320,6 +327,10 @@ pub enum Segment {
     Todo40(Expression),
     Foreground(Expression),
     Glow(Expression),
+    Ruby {
+        annotated: Expression,
+        annotation: Expression,
+    },
     ZeroPaddedValue {
         value: Expression,
         digits: Expression,
@@ -433,6 +444,14 @@ impl fmt::Debug for Segment {
             Segment::Todo40(arg) => f.debug_tuple("Todo40").field(arg).finish(),
             Segment::Foreground(arg) => f.debug_tuple("Foreground").field(arg).finish(),
             Segment::Glow(arg) => f.debug_tuple("Glow").field(arg).finish(),
+            Segment::Ruby {
+                annotated,
+                annotation,
+            } => f
+                .debug_struct("Ruby")
+                .field("annotated", annotated)
+                .field("annotation", annotation)
+                .finish(),
             Segment::ZeroPaddedValue { value, digits } => f
                 .debug_struct("ZeroPaddedValue")
                 .field("value", value)
@@ -693,7 +712,7 @@ mod proptests {
         match g
             .choose(&[
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-                23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+                23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
             ])
             .unwrap()
         {
@@ -831,13 +850,17 @@ mod proptests {
             36 => Segment::Todo40(arbitrary_expr(g, depth)),
             37 => Segment::Foreground(arbitrary_expr(g, depth)),
             38 => Segment::Glow(arbitrary_expr(g, depth)),
-            39 => Segment::ZeroPaddedValue {
+            39 => Segment::Ruby {
+                annotated: arbitrary_expr(g, depth),
+                annotation: arbitrary_expr(g, depth),
+            },
+            40 => Segment::ZeroPaddedValue {
                 value: arbitrary_expr(g, depth),
                 digits: arbitrary_expr(g, depth),
             },
-            40 => Segment::Todo51(arbitrary_expr(g, depth)),
-            41 => Segment::Todo60(Arbitrary::arbitrary(g)),
-            42 => Segment::Todo61(arbitrary_expr(g, depth)),
+            41 => Segment::Todo51(arbitrary_expr(g, depth)),
+            42 => Segment::Todo60(Arbitrary::arbitrary(g)),
+            43 => Segment::Todo61(arbitrary_expr(g, depth)),
             _ => unreachable!(),
         }
     }
@@ -1146,6 +1169,26 @@ mod proptests {
                 Segment::Todo40(arg) => Box::new(shrink_expr(arg).map(Segment::Todo40)),
                 Segment::Foreground(arg) => Box::new(shrink_expr(arg).map(Segment::Foreground)),
                 Segment::Glow(arg) => Box::new(shrink_expr(arg).map(Segment::Glow)),
+                Segment::Ruby {
+                    annotated,
+                    annotation,
+                } => Box::new(
+                    shrink_expr(annotated)
+                        .map({
+                            let annotation = annotation.clone();
+                            move |annotated| Segment::Ruby {
+                                annotated,
+                                annotation: annotation.clone(),
+                            }
+                        })
+                        .chain(shrink_expr(annotation).map({
+                            let annotated = annotated.clone();
+                            move |annotation| Segment::Ruby {
+                                annotated: annotated.clone(),
+                                annotation,
+                            }
+                        })),
+                ),
                 Segment::ZeroPaddedValue { value, digits } => Box::new(
                     vec![
                         {

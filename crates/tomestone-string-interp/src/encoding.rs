@@ -472,6 +472,18 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.append(&mut tag_data);
             buf.push(3);
         }
+        Segment::Ruby {
+            annotated,
+            annotation,
+        } => {
+            buf.extend_from_slice(&[2, RUBY]);
+            let mut tag_data = vec![];
+            encode_expression(&mut tag_data, annotated)?;
+            encode_expression(&mut tag_data, annotation)?;
+            encode_integer(buf, tag_data.len().try_into().unwrap())?;
+            buf.append(&mut tag_data);
+            buf.push(3);
+        }
         Segment::ZeroPaddedValue { value, digits } => {
             buf.extend_from_slice(&[2, ZERO_PADDED_VALUE]);
             let mut tag_data = vec![];

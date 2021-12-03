@@ -36,6 +36,7 @@ pub const SHEET_FR: u8 = 0x33;
 pub const TODO_40: u8 = 0x40;
 pub const FOREGROUND: u8 = 0x48;
 pub const GLOW: u8 = 0x49;
+pub const RUBY: u8 = 0x4a;
 pub const ZERO_PADDED_VALUE: u8 = 0x50;
 pub const TODO_51: u8 = 0x51;
 pub const TODO_60: u8 = 0x60;
