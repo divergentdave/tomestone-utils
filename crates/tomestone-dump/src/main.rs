@@ -15,7 +15,7 @@ use regex::{
 use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::{
     pathdb::{PathDb, PreparedStatements},
-    Category, Expansion, GameData, IndexEntry, IndexHash1, IndexHash2,
+    Category, Expansion, GameData, IndexHash1, IndexHash2,
 };
 use tomestone_string_interp::Text;
 
@@ -52,7 +52,14 @@ fn lookup<'a>(
             let folder_crc = u32::from_str_radix(first_arg, 16).unwrap();
             let file_crc = u32::from_str_radix(second_arg, 16).unwrap();
             let hash = IndexHash1::new(folder_crc, file_crc);
-            game_data.lookup_hash_1_data(&hash)
+            let results = game_data.lookup_hash_1_data(&hash)?;
+            match results.len() {
+                0 | 1 => Ok(results.into_iter().next()),
+                _ => {
+                    eprintln!("error: multiple files share this CRC-32 hash");
+                    process::exit(1);
+                }
+            }
         } else {
             eprintln!("error: invalid CRC-32 hashes or multiple paths provided");
             process::exit(1);
@@ -61,7 +68,14 @@ fn lookup<'a>(
         // one CRC-32
         let crc = u32::from_str_radix(first_arg, 16).unwrap();
         let hash = IndexHash2::new(crc);
-        game_data.lookup_hash_2_data(&hash)
+        let results = game_data.lookup_hash_2_data(&hash)?;
+        match results.len() {
+            0 | 1 => Ok(results.into_iter().next()),
+            _ => {
+                eprintln!("error: multiple files share this CRC-32 hash");
+                process::exit(1);
+            }
+        }
     } else {
         let opt = game_data.lookup_path_data(first_arg)?;
         if opt.is_some() {
@@ -101,9 +115,14 @@ fn lookup<'a>(
             for folder_crc in folder_crcs.iter().rev() {
                 for filename_crc in filename_crcs.iter().rev() {
                     let hash = IndexHash1::new(*folder_crc, *filename_crc);
-                    let opt = game_data.lookup_hash_1_data(&hash)?;
-                    if opt.is_some() {
-                        return Ok(opt);
+                    let results = game_data.lookup_hash_1_data(&hash)?;
+                    match results.len() {
+                        0 => {}
+                        1 => return Ok(results.into_iter().next()),
+                        _ => {
+                            eprintln!("error: multiple files share this CRC-32 hash");
+                            process::exit(1);
+                        }
                     }
                 }
             }
@@ -170,15 +189,13 @@ fn list_files(
     let mut locked = stdout.lock();
     for id in game_data.iter_packs_category_expansion(category, expansion) {
         if let Some(Ok(index)) = game_data.get_index_1(&id) {
-            for entry in index.iter() {
-                let hash = entry.hash();
+            for (hash, _pointer) in index.iter() {
                 write_file_name_1(&mut locked, statements, hash)?;
                 locked.write_all(b"\n").unwrap();
             }
         } else {
             let index = game_data.get_index_2(&id).unwrap()?;
-            for entry in index.iter() {
-                let hash = entry.hash();
+            for (hash, _pointer) in index.iter() {
                 write_file_name_2(&mut locked, statements, hash)?;
                 locked.write_all(b"\n").unwrap();
             }

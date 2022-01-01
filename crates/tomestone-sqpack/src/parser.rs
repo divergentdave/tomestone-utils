@@ -20,8 +20,8 @@ use sha1::{Digest, Sha1};
 use tomestone_common::null_padding;
 
 use crate::{
-    compression::decompress_sqpack_block, DataBlocks, DataLocator, Error, Index, IndexEntry,
-    IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexSegmentHeader, PlatformId, SqPackType,
+    compression::decompress_sqpack_block, DataBlocks, Error, Index, IndexEntry, IndexEntry1,
+    IndexEntry2, IndexHash1, IndexHash2, IndexPointer, IndexSegmentHeader, PlatformId, SqPackType,
     SHA1_OUTPUT_SIZE,
 };
 
@@ -324,7 +324,7 @@ fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
         tuple((le_u32, le_u32, le_u32, null_padding(4))),
         |(filename_crc, folder_crc, packed, _)| IndexEntry1 {
             hash: IndexHash1::new(folder_crc, filename_crc),
-            data_locator: DataLocator::from_u32(packed),
+            pointer: IndexPointer::from_u32(packed),
         },
     )(input)
 }
@@ -332,7 +332,7 @@ fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
 fn index_entry_2(input: &[u8]) -> IResult<&[u8], IndexEntry2> {
     map(tuple((le_u32, le_u32)), |(path_crc, packed)| IndexEntry2 {
         hash: IndexHash2::new(path_crc),
-        data_locator: DataLocator::from_u32(packed),
+        pointer: IndexPointer::from_u32(packed),
     })(input)
 }
 
@@ -583,7 +583,7 @@ mod tests {
     };
 
     use super::{sqpack_header_inner, sqpack_header_outer};
-    use crate::{DataLocator, PlatformId, SqPackType};
+    use crate::{IndexPointer, PlatformId, SqPackType};
 
     #[test]
     fn test_null_padding() {
@@ -807,9 +807,9 @@ mod tests {
     }
 
     #[test]
-    fn test_locator_roundtrip() {
-        let locator = DataLocator::from_u32(0x260);
-        assert_eq!(locator.to_u32(), 0x260);
+    fn test_pointer_roundtrip() {
+        let pointer = IndexPointer::from_u32(0x260);
+        assert_eq!(pointer.to_u32(), 0x260);
     }
 }
 

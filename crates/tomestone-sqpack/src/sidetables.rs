@@ -18,7 +18,7 @@ use nom::{
 
 use crate::{
     parser::{drive_streaming_parser_smaller, type_2_block_table, DataContentType},
-    DataLocator, GameData, IndexEntry, IndexHash2, SqPackId,
+    FilePointer, GameData, IndexHash2, SqPackId,
 };
 
 #[derive(Clone)]
@@ -65,12 +65,10 @@ pub fn build_side_tables(
     game_data: &GameData,
     pack_id: SqPackId,
 ) -> BTreeMap<IndexHash2, SideTableEntry> {
-    let mut reversed_index: BTreeMap<DataLocator, IndexHash2> = BTreeMap::new();
+    let mut reversed_index: BTreeMap<FilePointer, IndexHash2> = BTreeMap::new();
     let index_2 = game_data.get_index_2(&pack_id).unwrap().unwrap();
-    for index_entry in index_2.iter() {
-        assert!(reversed_index
-            .insert(index_entry.data_location(), index_entry.hash())
-            .is_none());
+    for (hash, pointer) in index_2.iter() {
+        assert!(reversed_index.insert(pointer, hash).is_none());
     }
 
     let mut files = Vec::new();

@@ -38,8 +38,7 @@ fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + Ref
 fn check_index_order() {
     fn inner<E: IndexEntry>(index: &Index<E>) {
         let mut last_hash: Option<E::Hash> = None;
-        for index_entry in index.iter() {
-            let hash = index_entry.hash();
+        for (hash, _pointer) in index.iter() {
             if let Some(last_hash) = &last_hash {
                 assert!(last_hash < &hash);
             }
@@ -77,13 +76,13 @@ fn game_data() {
 
     let scd_data = game_data
         .lookup_hash_1_data(&IndexHash1::hash(SCD_PATH))
-        .unwrap()
         .unwrap();
-    assert_eq!(&scd_data[..8], b"SEDBSSCF");
+    assert_eq!(scd_data.len(), 1);
+    assert_eq!(&scd_data[0][..8], b"SEDBSSCF");
 
     let scd_data = game_data
         .lookup_hash_2_data(&IndexHash2::hash(SCD_PATH))
-        .unwrap()
         .unwrap();
-    assert_eq!(&scd_data[..8], b"SEDBSSCF");
+    assert_eq!(scd_data.len(), 1);
+    assert_eq!(&scd_data[0][..8], b"SEDBSSCF");
 }

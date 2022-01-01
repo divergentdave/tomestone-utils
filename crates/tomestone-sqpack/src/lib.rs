@@ -188,17 +188,17 @@ impl IndexHash for IndexHash2 {
 }
 
 pub trait IndexEntry: fmt::Debug + Clone {
-    type Hash: PartialEq + Eq + PartialOrd + Ord;
+    type Hash: IndexHash + PartialEq + Eq + PartialOrd + Ord;
     const SIZE: u32;
     const FILE_EXTENSION: &'static str;
     fn hash(&self) -> Self::Hash;
-    fn data_location(&self) -> DataLocator;
+    fn pointer(&self) -> IndexPointer;
 }
 
 #[derive(Debug, Clone)]
 pub struct IndexEntry1 {
     hash: IndexHash1,
-    data_locator: DataLocator,
+    pointer: IndexPointer,
 }
 
 impl IndexEntry for IndexEntry1 {
@@ -210,15 +210,15 @@ impl IndexEntry for IndexEntry1 {
         self.hash
     }
 
-    fn data_location(&self) -> DataLocator {
-        self.data_locator
+    fn pointer(&self) -> IndexPointer {
+        self.pointer
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct IndexEntry2 {
     hash: IndexHash2,
-    data_locator: DataLocator,
+    pointer: IndexPointer,
 }
 
 impl IndexEntry for IndexEntry2 {
@@ -230,8 +230,8 @@ impl IndexEntry for IndexEntry2 {
         self.hash
     }
 
-    fn data_location(&self) -> DataLocator {
-        self.data_locator
+    fn pointer(&self) -> IndexPointer {
+        self.pointer
     }
 }
 
@@ -245,8 +245,10 @@ impl<E: IndexEntry> Index<E> {
         Index { table }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &E> {
-        self.table.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (E::Hash, FilePointer)> + '_ {
+        IndexIter {
+            iter: self.table.iter(),
+        }
     }
 
     pub fn get(&self, hash: &E::Hash) -> Option<&E> {
@@ -256,6 +258,19 @@ impl<E: IndexEntry> Index<E> {
             None
         }
     }
+
+    pub fn lookup(&self, path: &str) -> Option<FilePointer> {
+        let hash = E::Hash::hash(path);
+        let pointer = if let Some(entry) = self.get(&hash) {
+            entry.pointer()
+        } else {
+            return None;
+        };
+        match pointer {
+            IndexPointer::Pointer(pointer) => Some(pointer),
+            IndexPointer::Collision => todo!(),
+        }
+    }
 }
 
 impl Index<IndexEntry1> {
@@ -263,6 +278,25 @@ impl Index<IndexEntry1> {
         self.table
             .binary_search_by_key(crc, |e| e.hash().folder_crc)
             .is_ok()
+    }
+}
+
+struct IndexIter<'a, E: IndexEntry> {
+    iter: std::slice::Iter<'a, E>,
+}
+
+impl<'a, E: IndexEntry> Iterator for IndexIter<'a, E> {
+    type Item = (E::Hash, FilePointer);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(entry) = self.iter.next() {
+            match entry.pointer() {
+                IndexPointer::Pointer(pointer) => Some((entry.hash(), pointer)),
+                IndexPointer::Collision => todo!(),
+            }
+        } else {
+            None
+        }
     }
 }
 
@@ -479,21 +513,20 @@ fn list_packs(root_path: &Path) -> io::Result<BTreeSet<SqPackId>> {
     Ok(ids)
 }
 
-/// This represents a pointer from one of the index tables to an entry in one of the data files.
-/// It consists of a number identifying which data file, and an offset within that file. The
-/// file number must be between 0 and 7, and the offset must be aligned to 128, due to how these
-/// two fields are packed into their representation as a single 32-bit field.
+/// This represents a pointer to an entry in one of the data files. It consists of a number
+/// identifying a data file in a given pack set, and an offset within that file. The file number
+/// must be between 0 and 7, and the offset must be aligned to 128.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct DataLocator {
+pub struct FilePointer {
     data_file_id: u8,
     offset: u32,
 }
 
-impl DataLocator {
-    pub fn new(data_file_id: u8, offset: u32) -> DataLocator {
+impl FilePointer {
+    pub fn new(data_file_id: u8, offset: u32) -> FilePointer {
         assert_eq!(offset & 0x7f, 0);
         assert!(data_file_id < 8);
-        DataLocator {
+        FilePointer {
             data_file_id,
             offset,
         }
@@ -506,17 +539,44 @@ impl DataLocator {
     pub fn offset(&self) -> u32 {
         self.offset
     }
+}
 
-    pub fn from_u32(packed: u32) -> DataLocator {
-        DataLocator {
-            data_file_id: ((packed & 0xf) >> 1).try_into().unwrap(),
-            offset: (packed & !0xf) << 3,
+/// This represents a value stored in the file table of an index. It is either a pointer to a
+/// file's entry in a .dat file, or a placeholder for multiple colliding files, in which case the
+/// collision table must be scanned instead to find the file entry's location.
+#[derive(Debug, Clone, Copy)]
+pub enum IndexPointer {
+    Pointer(FilePointer),
+    Collision,
+}
+
+impl IndexPointer {
+    pub fn from_u32(packed: u32) -> IndexPointer {
+        if packed & 1 == 0 {
+            IndexPointer::Pointer(FilePointer {
+                data_file_id: ((packed & 0xf) >> 1).try_into().unwrap(),
+                offset: (packed & !0xf) << 3,
+            })
+        } else {
+            debug_assert!(packed == 1);
+            IndexPointer::Collision
         }
     }
 
     pub fn to_u32(self) -> u32 {
-        ((self.data_file_id as u32 & 7) << 1) | ((self.offset >> 3) & !0xf)
+        match self {
+            IndexPointer::Pointer(ptr) => {
+                ((ptr.data_file_id as u32 & 7) << 1) | ((ptr.offset >> 3) & !0xf)
+            }
+            IndexPointer::Collision => 1,
+        }
     }
+}
+
+/// This holds an entry from an index file's collision table. The entire path is stored, for
+/// disambiguation.
+pub struct CollisionEntry {
+    // TODO
 }
 
 pub struct GameData {
@@ -567,11 +627,11 @@ impl GameData {
             ))
     }
 
-    fn fetch_data(&self, pack_id: SqPackId, data_locator: DataLocator) -> Result<Vec<u8>, Error> {
+    fn fetch_data(&self, pack_id: SqPackId, file_pointer: FilePointer) -> Result<Vec<u8>, Error> {
         // TODO: reuse of opened files
-        let path = self.build_data_path(pack_id, data_locator.data_file_id());
+        let path = self.build_data_path(pack_id, file_pointer.data_file_id());
         let mut file = File::open(path)?;
-        decompress_file(&mut file, data_locator.offset())
+        decompress_file(&mut file, file_pointer.offset())
     }
 
     pub fn iter_files<'a, I: IndexEntry>(
@@ -588,15 +648,15 @@ impl GameData {
                 break;
             }
         }
-        let mut entries: Vec<I> = index.iter().cloned().collect();
-        entries.sort_unstable_by_key(IndexEntry::data_location);
-        Ok(entries.into_iter().map(move |entry| {
-            let locator = entry.data_location();
+        let mut entries: Vec<_> = index.iter().collect();
+        // Sort by file pointer to improve disk locality.
+        entries.sort_unstable_by_key(|(_, pointer)| *pointer);
+        Ok(entries.into_iter().map(move |(hash, pointer)| {
             Ok((
-                entry.hash(),
+                hash,
                 decompress_file(
-                    &mut files[TryInto::<usize>::try_into(locator.data_file_id()).unwrap()],
-                    locator.offset(),
+                    &mut files[TryInto::<usize>::try_into(pointer.data_file_id()).unwrap()],
+                    pointer.offset(),
                 )?,
             ))
         }))
@@ -605,7 +665,7 @@ impl GameData {
     pub fn lookup_path_locator(
         &self,
         path: &str,
-    ) -> Result<Option<(SqPackId, DataLocator)>, Error> {
+    ) -> Result<Option<(SqPackId, FilePointer)>, Error> {
         let segments: Vec<_> = path.splitn(3, '/').collect();
         let category = if let Ok(category) = Category::parse_name(segments[0]) {
             category
@@ -622,20 +682,18 @@ impl GameData {
             Expansion::Base
         };
 
-        let hash = IndexHash2::hash(path);
-
         for id in self.iter_packs_category_expansion(category, expansion) {
             let index = self.get_index_2(&id).unwrap()?;
-            if let Some(entry) = index.get(&hash) {
-                return Ok(Some((id, entry.data_location())));
+            if let Some(pointer) = index.lookup(path) {
+                return Ok(Some((id, pointer)));
             }
         }
         Ok(None)
     }
 
     pub fn lookup_path_data(&self, path: &str) -> Result<Option<Vec<u8>>, Error> {
-        if let Some((pack_id, data_locator)) = self.lookup_path_locator(path)? {
-            Ok(Some(self.fetch_data(pack_id, data_locator)?))
+        if let Some((pack_id, file_pointer)) = self.lookup_path_locator(path)? {
+            Ok(Some(self.fetch_data(pack_id, file_pointer)?))
         } else {
             Ok(None)
         }
@@ -670,24 +728,52 @@ impl GameData {
         Ok(false)
     }
 
-    pub fn lookup_hash_1_data(&self, hash: &IndexHash1) -> Result<Option<Vec<u8>>, Error> {
+    pub fn lookup_hash_1_locator(
+        &self,
+        hash: &IndexHash1,
+    ) -> Result<Vec<(SqPackId, FilePointer)>, Error> {
+        let mut pointers = Vec::new();
         for id in self.iter_packs() {
             let index = self.get_index_1(&id).unwrap()?;
             if let Some(entry) = index.get(hash) {
-                return Ok(Some(self.fetch_data(id, entry.data_location())?));
+                match entry.pointer() {
+                    IndexPointer::Pointer(pointer) => pointers.push((id, pointer)),
+                    IndexPointer::Collision => todo!(),
+                }
             }
         }
-        Ok(None)
+        Ok(pointers)
     }
 
-    pub fn lookup_hash_2_data(&self, hash: &IndexHash2) -> Result<Option<Vec<u8>>, Error> {
+    pub fn lookup_hash_2_locator(
+        &self,
+        hash: &IndexHash2,
+    ) -> Result<Vec<(SqPackId, FilePointer)>, Error> {
+        let mut pointers = Vec::new();
         for id in self.iter_packs() {
             let index = self.get_index_2(&id).unwrap()?;
             if let Some(entry) = index.get(hash) {
-                return Ok(Some(self.fetch_data(id, entry.data_location())?));
+                match entry.pointer() {
+                    IndexPointer::Pointer(pointer) => pointers.push((id, pointer)),
+                    IndexPointer::Collision => todo!(),
+                }
             }
         }
-        Ok(None)
+        Ok(pointers)
+    }
+
+    pub fn lookup_hash_1_data(&self, hash: &IndexHash1) -> Result<Vec<Vec<u8>>, Error> {
+        self.lookup_hash_1_locator(hash)?
+            .into_iter()
+            .map(|(id, pointer)| self.fetch_data(id, pointer))
+            .collect()
+    }
+
+    pub fn lookup_hash_2_data(&self, hash: &IndexHash2) -> Result<Vec<Vec<u8>>, Error> {
+        self.lookup_hash_2_locator(hash)?
+            .into_iter()
+            .map(|(id, pointer)| self.fetch_data(id, pointer))
+            .collect()
     }
 
     pub fn iter_packs(&self) -> impl Iterator<Item = SqPackId> + '_ {
@@ -759,9 +845,10 @@ mod tests {
 
     use crate::{
         encoding::{PackIO, PackSetWriter},
+        parser::decompress_file,
         sidetables::build_side_tables,
-        DataLocator, Expansion, GameData, IndexEntry, IndexEntry1, IndexEntry2, IndexHash1,
-        IndexHash2, SqPackId,
+        Expansion, FilePointer, GameData, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2,
+        SqPackId,
     };
 
     #[test]
@@ -1080,45 +1167,62 @@ mod tests {
             }
 
             let mut original_entries: BTreeMap<
-                DataLocator,
+                FilePointer,
                 (Option<IndexHash1>, Option<IndexHash2>),
             > = BTreeMap::new();
             let index_1 = game_data.get_index_1(&pack_id).unwrap().unwrap();
-            for index_entry in index_1.iter() {
-                let locator = index_entry.data_location();
+            for (hash, pointer) in index_1.iter() {
                 assert!(original_entries
-                    .entry(locator)
+                    .entry(pointer)
                     .or_default()
                     .0
-                    .replace(index_entry.hash())
+                    .replace(hash)
                     .is_none());
             }
             let index_2 = game_data.get_index_2(&pack_id).unwrap().unwrap();
-            for index_entry in index_2.iter() {
-                let locator = index_entry.data_location();
+            for (hash, pointer) in index_2.iter() {
                 assert!(original_entries
-                    .entry(locator)
+                    .entry(pointer)
                     .or_default()
                     .1
-                    .replace(index_entry.hash())
+                    .replace(hash)
                     .is_none());
             }
 
-            // iter_files returns entries in the order of their location within the data file.
-            let all_files = game_data.iter_files(pack_id, index_2).unwrap().map(|res| {
-                let (hash, data) = res.unwrap();
-                (index_2.get(&hash).unwrap().data_location(), data)
-            });
+            let mut entries: Vec<_> = index_2.iter().collect();
+            // sort by location within data files.
+            entries.sort_unstable_by_key(|(_, pointer)| *pointer);
+
+            let all_files = {
+                let mut files = Vec::new();
+                for i in 0.. {
+                    let path = game_data.build_data_path(pack_id, i);
+                    if path.is_file() {
+                        files.push(File::open(path).unwrap());
+                    } else {
+                        break;
+                    }
+                }
+
+                entries.into_iter().map(move |(hash, pointer)| {
+                    let data = decompress_file(
+                        &mut files[TryInto::<usize>::try_into(pointer.data_file_id()).unwrap()],
+                        pointer.offset(),
+                    )
+                    .unwrap();
+                    (hash, pointer, data)
+                })
+            };
+
             let side_table = build_side_tables(&game_data, pack_id);
 
             let mocked_io = MockedPackIO::new();
             let mut writer =
                 PackSetWriter::new(mocked_io, crate::PlatformId::Win32, pack_id).unwrap();
             writer.set_side_table(side_table);
-            for (locator, data) in all_files {
-                let hashes = original_entries.get(&locator).unwrap();
+            for (hash2, pointer, data) in all_files {
+                let hashes = original_entries.get(&pointer).unwrap();
                 let hash1 = hashes.0.unwrap();
-                let hash2 = hashes.1.unwrap();
                 writer.add_file_by_hashes(hash1, hash2, &data).unwrap();
             }
             let mocked_io = writer.finalize().unwrap();

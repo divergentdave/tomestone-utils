@@ -11,8 +11,8 @@ use sha1::{Digest, Sha1};
 use crate::compression::compress_sqpack_block;
 use crate::sidetables::SideTableEntry;
 use crate::{
-    compression, Category, DataLocator, Expansion, IndexHash, IndexHash1, IndexHash2, PlatformId,
-    SqPackId, SqPackType,
+    compression, Category, Expansion, FilePointer, IndexHash, IndexHash1, IndexHash2, IndexPointer,
+    PlatformId, SqPackId, SqPackType,
 };
 
 static ZEROS: [u8; 4096] = [0; 4096];
@@ -283,8 +283,8 @@ pub struct PackSetWriter<IO: PackIO> {
     dats: Vec<DatFileRecord<IO>>,
     dat_file_number: u8,
     dat_file_position: u32,
-    entries: BTreeMap<IndexHash1, DataLocator>,
-    entries2: BTreeMap<IndexHash2, DataLocator>,
+    entries: BTreeMap<IndexHash1, FilePointer>,
+    entries2: BTreeMap<IndexHash2, FilePointer>,
     file_size_limit: u32,
     segments_not_present_heuristic: bool,
     side_table: BTreeMap<IndexHash2, SideTableEntry>,
@@ -406,7 +406,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             self.create_new_dat_file()?;
         }
 
-        let locator = DataLocator::new(self.dat_file_number, self.dat_file_position);
+        let pointer = FilePointer::new(self.dat_file_number, self.dat_file_position);
 
         let mut unknown = total_size_padded_shifted - 1; // still working on this, needs corrections
         if let Some(entry) = self.side_table.get(&hash2) {
@@ -480,8 +480,9 @@ impl<IO: PackIO> PackSetWriter<IO> {
         dat_file.write_all(&ZEROS[..padding_length % ZEROS.len()])?;
         data_section_hash.update(&ZEROS[..padding_length % ZEROS.len()]);
 
-        assert!(self.entries.insert(hash1, locator).is_none());
-        assert!(self.entries2.insert(hash2, locator).is_none());
+        // TODO: not handling collisions yet
+        assert!(self.entries.insert(hash1, pointer).is_none());
+        assert!(self.entries2.insert(hash2, pointer).is_none());
         Ok(())
     }
 
@@ -507,7 +508,8 @@ impl<IO: PackIO> PackSetWriter<IO> {
             }
             entry_buffer[0..4].copy_from_slice(&hash.filename_crc.to_le_bytes());
             entry_buffer[4..8].copy_from_slice(&hash.folder_crc.to_le_bytes());
-            entry_buffer[8..12].copy_from_slice(&locator.to_u32().to_le_bytes());
+            entry_buffer[8..12]
+                .copy_from_slice(&IndexPointer::Pointer(locator).to_u32().to_le_bytes());
             self.index.write_all(&entry_buffer)?;
             seg_accum.length += 16;
             seg_accum.hash.as_mut().unwrap().update(&entry_buffer);
@@ -561,9 +563,10 @@ impl<IO: PackIO> PackSetWriter<IO> {
         // write file index entries into the first segment of the body.
         let mut entry_buffer = [0; 8];
         let seg_accum = &mut self.index2_segment_headers.segment_accumulators[0];
-        for (hash, locator) in self.entries2 {
+        for (hash, pointer) in self.entries2 {
             entry_buffer[0..4].copy_from_slice(&hash.path_crc.to_le_bytes());
-            entry_buffer[4..8].copy_from_slice(&locator.to_u32().to_le_bytes());
+            entry_buffer[4..8]
+                .copy_from_slice(&IndexPointer::Pointer(pointer).to_u32().to_le_bytes());
             self.index2.write_all(&entry_buffer)?;
             seg_accum.length += 8;
             seg_accum.hash.as_mut().unwrap().update(&entry_buffer);
