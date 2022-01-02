@@ -7,12 +7,12 @@ use std::{
 
 use nom::{
     branch::alt,
-    bytes::streaming::{tag, take},
+    bytes::streaming::{tag, take, take_while},
     combinator::{complete, map, map_opt, map_parser, map_res, peek, verify},
     error::{ErrorKind, ParseError},
     multi::{count, length_data, length_value},
     number::streaming::{le_u16, le_u32, le_u8},
-    sequence::tuple,
+    sequence::{pair, terminated, tuple},
     Err, IResult, Needed,
 };
 use sha1::{Digest, Sha1};
@@ -20,9 +20,9 @@ use sha1::{Digest, Sha1};
 use tomestone_common::null_padding;
 
 use crate::{
-    compression::decompress_sqpack_block, DataBlocks, Error, Index, IndexEntry, IndexEntry1,
-    IndexEntry2, IndexHash1, IndexHash2, IndexPointer, IndexSegmentHeader, PlatformId, SqPackType,
-    SHA1_OUTPUT_SIZE,
+    compression::decompress_sqpack_block, CollisionEntry, DataBlocks, Error, FilePointer, Index,
+    IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexPointer, IndexSegmentHeader,
+    PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
 };
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
@@ -319,21 +319,79 @@ fn block_header(input: &[u8]) -> IResult<&[u8], (u32, u32)> {
     )(input)
 }
 
+fn index_hash_1(input: &[u8]) -> IResult<&[u8], IndexHash1> {
+    map(pair(le_u32, le_u32), |(filename_crc, folder_crc)| {
+        IndexHash1::new(folder_crc, filename_crc)
+    })(input)
+}
+
+fn index_hash_2(input: &[u8]) -> IResult<&[u8], IndexHash2> {
+    map(le_u32, IndexHash2::new)(input)
+}
+
 fn index_entry_1(input: &[u8]) -> IResult<&[u8], IndexEntry1> {
     map(
-        tuple((le_u32, le_u32, le_u32, null_padding(4))),
-        |(filename_crc, folder_crc, packed, _)| IndexEntry1 {
-            hash: IndexHash1::new(folder_crc, filename_crc),
-            pointer: IndexPointer::from_u32(packed),
-        },
+        tuple((
+            index_hash_1,
+            map(le_u32, IndexPointer::from_u32),
+            null_padding(4),
+        )),
+        |(hash, pointer, _)| IndexEntry1 { hash, pointer },
     )(input)
 }
 
 fn index_entry_2(input: &[u8]) -> IResult<&[u8], IndexEntry2> {
-    map(tuple((le_u32, le_u32)), |(path_crc, packed)| IndexEntry2 {
-        hash: IndexHash2::new(path_crc),
-        pointer: IndexPointer::from_u32(packed),
-    })(input)
+    map(
+        pair(index_hash_2, map(le_u32, IndexPointer::from_u32)),
+        |(hash, pointer)| IndexEntry2 { hash, pointer },
+    )(input)
+}
+
+fn collision_entry_1(input: &[u8]) -> IResult<&[u8], CollisionEntry<IndexHash1>> {
+    map(
+        tuple((
+            index_hash_1,
+            map(le_u32, FilePointer::from_u32),
+            le_u32,
+            length_value(
+                |input| Ok((input, 240usize)),
+                map_res(
+                    terminated(take_while(|byte: u8| byte != 0), tag(b"\x00")),
+                    std::str::from_utf8,
+                ),
+            ),
+        )),
+        |(hash, pointer, collision_index, path)| CollisionEntry {
+            hash,
+            pointer,
+            collision_index,
+            path: path.to_string(),
+        },
+    )(input)
+}
+
+fn collision_entry_2(input: &[u8]) -> IResult<&[u8], CollisionEntry<IndexHash2>> {
+    map(
+        tuple((
+            index_hash_2,
+            null_padding(4),
+            map(le_u32, FilePointer::from_u32),
+            le_u32,
+            length_value(
+                |input| Ok((input, 240usize)),
+                map_res(
+                    terminated(take_while(|byte: u8| byte != 0), tag(b"\x00")),
+                    std::str::from_utf8,
+                ),
+            ),
+        )),
+        |(hash, _, pointer, collision_index, path)| CollisionEntry {
+            hash,
+            pointer,
+            collision_index,
+            path: path.to_string(),
+        },
+    )(input)
 }
 
 /// `GrowableBufReader` adds buffering to a reader, and allows callers to dynamically request a
@@ -512,9 +570,14 @@ where
     }
 }
 
-fn load_index_reader<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
+fn load_index_reader<
+    I: IndexEntry,
+    EP: Fn(&[u8]) -> IResult<&[u8], I>,
+    CP: Fn(&[u8]) -> IResult<&[u8], CollisionEntry<I::Hash>>,
+>(
     bufreader: &mut GrowableBufReader<File>,
-    parser: P,
+    entry_parser: EP,
+    collision_parser: CP,
 ) -> Result<Index<I>, Error> {
     let file_header = drive_streaming_parser(bufreader, sqpack_header_outer)?;
     let size = file_header.1;
@@ -522,27 +585,37 @@ fn load_index_reader<I: IndexEntry, P: Fn(&[u8]) -> IResult<&[u8], I>>(
     bufreader.seek(SeekFrom::Start(size.into()))?;
     let index_header = drive_streaming_parser(bufreader, index_segment_headers)?;
     let first_segment_header = &index_header.2[0];
+    let second_segment_header = &index_header.2[1];
 
     bufreader.seek(SeekFrom::Start(first_segment_header.offset.into()))?;
     let entry_count = first_segment_header.size / I::SIZE;
-    let mut entries = Vec::with_capacity(entry_count.try_into().unwrap());
+    let mut index_entries = Vec::with_capacity(entry_count.try_into().unwrap());
     for _ in 0..entry_count {
-        let index_entry = drive_streaming_parser(bufreader, &parser)?;
-        entries.push(index_entry);
+        let index_entry = drive_streaming_parser(bufreader, &entry_parser)?;
+        index_entries.push(index_entry);
     }
-    Ok(Index::new(entries))
+
+    bufreader.seek(SeekFrom::Start(second_segment_header.offset.into()))?;
+    let entry_count = second_segment_header.size / 256 - 1;
+    let mut collision_entries = Vec::with_capacity(entry_count.try_into().unwrap());
+    for _ in 0..entry_count {
+        let entry = drive_streaming_parser(bufreader, &collision_parser)?;
+        collision_entries.push(entry);
+    }
+
+    Ok(Index::new(index_entries, collision_entries))
 }
 
 pub fn load_index_1(path: PathBuf) -> Result<Index<IndexEntry1>, Error> {
     let file = File::open(path)?;
     let mut bufreader = GrowableBufReader::new(file);
-    load_index_reader(&mut bufreader, index_entry_1)
+    load_index_reader(&mut bufreader, index_entry_1, collision_entry_1)
 }
 
 pub fn load_index_2(path: PathBuf) -> Result<Index<IndexEntry2>, Error> {
     let file = File::open(path)?;
     let mut bufreader = GrowableBufReader::new(file);
-    load_index_reader(&mut bufreader, index_entry_2)
+    load_index_reader(&mut bufreader, index_entry_2, collision_entry_2)
 }
 
 pub fn decompress_file(mut file: &mut File, data_entry_offset: u32) -> Result<Vec<u8>, Error> {

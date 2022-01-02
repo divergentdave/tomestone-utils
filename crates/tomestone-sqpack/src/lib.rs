@@ -123,7 +123,7 @@ pub struct DataHeader {
     pub max_file_size: u32,
 }
 
-pub trait IndexHash {
+pub trait IndexHash: Clone + Copy + PartialEq + Eq + PartialOrd + Ord {
     fn hash(path: &str) -> Self;
 }
 
@@ -188,7 +188,7 @@ impl IndexHash for IndexHash2 {
 }
 
 pub trait IndexEntry: fmt::Debug + Clone {
-    type Hash: IndexHash + PartialEq + Eq + PartialOrd + Ord;
+    type Hash: IndexHash;
     const SIZE: u32;
     const FILE_EXTENSION: &'static str;
     fn hash(&self) -> Self::Hash;
@@ -237,23 +237,35 @@ impl IndexEntry for IndexEntry2 {
 
 #[derive(Debug)]
 pub struct Index<E: IndexEntry> {
-    table: Vec<E>,
+    index_table: Vec<E>,
+    collision_table: Vec<CollisionEntry<E::Hash>>,
 }
 
 impl<E: IndexEntry> Index<E> {
-    pub(crate) fn new(table: Vec<E>) -> Index<E> {
-        Index { table }
+    pub(crate) fn new(
+        index_table: Vec<E>,
+        collision_table: Vec<CollisionEntry<E::Hash>>,
+    ) -> Index<E> {
+        Index {
+            index_table,
+            collision_table,
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (E::Hash, FilePointer)> + '_ {
         IndexIter {
-            iter: self.table.iter(),
+            iter: self.index_table.iter(),
+            collision_table: &self.collision_table,
+            collision_extra: None,
         }
     }
 
     pub fn get(&self, hash: &E::Hash) -> Option<&E> {
-        if let Ok(index) = self.table.binary_search_by_key(hash, IndexEntry::hash) {
-            Some(&self.table[index])
+        if let Ok(index) = self
+            .index_table
+            .binary_search_by_key(hash, IndexEntry::hash)
+        {
+            Some(&self.index_table[index])
         } else {
             None
         }
@@ -268,14 +280,24 @@ impl<E: IndexEntry> Index<E> {
         };
         match pointer {
             IndexPointer::Pointer(pointer) => Some(pointer),
-            IndexPointer::Collision => todo!(),
+            IndexPointer::Collision => {
+                // TODO: check if these are always sorted by hash, and if so, use a binary search
+                // on that before comparing paths.
+                let path_lower = path.to_lowercase();
+                for collision_entry in self.collision_table.iter() {
+                    if collision_entry.hash == hash && collision_entry.path == path_lower {
+                        return Some(collision_entry.pointer);
+                    }
+                }
+                return None;
+            }
         }
     }
 }
 
 impl Index<IndexEntry1> {
     pub fn contains_folder(&self, crc: &u32) -> bool {
-        self.table
+        self.index_table
             .binary_search_by_key(crc, |e| e.hash().folder_crc)
             .is_ok()
     }
@@ -283,19 +305,34 @@ impl Index<IndexEntry1> {
 
 struct IndexIter<'a, E: IndexEntry> {
     iter: std::slice::Iter<'a, E>,
+    collision_table: &'a [CollisionEntry<E::Hash>],
+    collision_extra: Option<(std::slice::Iter<'a, CollisionEntry<E::Hash>>, E::Hash)>,
 }
 
 impl<'a, E: IndexEntry> Iterator for IndexIter<'a, E> {
     type Item = (E::Hash, FilePointer);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(entry) = self.iter.next() {
-            match entry.pointer() {
-                IndexPointer::Pointer(pointer) => Some((entry.hash(), pointer)),
-                IndexPointer::Collision => todo!(),
+        loop {
+            if let Some((collision_iter, hash)) = self.collision_extra.as_mut() {
+                for collision_entry in collision_iter {
+                    if &collision_entry.hash == hash {
+                        return Some((collision_entry.hash, collision_entry.pointer));
+                    }
+                }
+                self.collision_extra = None;
             }
-        } else {
-            None
+            if let Some(entry) = self.iter.next() {
+                match entry.pointer() {
+                    IndexPointer::Pointer(pointer) => return Some((entry.hash(), pointer)),
+                    IndexPointer::Collision => {
+                        let hash = entry.hash();
+                        self.collision_extra = Some((self.collision_table.iter(), hash));
+                    }
+                }
+            } else {
+                return None;
+            }
         }
     }
 }
@@ -539,6 +576,15 @@ impl FilePointer {
     pub fn offset(&self) -> u32 {
         self.offset
     }
+
+    pub fn from_u32(packed: u32) -> FilePointer {
+        match IndexPointer::from_u32(packed) {
+            IndexPointer::Pointer(pointer) => pointer,
+            IndexPointer::Collision => panic!(
+                "called FilePointer::from_u32 on a number with the collision tombstone bit set"
+            ),
+        }
+    }
 }
 
 /// This represents a value stored in the file table of an index. It is either a pointer to a
@@ -575,8 +621,12 @@ impl IndexPointer {
 
 /// This holds an entry from an index file's collision table. The entire path is stored, for
 /// disambiguation.
-pub struct CollisionEntry {
-    // TODO
+#[derive(Debug)]
+pub struct CollisionEntry<H: IndexHash> {
+    hash: H,
+    pointer: FilePointer,
+    collision_index: u32,
+    path: String,
 }
 
 pub struct GameData {

@@ -5,7 +5,10 @@ use std::{
 };
 
 use super::{index_entry_1, index_entry_2, load_index_reader, GrowableBufReader};
-use crate::{Expansion, GameData, Index, IndexEntry, IndexHash, IndexHash1, IndexHash2};
+use crate::{
+    parser::{collision_entry_1, collision_entry_2, index_hash_1, index_hash_2},
+    Expansion, GameData, Index, IndexEntry, IndexHash, IndexHash1, IndexHash2,
+};
 
 fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + RefUnwindSafe) {
     dotenv::dotenv().ok();
@@ -40,7 +43,7 @@ fn check_index_order() {
         let mut last_hash: Option<E::Hash> = None;
         for (hash, _pointer) in index.iter() {
             if let Some(last_hash) = &last_hash {
-                assert!(last_hash < &hash);
+                assert!(last_hash <= &hash);
             }
             last_hash = Some(hash);
         }
@@ -48,11 +51,13 @@ fn check_index_order() {
 
     forall_sqpack(|path, mut bufreader| match path.extension() {
         Some(ext) if ext == "index" => {
-            let index = load_index_reader(&mut bufreader, index_entry_1).unwrap();
+            let index =
+                load_index_reader(&mut bufreader, index_entry_1, collision_entry_1).unwrap();
             inner(&index);
         }
         Some(ext) if ext == "index2" => {
-            let index = load_index_reader(&mut bufreader, index_entry_2).unwrap();
+            let index =
+                load_index_reader(&mut bufreader, index_entry_2, collision_entry_2).unwrap();
             inner(&index);
         }
         _ => {}
