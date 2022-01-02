@@ -1028,5 +1028,31 @@ mod tests {
         )
         .unwrap()
         .unwrap();
+
+        // CRC-32 collisions
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["bg/ffxiv/fst_f1/fld/f1f3/grass/016_001_036_h.ggd"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["bgcommon/world/evt/shared/for_pln/sgpl_a_evt_vfx01_bomber_v.sgb"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["bgcommon/world/common/vfx_for_bg/texture/bomb101zy.atex"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
     }
 }
