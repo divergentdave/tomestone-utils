@@ -281,8 +281,7 @@ impl<E: IndexEntry> Index<E> {
         match pointer {
             IndexPointer::Pointer(pointer) => Some(pointer),
             IndexPointer::Collision => {
-                // TODO: check if these are always sorted by hash, and if so, use a binary search
-                // on that before comparing paths.
+                // TODO: do a binary search by hash before doing a linear scan comparing paths.
                 let path_lower = path.to_lowercase();
                 for collision_entry in self.collision_table.iter() {
                     if collision_entry.hash == hash && collision_entry.path == path_lower {

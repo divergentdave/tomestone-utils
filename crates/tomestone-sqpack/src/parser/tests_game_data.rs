@@ -47,6 +47,13 @@ fn check_index_order() {
             }
             last_hash = Some(hash);
         }
+        let mut last_hash: Option<E::Hash> = None;
+        for entry in index.collision_table.iter() {
+            if let Some(last_hash) = &last_hash {
+                assert!(last_hash <= &entry.hash);
+            }
+            last_hash = Some(entry.hash);
+        }
     }
 
     forall_sqpack(|path, mut bufreader| match path.extension() {
