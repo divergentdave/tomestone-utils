@@ -6,7 +6,7 @@ use parser::{
     exhf::{parse_exhf, Exhf},
     parse_row,
 };
-use tomestone_sqpack::GameData;
+use tomestone_sqpack::{DataFileSet, GameData};
 
 pub mod encoding;
 pub mod parser;
@@ -260,9 +260,14 @@ pub struct Dataset {
 }
 
 impl Dataset {
-    pub fn load(game_data: &GameData, base: &str, language: Language) -> Result<Dataset, Error> {
+    pub fn load(
+        game_data: &GameData,
+        data_file_set: &mut DataFileSet,
+        base: &str,
+        language: Language,
+    ) -> Result<Dataset, Error> {
         let exh_path = format!("exd/{}.exh", base);
-        let exh_data = match game_data.lookup_path_data(&exh_path) {
+        let exh_data = match game_data.lookup_path_data(data_file_set, &exh_path) {
             Ok(Some(exh_data)) => exh_data,
             Ok(None) => return Err(Error::NoSuchFile),
             Err(e) => return Err(Error::Sqpack(e)),
@@ -289,7 +294,7 @@ impl Dataset {
                 } else {
                     format!("exd/{}_{}.exd", base, page_start)
                 };
-                let exdf_data = match game_data.lookup_path_data(&exd_path) {
+                let exdf_data = match game_data.lookup_path_data(data_file_set, &exd_path) {
                     Ok(Some(exd_data)) => exd_data,
                     Ok(None) => return Err(Error::NoSuchFile),
                     Err(e) => return Err(Error::Sqpack(e)),
@@ -318,8 +323,8 @@ pub struct RootList {
 }
 
 impl RootList {
-    pub fn open(game_data: &GameData) -> Result<RootList, Error> {
-        let data = match game_data.lookup_path_data("exd/root.exl") {
+    pub fn open(game_data: &GameData, data_file_set: &mut DataFileSet) -> Result<RootList, Error> {
+        let data = match game_data.lookup_path_data(data_file_set, "exd/root.exl") {
             Ok(Some(toc_data)) => toc_data,
             Ok(None) => return Err(Error::NoSuchFile),
             Err(e) => return Err(Error::Sqpack(e)),

@@ -209,11 +209,15 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
 
-        let root_list = RootList::open(&game_data).unwrap();
+        let root_list = RootList::open(&game_data, &mut data_file_set).unwrap();
         for name in root_list.iter() {
             let exh_path = format!("exd/{}.exh", name);
-            let exh_data = game_data.lookup_path_data(&exh_path).unwrap().unwrap();
+            let exh_data = game_data
+                .lookup_path_data(&mut data_file_set, &exh_path)
+                .unwrap()
+                .unwrap();
             let exhf = parse_exhf(&exh_data).unwrap().1;
             let encoded = crate::encoding::encode_exhf(&exhf);
             assert_eq!(exh_data, encoded);

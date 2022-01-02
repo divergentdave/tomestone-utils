@@ -157,13 +157,20 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
         const EXH_PATH: &str = "exd/fcauthority.exh";
         const EXD_PATH: &str = "exd/fcauthority_0_en.exd";
 
-        let exh_data = game_data.lookup_path_data(&EXH_PATH).unwrap().unwrap();
+        let exh_data = game_data
+            .lookup_path_data(&mut data_file_set, &EXH_PATH)
+            .unwrap()
+            .unwrap();
         let _exhf = parse_exhf(&exh_data).unwrap().1;
 
-        let exd_data = game_data.lookup_path_data(&EXD_PATH).unwrap().unwrap();
+        let exd_data = game_data
+            .lookup_path_data(&mut data_file_set, &EXD_PATH)
+            .unwrap()
+            .unwrap();
         exdf_header(&exd_data).unwrap();
     }
 
@@ -178,10 +185,11 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(Category::Exd, *expansion) {
                 let index = game_data.get_index_2(&pack_id).unwrap().unwrap();
-                for res in game_data.iter_files(pack_id, &index).unwrap() {
+                for res in data_file_set.iter_files(pack_id, &index).unwrap() {
                     let file = res.unwrap().1;
                     if file.len() > 32 && &file[..4] == b"EXDF" {
                         let exdf = Exdf::new(file).unwrap();
@@ -209,10 +217,11 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(Category::Exd, *expansion) {
                 let index = game_data.get_index_2(&pack_id).unwrap().unwrap();
-                for res in game_data.iter_files(pack_id, &index).unwrap() {
+                for res in data_file_set.iter_files(pack_id, &index).unwrap() {
                     let file = res.unwrap().1;
                     if file.len() > 32 && &file[..4] == b"EXDF" {
                         let header = exdf_header(&file).unwrap().1;
@@ -238,8 +247,9 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
 
-        let root_list = RootList::open(&game_data).unwrap();
+        let root_list = RootList::open(&game_data, &mut data_file_set).unwrap();
         for name in root_list.iter() {
             let padding_offset = match name {
                 "Attributive"
@@ -253,7 +263,8 @@ mod tests {
                 | "PartyContentTransient" => 2,
                 _ => 0,
             };
-            let dataset = Dataset::load(&game_data, name, Language::English).unwrap();
+            let dataset =
+                Dataset::load(&game_data, &mut data_file_set, name, Language::English).unwrap();
 
             for (page_1, page_2) in dataset.page_iter().zip(dataset.page_iter()) {
                 for (res_parsed, res_raw) in page_1.zip(page_2.exdf_iter) {
@@ -288,10 +299,12 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
 
-        let root_list = RootList::open(&game_data).unwrap();
+        let root_list = RootList::open(&game_data, &mut data_file_set).unwrap();
         for name in root_list.iter() {
-            let dataset = Dataset::load(&game_data, name, Language::English).unwrap();
+            let dataset =
+                Dataset::load(&game_data, &mut data_file_set, name, Language::English).unwrap();
 
             for (page_1, page_2) in dataset.page_iter().zip(dataset.page_iter()) {
                 let rows = page_1.map(|res| res.unwrap()).collect::<Vec<_>>();

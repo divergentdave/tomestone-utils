@@ -25,8 +25,9 @@ fn main() {
             process::exit(1);
         }
     };
+    let mut data_file_set = game_data.data_files();
 
-    let root_list = if let Ok(root_list) = RootList::open(&game_data) {
+    let root_list = if let Ok(root_list) = RootList::open(&game_data, &mut data_file_set) {
         root_list
     } else {
         eprintln!("error: couldn't read root list of data files");
@@ -35,7 +36,9 @@ fn main() {
 
     let mut if_tag_set = HashSet::new();
     for name in root_list.iter() {
-        let dataset = if let Ok(dataset) = Dataset::load(&game_data, name, Language::English) {
+        let dataset = if let Ok(dataset) =
+            Dataset::load(&game_data, &mut data_file_set, name, Language::English)
+        {
             dataset
         } else {
             eprintln!("error: couldn't load data file {}", name);
@@ -88,7 +91,9 @@ fn main() {
     );
     println!();
 
-    let title_dataset = if let Ok(dataset) = Dataset::load(&game_data, "Title", Language::English) {
+    let title_dataset = if let Ok(dataset) =
+        Dataset::load(&game_data, &mut data_file_set, "Title", Language::English)
+    {
         dataset
     } else {
         eprintln!("error: couldn't load data file Title");
@@ -122,21 +127,28 @@ fn main() {
         ("GCRankLimsaFemaleText", "GCRankLimsaMaleText"),
         ("GCRankUldahFemaleText", "GCRankUldahMaleText"),
     ] {
-        let female_dataset = if let Ok(dataset) =
-            Dataset::load(&game_data, female_dataset_name, Language::English)
-        {
+        let female_dataset = if let Ok(dataset) = Dataset::load(
+            &game_data,
+            &mut data_file_set,
+            female_dataset_name,
+            Language::English,
+        ) {
             dataset
         } else {
             eprintln!("error: couldn't load data file {}", female_dataset_name);
             process::exit(1);
         };
-        let male_dataset =
-            if let Ok(dataset) = Dataset::load(&game_data, male_dataset_name, Language::English) {
-                dataset
-            } else {
-                eprintln!("error: couldn't load data file {}", male_dataset_name);
-                process::exit(1);
-            };
+        let male_dataset = if let Ok(dataset) = Dataset::load(
+            &game_data,
+            &mut data_file_set,
+            male_dataset_name,
+            Language::English,
+        ) {
+            dataset
+        } else {
+            eprintln!("error: couldn't load data file {}", male_dataset_name);
+            process::exit(1);
+        };
 
         for (female_page, male_page) in female_dataset.page_iter().zip(male_dataset.page_iter()) {
             for (female_res, male_res) in female_page.zip(male_page) {

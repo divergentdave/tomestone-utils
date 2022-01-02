@@ -15,7 +15,7 @@ use regex::{
 use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::{
     pathdb::{PathDb, PreparedStatements},
-    Category, Expansion, GameData, IndexHash1, IndexHash2,
+    Category, DataFileSet, Expansion, GameData, IndexHash1, IndexHash2,
 };
 use tomestone_string_interp::Text;
 
@@ -28,6 +28,7 @@ use tomestone_string_interp::Text;
 /// CRC database, so that it can be used in future file listings.
 fn lookup<'a>(
     game_data: &GameData,
+    data_file_set: &mut DataFileSet,
     statements: Option<&mut PreparedStatements<'_>>,
     mut path_or_crc: impl Iterator<Item = &'a str>,
 ) -> Result<Option<Vec<u8>>, tomestone_sqpack::Error> {
@@ -52,7 +53,7 @@ fn lookup<'a>(
             let folder_crc = u32::from_str_radix(first_arg, 16).unwrap();
             let file_crc = u32::from_str_radix(second_arg, 16).unwrap();
             let hash = IndexHash1::new(folder_crc, file_crc);
-            let results = game_data.lookup_hash_1_data(&hash)?;
+            let results = game_data.lookup_hash_1_data(data_file_set, &hash)?;
             match results.len() {
                 0 | 1 => Ok(results.into_iter().next()),
                 _ => {
@@ -68,7 +69,7 @@ fn lookup<'a>(
         // one CRC-32
         let crc = u32::from_str_radix(first_arg, 16).unwrap();
         let hash = IndexHash2::new(crc);
-        let results = game_data.lookup_hash_2_data(&hash)?;
+        let results = game_data.lookup_hash_2_data(data_file_set, &hash)?;
         match results.len() {
             0 | 1 => Ok(results.into_iter().next()),
             _ => {
@@ -77,7 +78,7 @@ fn lookup<'a>(
             }
         }
     } else {
-        let opt = game_data.lookup_path_data(first_arg)?;
+        let opt = game_data.lookup_path_data(data_file_set, first_arg)?;
         if opt.is_some() {
             // path
             if let Some(statements) = statements {
@@ -115,7 +116,7 @@ fn lookup<'a>(
             for folder_crc in folder_crcs.iter().rev() {
                 for filename_crc in filename_crcs.iter().rev() {
                     let hash = IndexHash1::new(*folder_crc, *filename_crc);
-                    let results = game_data.lookup_hash_1_data(&hash)?;
+                    let results = game_data.lookup_hash_1_data(data_file_set, &hash)?;
                     match results.len() {
                         0 => {}
                         1 => return Ok(results.into_iter().next()),
@@ -318,6 +319,7 @@ fn parse_repository_path(path: Option<&str>) -> Option<(Category, Expansion)> {
 /// print any matching filenames to standard output.
 fn do_grep(
     game_data: &GameData,
+    data_file_set: &mut DataFileSet,
     statements: &mut PreparedStatements<'_>,
     category: Category,
     expansion: Expansion,
@@ -327,7 +329,7 @@ fn do_grep(
     let mut locked = stdout.lock();
     for pack_id in game_data.iter_packs_category_expansion(category, expansion) {
         if let Some(Ok(index)) = game_data.get_index_1(&pack_id) {
-            for res in game_data.iter_files(pack_id, &index)? {
+            for res in data_file_set.iter_files(pack_id, &index)? {
                 let (hash, file) = res?;
                 if re.is_match(&file) {
                     locked.write_all(b"File ").unwrap();
@@ -337,7 +339,7 @@ fn do_grep(
             }
         } else {
             let index = game_data.get_index_2(&pack_id).unwrap()?;
-            for res in game_data.iter_files(pack_id, &index)? {
+            for res in data_file_set.iter_files(pack_id, &index)? {
                 let (hash, file) = res?;
                 if re.is_match(&file) {
                     locked.write_all(b"File ").unwrap();
@@ -362,7 +364,10 @@ static PATH_DISCOVERY_RE: Lazy<BytesRegex> = Lazy::new(|| {
 
 /// Apply various heuristics to find, guess, and derive paths of files, check if they exist, and
 /// save them in the CRC database.
-fn discover_paths(game_data: &GameData) -> Result<(), tomestone_exdf::Error> {
+fn discover_paths(
+    game_data: &GameData,
+    data_file_set: &mut DataFileSet,
+) -> Result<(), tomestone_exdf::Error> {
     let db = PathDb::open().map_err::<tomestone_sqpack::Error, _>(From::from)?;
     let mut statements = db
         .prepare()
@@ -387,7 +392,7 @@ fn discover_paths(game_data: &GameData) -> Result<(), tomestone_exdf::Error> {
     }
 
     for (pack_id, index) in indices.iter() {
-        for res in game_data.iter_files(*pack_id, &index)? {
+        for res in data_file_set.iter_files(*pack_id, &index)? {
             let (_hash, file) = res?;
             for caps in PATH_DISCOVERY_RE.captures_iter(&file) {
                 let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
@@ -412,10 +417,10 @@ fn discover_paths(game_data: &GameData) -> Result<(), tomestone_exdf::Error> {
         }
     }
 
-    let root_list = RootList::open(&game_data)?;
+    let root_list = RootList::open(&game_data, data_file_set)?;
     for name in root_list.iter() {
         let exh_path = format!("exd/{}.exh", name);
-        if let Some(exh_data) = game_data.lookup_path_data(&exh_path)? {
+        if let Some(exh_data) = game_data.lookup_path_data(data_file_set, &exh_path)? {
             statements
                 .add_path(&exh_path)
                 .map_err::<tomestone_sqpack::Error, _>(From::from)?;
@@ -504,6 +509,7 @@ fn main() {
             process::exit(1);
         }
     };
+    let mut data_file_set = game_data.data_files();
 
     let app = App::new(crate_name!())
         .version(crate_version!())
@@ -574,6 +580,7 @@ fn main() {
         ("raw", Some(matches)) => {
             match lookup(
                 &game_data,
+                &mut data_file_set,
                 Some(&mut statements),
                 matches.values_of("path_or_crc").unwrap(),
             ) {
@@ -593,6 +600,7 @@ fn main() {
         ("hex", Some(matches)) => {
             match lookup(
                 &game_data,
+                &mut data_file_set,
                 Some(&mut statements),
                 matches.values_of("path_or_crc").unwrap(),
             ) {
@@ -641,7 +649,14 @@ fn main() {
             };
             match parse_repository_path(matches.value_of("path")) {
                 Some((category, expansion)) => {
-                    if let Err(e) = do_grep(&game_data, &mut statements, category, expansion, &re) {
+                    if let Err(e) = do_grep(
+                        &game_data,
+                        &mut data_file_set,
+                        &mut statements,
+                        category,
+                        expansion,
+                        &re,
+                    ) {
                         eprintln!("error: couldn't read files, {}", e);
                         process::exit(1);
                     }
@@ -649,9 +664,14 @@ fn main() {
                 None => {
                     for category in Category::iter_all() {
                         for expansion in Expansion::iter_all() {
-                            if let Err(e) =
-                                do_grep(&game_data, &mut statements, *category, *expansion, &re)
-                            {
+                            if let Err(e) = do_grep(
+                                &game_data,
+                                &mut data_file_set,
+                                &mut statements,
+                                *category,
+                                *expansion,
+                                &re,
+                            ) {
                                 eprintln!("error: couldn't read files, {}", e);
                                 process::exit(1);
                             }
@@ -661,7 +681,7 @@ fn main() {
             }
         }
         ("discover_paths", Some(_matches)) => {
-            if let Err(e) = discover_paths(&game_data) {
+            if let Err(e) = discover_paths(&game_data, &mut data_file_set) {
                 eprintln!("error: {}", e);
                 process::exit(1);
             }
@@ -683,7 +703,7 @@ fn main() {
                 (None, true) => &original_path[4..],
             };
 
-            let dataset = match Dataset::load(&game_data, path_base, language) {
+            let dataset = match Dataset::load(&game_data, &mut data_file_set, path_base, language) {
                 Ok(dataset) => dataset,
                 Err(e) => {
                     eprintln!("error: loading dataset failed: {}", e);
@@ -869,37 +889,75 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
 
-        lookup(&game_data, None, vec!["exd/fcauthority.exh"].into_iter())
-            .unwrap()
-            .unwrap();
-        lookup(&game_data, None, vec!["e39b7999", "e69d80a4"].into_iter())
-            .unwrap()
-            .unwrap();
-        lookup(&game_data, None, vec!["E39B7999", "E69D80A4"].into_iter())
-            .unwrap()
-            .unwrap();
-        lookup(&game_data, None, vec!["e39b7999/e69d80a4"].into_iter())
-            .unwrap()
-            .unwrap();
-        lookup(&game_data, None, vec!["<e39b7999>/<e69d80a4>"].into_iter())
-            .unwrap()
-            .unwrap();
-        lookup(&game_data, None, vec!["exd/<e69d80a4>"].into_iter())
-            .unwrap()
-            .unwrap();
         lookup(
             &game_data,
+            &mut data_file_set,
+            None,
+            vec!["exd/fcauthority.exh"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["e39b7999", "e69d80a4"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["E39B7999", "E69D80A4"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["e39b7999/e69d80a4"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["<e39b7999>/<e69d80a4>"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["exd/<e69d80a4>"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
             None,
             vec!["<e39b7999>/fcauthority.exh"].into_iter(),
         )
         .unwrap()
         .unwrap();
-        lookup(&game_data, None, vec!["exd/e69d80a4"].into_iter())
-            .unwrap()
-            .unwrap();
         lookup(
             &game_data,
+            &mut data_file_set,
+            None,
+            vec!["exd/e69d80a4"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
             None,
             vec!["e39b7999/fcauthority.exh"].into_iter(),
         )
@@ -908,35 +966,63 @@ mod tests {
 
         lookup(
             &game_data,
+            &mut data_file_set,
             None,
             vec!["music/ex1/bgm_ex1_deep01.scd"].into_iter(),
         )
         .unwrap()
         .unwrap();
-        lookup(&game_data, None, vec!["7cf6ce88", "7f2056de"].into_iter())
-            .unwrap()
-            .unwrap();
-        lookup(&game_data, None, vec!["7cf6ce88/7f2056de"].into_iter())
-            .unwrap()
-            .unwrap();
-        lookup(&game_data, None, vec!["<7cf6ce88>/<7f2056de>"].into_iter())
-            .unwrap()
-            .unwrap();
-        lookup(&game_data, None, vec!["music/ex1/<7f2056de>"].into_iter())
-            .unwrap()
-            .unwrap();
         lookup(
             &game_data,
+            &mut data_file_set,
+            None,
+            vec!["7cf6ce88", "7f2056de"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["7cf6ce88/7f2056de"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["<7cf6ce88>/<7f2056de>"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
+            None,
+            vec!["music/ex1/<7f2056de>"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
             None,
             vec!["<7cf6ce88>/bgm_ex1_deep01.scd"].into_iter(),
         )
         .unwrap()
         .unwrap();
-        lookup(&game_data, None, vec!["music/ex1/7f2056de"].into_iter())
-            .unwrap()
-            .unwrap();
         lookup(
             &game_data,
+            &mut data_file_set,
+            None,
+            vec!["music/ex1/7f2056de"].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        lookup(
+            &game_data,
+            &mut data_file_set,
             None,
             vec!["7cf6ce88/bgm_ex1_deep01.scd"].into_iter(),
         )

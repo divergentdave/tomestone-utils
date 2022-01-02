@@ -6,7 +6,7 @@ use std::{
 
 use super::{index_entry_1, index_entry_2, load_index_reader, GrowableBufReader};
 use crate::{
-    parser::{collision_entry_1, collision_entry_2, index_hash_1, index_hash_2},
+    parser::{collision_entry_1, collision_entry_2},
     Expansion, GameData, Index, IndexEntry, IndexHash, IndexHash1, IndexHash2,
 };
 
@@ -74,19 +74,23 @@ fn game_data() {
         return;
     };
     let game_data = GameData::new(root).unwrap();
+    let mut data_file_set = game_data.data_files();
     const SCD_PATH: &str = "music/ffxiv/BGM_System_Title.scd";
 
-    let scd_data = game_data.lookup_path_data(SCD_PATH).unwrap().unwrap();
+    let scd_data = game_data
+        .lookup_path_data(&mut data_file_set, SCD_PATH)
+        .unwrap()
+        .unwrap();
     assert_eq!(&scd_data[..8], b"SEDBSSCF");
 
     let scd_data = game_data
-        .lookup_hash_1_data(&IndexHash1::hash(SCD_PATH))
+        .lookup_hash_1_data(&mut data_file_set, &IndexHash1::hash(SCD_PATH))
         .unwrap();
     assert_eq!(scd_data.len(), 1);
     assert_eq!(&scd_data[0][..8], b"SEDBSSCF");
 
     let scd_data = game_data
-        .lookup_hash_2_data(&IndexHash2::hash(SCD_PATH))
+        .lookup_hash_2_data(&mut data_file_set, &IndexHash2::hash(SCD_PATH))
         .unwrap();
     assert_eq!(scd_data.len(), 1);
     assert_eq!(&scd_data[0][..8], b"SEDBSSCF");

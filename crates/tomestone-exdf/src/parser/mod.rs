@@ -113,11 +113,15 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
 
-        let root_list = RootList::open(&game_data).unwrap();
+        let root_list = RootList::open(&game_data, &mut data_file_set).unwrap();
         for name in root_list.iter() {
             let exh_path = format!("exd/{}.exh", name);
-            let exh_data = game_data.lookup_path_data(&exh_path).unwrap().unwrap();
+            let exh_data = game_data
+                .lookup_path_data(&mut data_file_set, &exh_path)
+                .unwrap()
+                .unwrap();
             let (_, exhf) = super::exhf::parse_exhf(&exh_data).unwrap();
             for language in exhf.languages() {
                 let short_code = language.as_ref().map(Language::short_code);
@@ -127,7 +131,10 @@ mod tests {
                     } else {
                         format!("exd/{}_{}.exd", name, page_start)
                     };
-                    if let Some(exd_data) = game_data.lookup_path_data(&exd_path).unwrap() {
+                    if let Some(exd_data) = game_data
+                        .lookup_path_data(&mut data_file_set, &exd_path)
+                        .unwrap()
+                    {
                         let exdf = super::exdf::Exdf::new(exd_data).unwrap();
                         for row_res in exdf.iter() {
                             let (_, row_data) = row_res.unwrap();

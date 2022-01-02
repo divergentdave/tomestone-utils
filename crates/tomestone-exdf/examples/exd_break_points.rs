@@ -21,8 +21,9 @@ fn main() {
             process::exit(1);
         }
     };
+    let mut data_file_set = game_data.data_files();
 
-    let root_list = if let Ok(root_list) = RootList::open(&game_data) {
+    let root_list = if let Ok(root_list) = RootList::open(&game_data, &mut data_file_set) {
         root_list
     } else {
         eprintln!("error: couldn't read root list of data files");
@@ -38,7 +39,9 @@ fn main() {
         ]
         .iter()
         {
-            let dataset = if let Ok(dataset) = Dataset::load(&game_data, name, *language) {
+            let dataset = if let Ok(dataset) =
+                Dataset::load(&game_data, &mut data_file_set, name, *language)
+            {
                 dataset
             } else {
                 eprintln!("error: couldn't load data file {}", name);

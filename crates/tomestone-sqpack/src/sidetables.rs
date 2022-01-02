@@ -18,7 +18,7 @@ use nom::{
 
 use crate::{
     parser::{drive_streaming_parser_smaller, type_2_block_table, DataContentType},
-    FilePointer, GameData, IndexHash2, SqPackId,
+    DataFileSet, FilePointer, GameData, IndexHash2, SqPackId,
 };
 
 #[derive(Clone)]
@@ -63,6 +63,7 @@ fn count_zeros(file: &mut File) -> Result<usize, std::io::Error> {
 #[allow(unused)]
 pub fn build_side_tables(
     game_data: &GameData,
+    data_file_set: &mut DataFileSet,
     pack_id: SqPackId,
 ) -> BTreeMap<IndexHash2, SideTableEntry> {
     let mut reversed_index: BTreeMap<FilePointer, IndexHash2> = BTreeMap::new();
@@ -71,19 +72,9 @@ pub fn build_side_tables(
         assert!(reversed_index.insert(pointer, hash).is_none());
     }
 
-    let mut files = Vec::new();
-    for i in 0.. {
-        let path = game_data.build_data_path(pack_id, i);
-        if path.is_file() {
-            files.push(File::open(path).unwrap());
-        } else {
-            break;
-        }
-    }
-
     let mut table = BTreeMap::new();
     for (locator, hash) in reversed_index.iter() {
-        let mut file = &mut files[locator.data_file_id() as usize];
+        let mut file = data_file_set.open(pack_id, locator.data_file_id()).unwrap();
         file.seek(SeekFrom::Start(locator.offset().into())).unwrap();
         let entry_header_fields =
             drive_streaming_parser_smaller(&mut file, data_entry_header_raw).unwrap();

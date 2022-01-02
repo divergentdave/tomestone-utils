@@ -3,7 +3,7 @@ use std::{
     convert::TryInto,
     fmt,
     fs::File,
-    io,
+    io::{self, Seek, SeekFrom},
     path::{Path, PathBuf},
 };
 
@@ -666,52 +666,6 @@ impl GameData {
             ))
     }
 
-    fn build_data_path(&self, id: SqPackId, dat_number: u8) -> PathBuf {
-        self.root_path
-            .join("game")
-            .join("sqpack")
-            .join(id.expansion.name())
-            .join(format!(
-                "{:02x}{:02x}{:02x}.win32.dat{}",
-                id.category as u8, id.expansion as u8, id.number, dat_number,
-            ))
-    }
-
-    fn fetch_data(&self, pack_id: SqPackId, file_pointer: FilePointer) -> Result<Vec<u8>, Error> {
-        // TODO: reuse of opened files
-        let path = self.build_data_path(pack_id, file_pointer.data_file_id());
-        let mut file = File::open(path)?;
-        decompress_file(&mut file, file_pointer.offset())
-    }
-
-    pub fn iter_files<'a, I: IndexEntry>(
-        &'a self,
-        pack_id: SqPackId,
-        index: &'a Index<I>,
-    ) -> Result<impl Iterator<Item = Result<(I::Hash, Vec<u8>), Error>> + 'a, Error> {
-        let mut files = Vec::new();
-        for i in 0.. {
-            let path = self.build_data_path(pack_id, i);
-            if path.is_file() {
-                files.push(File::open(path)?);
-            } else {
-                break;
-            }
-        }
-        let mut entries: Vec<_> = index.iter().collect();
-        // Sort by file pointer to improve disk locality.
-        entries.sort_unstable_by_key(|(_, pointer)| *pointer);
-        Ok(entries.into_iter().map(move |(hash, pointer)| {
-            Ok((
-                hash,
-                decompress_file(
-                    &mut files[TryInto::<usize>::try_into(pointer.data_file_id()).unwrap()],
-                    pointer.offset(),
-                )?,
-            ))
-        }))
-    }
-
     pub fn lookup_path_locator(
         &self,
         path: &str,
@@ -741,9 +695,13 @@ impl GameData {
         Ok(None)
     }
 
-    pub fn lookup_path_data(&self, path: &str) -> Result<Option<Vec<u8>>, Error> {
+    pub fn lookup_path_data(
+        &self,
+        data_file_set: &mut DataFileSet,
+        path: &str,
+    ) -> Result<Option<Vec<u8>>, Error> {
         if let Some((pack_id, file_pointer)) = self.lookup_path_locator(path)? {
-            Ok(Some(self.fetch_data(pack_id, file_pointer)?))
+            Ok(Some(data_file_set.fetch_data(pack_id, file_pointer)?))
         } else {
             Ok(None)
         }
@@ -812,17 +770,25 @@ impl GameData {
         Ok(pointers)
     }
 
-    pub fn lookup_hash_1_data(&self, hash: &IndexHash1) -> Result<Vec<Vec<u8>>, Error> {
+    pub fn lookup_hash_1_data(
+        &self,
+        data_file_set: &mut DataFileSet,
+        hash: &IndexHash1,
+    ) -> Result<Vec<Vec<u8>>, Error> {
         self.lookup_hash_1_locator(hash)?
             .into_iter()
-            .map(|(id, pointer)| self.fetch_data(id, pointer))
+            .map(|(id, pointer)| data_file_set.fetch_data(id, pointer))
             .collect()
     }
 
-    pub fn lookup_hash_2_data(&self, hash: &IndexHash2) -> Result<Vec<Vec<u8>>, Error> {
+    pub fn lookup_hash_2_data(
+        &self,
+        data_file_set: &mut DataFileSet,
+        hash: &IndexHash2,
+    ) -> Result<Vec<Vec<u8>>, Error> {
         self.lookup_hash_2_locator(hash)?
             .into_iter()
-            .map(|(id, pointer)| self.fetch_data(id, pointer))
+            .map(|(id, pointer)| data_file_set.fetch_data(id, pointer))
             .collect()
     }
 
@@ -867,6 +833,86 @@ impl GameData {
             })
         })
     }
+
+    pub fn data_files(&self) -> DataFileSet {
+        DataFileSet::new(self.root_path.clone())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct DataFileKey {
+    pack_id: SqPackId,
+    dat_number: u8,
+}
+
+/// This provides access to `.dat?` files, and lazily caches open file handles, so they can be
+/// reused. It is intended that each unit of parallelism should have its own `DataFileSet`.
+pub struct DataFileSet {
+    root_path: PathBuf,
+    files: BTreeMap<DataFileKey, File>,
+}
+
+impl DataFileSet {
+    fn new(root_path: PathBuf) -> DataFileSet {
+        DataFileSet {
+            root_path,
+            files: BTreeMap::new(),
+        }
+    }
+
+    fn build_data_path(root_path: &PathBuf, id: SqPackId, dat_number: u8) -> PathBuf {
+        root_path
+            .join("game")
+            .join("sqpack")
+            .join(id.expansion.name())
+            .join(format!(
+                "{:02x}{:02x}{:02x}.win32.dat{}",
+                id.category as u8, id.expansion as u8, id.number, dat_number,
+            ))
+    }
+
+    pub fn open(&mut self, pack_id: SqPackId, dat_number: u8) -> Result<&mut File, io::Error> {
+        let key = DataFileKey {
+            pack_id,
+            dat_number,
+        };
+        Ok(match self.files.entry(key) {
+            std::collections::btree_map::Entry::Vacant(e) => e.insert(File::open(
+                Self::build_data_path(&self.root_path, pack_id, dat_number),
+            )?),
+            std::collections::btree_map::Entry::Occupied(e) => e.into_mut(),
+        })
+    }
+
+    fn fetch_data(
+        &mut self,
+        pack_id: SqPackId,
+        file_pointer: FilePointer,
+    ) -> Result<Vec<u8>, Error> {
+        decompress_file(
+            self.open(pack_id, file_pointer.data_file_id())?,
+            file_pointer.offset(),
+        )
+    }
+
+    pub fn iter_files<'a, I: IndexEntry>(
+        &'a mut self,
+        pack_id: SqPackId,
+        index: &'a Index<I>,
+    ) -> Result<impl Iterator<Item = Result<(I::Hash, Vec<u8>), Error>> + 'a, Error> {
+        let mut entries: Vec<_> = index.iter().collect();
+        // Sort by file pointer to improve disk locality.
+        entries.sort_unstable_by_key(|(_, pointer)| *pointer);
+        Ok(entries.into_iter().map(move |(hash, pointer)| {
+            Ok((
+                hash,
+                decompress_file(
+                    self.open(pack_id, pointer.data_file_id())?,
+                    pointer.offset(),
+                )?,
+            ))
+        }))
+    }
 }
 
 pub fn write_packs<I: Iterator<Item = (SqPackId, Vec<u8>)>>(
@@ -889,7 +935,7 @@ mod tests {
         collections::BTreeMap,
         convert::TryInto,
         fs::File,
-        io::{Cursor, Read, Seek, Write},
+        io::{Cursor, Read, Seek, SeekFrom, Write},
         sync::{Arc, RwLock},
     };
 
@@ -1201,20 +1247,6 @@ mod tests {
                 .unwrap()
                 .read_to_end(&mut original_index2_file)
                 .unwrap();
-            let mut original_dat_files = Vec::new();
-            for i in 0.. {
-                let path = game_data.build_data_path(pack_id, i);
-                if path.is_file() {
-                    let mut file_data = Vec::new();
-                    File::open(path)
-                        .unwrap()
-                        .read_to_end(&mut file_data)
-                        .unwrap();
-                    original_dat_files.push(file_data);
-                } else {
-                    break;
-                }
-            }
 
             let mut original_entries: BTreeMap<
                 FilePointer,
@@ -1243,28 +1275,22 @@ mod tests {
             // sort by location within data files.
             entries.sort_unstable_by_key(|(_, pointer)| *pointer);
 
-            let all_files = {
-                let mut files = Vec::new();
-                for i in 0.. {
-                    let path = game_data.build_data_path(pack_id, i);
-                    if path.is_file() {
-                        files.push(File::open(path).unwrap());
-                    } else {
-                        break;
-                    }
+            let mut data_file_set = game_data.data_files();
+
+            let side_table = build_side_tables(&game_data, &mut data_file_set, pack_id);
+
+            let mut original_dat_file_count: usize = 0;
+            let all_files = entries.into_iter().map(|(hash, pointer)| {
+                if usize::from(pointer.data_file_id()) > original_dat_file_count {
+                    original_dat_file_count = pointer.data_file_id().into();
                 }
-
-                entries.into_iter().map(move |(hash, pointer)| {
-                    let data = decompress_file(
-                        &mut files[TryInto::<usize>::try_into(pointer.data_file_id()).unwrap()],
-                        pointer.offset(),
-                    )
-                    .unwrap();
-                    (hash, pointer, data)
-                })
-            };
-
-            let side_table = build_side_tables(&game_data, pack_id);
+                let data = decompress_file(
+                    data_file_set.open(pack_id, pointer.data_file_id()).unwrap(),
+                    pointer.offset(),
+                )
+                .unwrap();
+                (hash, pointer, data)
+            });
 
             let mocked_io = MockedPackIO::new();
             let mut writer =
@@ -1274,6 +1300,9 @@ mod tests {
                 let hashes = original_entries.get(&pointer).unwrap();
                 let hash1 = hashes.0.unwrap();
                 writer.add_file_by_hashes(hash1, hash2, &data).unwrap();
+            }
+            if original_dat_file_count == 0 {
+                original_dat_file_count = 1;
             }
             let mocked_io = writer.finalize().unwrap();
 
@@ -1294,28 +1323,25 @@ mod tests {
                     &original_index2_file,
                 );
             }
-            let mut dat_matches = mocked_io.files.len() == original_dat_files.len();
+            let mut dat_matches = mocked_io.files.len() == original_dat_file_count;
             if !dat_matches {
                 println!(
                     "Wrong number of .dat files, expected {}, got {}",
-                    original_dat_files.len(),
+                    original_dat_file_count,
                     mocked_io.files.len()
                 );
             }
-            for (i, (new, original)) in mocked_io
-                .files
-                .iter()
-                .zip(original_dat_files.iter())
-                .enumerate()
-            {
+            for (i, new) in mocked_io.files.iter().enumerate() {
                 let guard = new.inner.read().unwrap();
-                dat_matches &= guard.get_ref() == original;
-                if guard.get_ref() != original {
-                    print_hexdump_diff(
-                        &format!(".dat{}", i),
-                        new.inner.read().unwrap().get_ref(),
-                        original,
-                    );
+
+                let original_file = data_file_set.open(pack_id, i.try_into().unwrap()).unwrap();
+                original_file.seek(SeekFrom::Start(0)).unwrap();
+                let mut original = Vec::with_capacity(guard.get_ref().len());
+                original_file.read_to_end(&mut original).unwrap();
+
+                dat_matches &= guard.get_ref() == &original;
+                if guard.get_ref() != &original {
+                    print_hexdump_diff(&format!(".dat{}", i), guard.get_ref(), &original);
                     break;
                 }
             }

@@ -344,8 +344,9 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
 
-        let root_list = RootList::open(&game_data).unwrap();
+        let root_list = RootList::open(&game_data, &mut data_file_set).unwrap();
         for name in root_list.iter() {
             for language in [
                 Language::Japanese,
@@ -355,7 +356,8 @@ mod tests {
             ]
             .iter()
             {
-                let dataset = Dataset::load(&game_data, name, *language).unwrap();
+                let dataset =
+                    Dataset::load(&game_data, &mut data_file_set, name, *language).unwrap();
                 for page in dataset.page_iter() {
                     for res in page {
                         let row = res.unwrap();

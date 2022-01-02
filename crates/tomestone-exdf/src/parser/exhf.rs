@@ -202,9 +202,13 @@ mod tests {
             return;
         };
         let game_data = GameData::new(root).unwrap();
+        let mut data_file_set = game_data.data_files();
         const EXH_PATH: &str = "exd/fcauthority.exh";
 
-        let exh_data = game_data.lookup_path_data(EXH_PATH).unwrap().unwrap();
+        let exh_data = game_data
+            .lookup_path_data(&mut data_file_set, EXH_PATH)
+            .unwrap()
+            .unwrap();
         exhf_header(&exh_data).unwrap();
         parse_exhf(&exh_data).unwrap();
     }
