@@ -9,7 +9,7 @@ use sha1::{Digest, Sha1};
 
 #[allow(unused)]
 use crate::compression::compress_sqpack_block;
-use crate::sidetables::SideTableEntry;
+use crate::sidetables::SideTables;
 use crate::{
     compression, Category, Expansion, FilePointer, IndexHash, IndexHash1, IndexHash2, IndexPointer,
     PlatformId, SqPackId, SqPackType,
@@ -287,7 +287,7 @@ pub struct PackSetWriter<IO: PackIO> {
     entries2: BTreeMap<IndexHash2, FilePointer>,
     file_size_limit: u32,
     segments_not_present_heuristic: bool,
-    side_table: BTreeMap<IndexHash2, SideTableEntry>,
+    side_table: SideTables,
 }
 
 impl<IO: PackIO> PackSetWriter<IO> {
@@ -334,14 +334,14 @@ impl<IO: PackIO> PackSetWriter<IO> {
             entries2: BTreeMap::new(),
             file_size_limit,
             segments_not_present_heuristic,
-            side_table: BTreeMap::new(),
+            side_table: Default::default(),
         };
         writer.create_new_dat_file()?;
         Ok(writer)
     }
 
     #[allow(unused)]
-    pub fn set_side_table(&mut self, side_table: BTreeMap<IndexHash2, SideTableEntry>) {
+    pub fn set_side_table(&mut self, side_table: SideTables) {
         self.side_table = side_table
     }
 
@@ -409,7 +409,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
         let pointer = FilePointer::new(self.dat_file_number, self.dat_file_position);
 
         let mut unknown = total_size_padded_shifted - 1; // still working on this, needs corrections
-        if let Some(entry) = self.side_table.get(&hash2) {
+        if let Some(entry) = self.side_table.file_entries.get(&hash2) {
             unknown = entry.unknown_entry_field;
             if entry.padded_entry_size > total_size_unpadded {
                 total_size_padded = entry.padded_entry_size;

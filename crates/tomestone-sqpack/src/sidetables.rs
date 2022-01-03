@@ -21,6 +21,12 @@ use crate::{
     DataFileSet, FilePointer, GameData, IndexHash2, SqPackId,
 };
 
+#[derive(Default)]
+pub struct SideTables {
+    pub file_entries: BTreeMap<IndexHash2, SideTableEntry>,
+    pub sqpack_data_datetimes: BTreeMap<(SqPackId, u8), (u32, u32)>,
+}
+
 #[derive(Clone)]
 pub struct SideTableEntry {
     pub unknown_entry_field: u32,
@@ -65,7 +71,7 @@ pub fn build_side_tables(
     game_data: &GameData,
     data_file_set: &mut DataFileSet,
     pack_id: SqPackId,
-) -> BTreeMap<IndexHash2, SideTableEntry> {
+) -> SideTables {
     let mut reversed_index: BTreeMap<FilePointer, IndexHash2> = BTreeMap::new();
     let index_2 = game_data.get_index_2(&pack_id).unwrap().unwrap();
     for (hash, pointer) in index_2.iter() {
@@ -146,5 +152,8 @@ pub fn build_side_tables(
         }
     }
 
-    table
+    SideTables {
+        file_entries: table,
+        sqpack_data_datetimes: BTreeMap::new(),
+    }
 }

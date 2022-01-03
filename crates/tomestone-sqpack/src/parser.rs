@@ -194,8 +194,8 @@ impl DataContentType {
 #[derive(Debug)]
 struct DataEntryHeaderCommon {
     content_type: DataContentType,
-    uncompressed_size: u32,
-    block_buffer_size: u32,
+    _uncompressed_size: u32,
+    _block_buffer_size: u32,
     num_blocks: u16,
 }
 
@@ -223,8 +223,8 @@ fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeade
                 header_length,
                 DataEntryHeaderCommon {
                     content_type,
-                    uncompressed_size,
-                    block_buffer_size: block_buffer_size << 7,
+                    _uncompressed_size: uncompressed_size,
+                    _block_buffer_size: block_buffer_size << 7,
                     num_blocks,
                 },
             )
@@ -364,7 +364,7 @@ fn collision_entry_1(input: &[u8]) -> IResult<&[u8], CollisionEntry<IndexHash1>>
         |(hash, pointer, collision_index, path)| CollisionEntry {
             hash,
             pointer,
-            collision_index,
+            _maybe_collision_index: collision_index,
             path: path.to_string(),
         },
     )(input)
@@ -388,7 +388,7 @@ fn collision_entry_2(input: &[u8]) -> IResult<&[u8], CollisionEntry<IndexHash2>>
         |(hash, _, pointer, collision_index, path)| CollisionEntry {
             hash,
             pointer,
-            collision_index,
+            _maybe_collision_index: collision_index,
             path: path.to_string(),
         },
     )(input)

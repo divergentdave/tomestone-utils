@@ -17,7 +17,7 @@ use crate::RawDataRow;
 #[derive(Debug)]
 struct ExdfHeader {
     offset_table_size: u32,
-    data_section_size: u32,
+    _data_section_size: u32,
 }
 
 #[derive(Debug)]
@@ -29,7 +29,6 @@ struct OffsetEntry {
 #[derive(Debug)]
 pub struct Exdf {
     data: Vec<u8>,
-    header: ExdfHeader,
     offsets: Vec<OffsetEntry>,
 }
 
@@ -41,11 +40,7 @@ impl Exdf {
         let (_input, offsets) = count(offset_entry, offset_entry_count)(input)
             .finish()
             .map_err(|e| e.code)?;
-        Ok(Exdf {
-            data,
-            header,
-            offsets,
-        })
+        Ok(Exdf { data, offsets })
     }
 
     pub fn lookup(&self, row_number: u32) -> Option<Result<RawDataRow, nom::error::Error<&[u8]>>> {
@@ -105,7 +100,7 @@ fn exdf_header(input: &[u8]) -> IResult<&[u8], ExdfHeader> {
         )),
         |(_, _, _, offset_table_size, data_section_size, ())| ExdfHeader {
             offset_table_size,
-            data_section_size,
+            _data_section_size: data_section_size,
         },
     )(input)
 }
@@ -226,7 +221,7 @@ mod tests {
                     if file.len() > 32 && &file[..4] == b"EXDF" {
                         let header = exdf_header(&file).unwrap().1;
                         let expected_len =
-                            (32 + header.offset_table_size + header.data_section_size)
+                            (32 + header.offset_table_size + header._data_section_size)
                                 .try_into()
                                 .unwrap();
                         assert_eq!(file.len(), expected_len);

@@ -3,7 +3,7 @@ use std::{
     convert::TryInto,
     fmt,
     fs::File,
-    io::{self, Seek, SeekFrom},
+    io,
     path::{Path, PathBuf},
 };
 
@@ -11,6 +11,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use parser::{decompress_file, load_index_1, load_index_2};
 use pathdb::DbError;
 use regex::Regex;
+use sidetables::SideTables;
 
 use crate::encoding::{PackSetWriter, RealPackIO};
 
@@ -18,7 +19,7 @@ mod compression;
 mod encoding;
 pub(crate) mod parser;
 pub mod pathdb;
-pub(crate) mod sidetables;
+pub mod sidetables;
 
 pub(crate) const SHA1_OUTPUT_SIZE: usize = 20;
 
@@ -629,7 +630,7 @@ impl IndexPointer {
 pub struct CollisionEntry<H: IndexHash> {
     hash: H,
     pointer: FilePointer,
-    collision_index: u32,
+    _maybe_collision_index: u32,
     path: String,
 }
 
@@ -919,15 +920,34 @@ impl DataFileSet {
     }
 }
 
-pub fn write_packs<I: Iterator<Item = (SqPackId, Vec<u8>)>>(
+pub enum PathOrHashes {
+    Path(String),
+    Hashes(IndexHash1, IndexHash2),
+}
+
+pub fn write_packs<
+    PackIt: Iterator<Item = (SqPackId, FileIt)>,
+    FileIt: Iterator<Item = (PathOrHashes, Vec<u8>)>,
+>(
     base: PathBuf,
     platform_id: PlatformId,
-    packs: I,
+    packs: PackIt,
+    mut side_tables: BTreeMap<SqPackId, SideTables>,
 ) -> Result<(), Error> {
-    for (pack_id, blob) in packs {
+    for (pack_id, files) in packs {
         let io = RealPackIO::new(base.clone(), platform_id, pack_id)?;
         let mut writer = PackSetWriter::new(io, PlatformId::Win32, pack_id)?;
-        writer.add_file("todo", &blob)?;
+        if let Some(side_table) = side_tables.remove(&pack_id) {
+            writer.set_side_table(side_table);
+        }
+        for (path_or_hashes, blob) in files {
+            match path_or_hashes {
+                PathOrHashes::Path(path) => writer.add_file(&path, &blob)?,
+                PathOrHashes::Hashes(hash1, hash2) => {
+                    writer.add_file_by_hashes(hash1, hash2, &blob)?
+                }
+            }
+        }
         writer.finalize()?;
     }
     todo!()
