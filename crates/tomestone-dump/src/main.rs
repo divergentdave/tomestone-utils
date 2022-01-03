@@ -5,7 +5,7 @@ use std::{
     process,
 };
 
-use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg, SubCommand};
+use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use once_cell::sync::Lazy;
 use regex::{
     bytes::{Regex as BytesRegex, RegexBuilder as BytesRegexBuilder},
@@ -491,6 +491,69 @@ fn open_db() -> PathDb {
     }
 }
 
+fn app() -> App<'static> {
+    App::new(crate_name!())
+        .version(crate_version!())
+        .author(crate_authors!())
+        .about(crate_description!())
+        .subcommand(
+            App::new("raw")
+                .about("Extract a file and write it to standard output")
+                .arg(
+                    Arg::new("path_or_crc")
+                        .required(true)
+                        .index(1)
+                        .min_values(1)
+                        .max_values(2),
+                ),
+        )
+        .subcommand(
+            App::new("hex")
+                .about("Extract a file and print it as a hex dump")
+                .arg(
+                    Arg::new("path_or_crc")
+                        .required(true)
+                        .index(1)
+                        .min_values(1)
+                        .max_values(2),
+                ),
+        )
+        .subcommand(
+            App::new("list")
+                .about("List files by hash or path (where available)")
+                .arg(Arg::new("path").required(false).index(1)),
+        )
+        .subcommand(
+            App::new("grep")
+                .about("Search file contents for regular expressions")
+                .arg(Arg::new("pattern").required(true).index(1))
+                .arg(Arg::new("path").required(false).index(2))
+                .arg(
+                    Arg::new("ignore-case")
+                        .short('i')
+                        .long("ignore-case")
+                        .required(false)
+                        .takes_value(false),
+                ),
+        )
+        .subcommand(
+            App::new("discover_paths")
+                .about("Search all files for paths of other files, and update the path database"),
+        )
+        .subcommand(
+            App::new("exd")
+                .about("Extract and dump EXHF/EXDF files")
+                .arg(Arg::new("path").required(true).index(1))
+                .arg(
+                    Arg::new("language")
+                        .long("language")
+                        .short('l')
+                        .required(false)
+                        .takes_value(true),
+                ),
+        )
+}
+
 fn main() {
     dotenv::dotenv().ok();
     let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
@@ -511,73 +574,13 @@ fn main() {
     };
     let mut data_file_set = game_data.data_files();
 
-    let app = App::new(crate_name!())
-        .version(crate_version!())
-        .author(crate_authors!())
-        .about(crate_description!())
-        .subcommand(
-            SubCommand::with_name("raw")
-                .about("Extract a file and write it to standard output")
-                .arg(
-                    Arg::with_name("path_or_crc")
-                        .required(true)
-                        .index(1)
-                        .min_values(1)
-                        .max_values(2),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("hex")
-                .about("Extract a file and print it as a hex dump")
-                .arg(
-                    Arg::with_name("path_or_crc")
-                        .required(true)
-                        .index(1)
-                        .min_values(1)
-                        .max_values(2),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("list")
-                .about("List files by hash or path (where available)")
-                .arg(Arg::with_name("path").required(false).index(1)),
-        )
-        .subcommand(
-            SubCommand::with_name("grep")
-                .about("Search file contents for regular expressions")
-                .arg(Arg::with_name("pattern").required(true).index(1))
-                .arg(Arg::with_name("path").required(false).index(2))
-                .arg(
-                    Arg::with_name("ignore-case")
-                        .short("i")
-                        .long("ignore-case")
-                        .required(false)
-                        .takes_value(false),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("discover_paths")
-                .about("Search all files for paths of other files, and update the path database"),
-        )
-        .subcommand(
-            SubCommand::with_name("exd")
-                .about("Extract and dump EXHF/EXDF files")
-                .arg(Arg::with_name("path").required(true).index(1))
-                .arg(
-                    Arg::with_name("language")
-                        .long("language")
-                        .short("l")
-                        .required(false)
-                        .takes_value(true),
-                ),
-        );
-    let app_matches = app.get_matches();
+    let app_matches = app().get_matches();
 
     let db = open_db();
     let mut statements = db.prepare().unwrap();
 
     match app_matches.subcommand() {
-        ("raw", Some(matches)) => {
+        Some(("raw", matches)) => {
             match lookup(
                 &game_data,
                 &mut data_file_set,
@@ -597,7 +600,7 @@ fn main() {
                 }
             }
         }
-        ("hex", Some(matches)) => {
+        Some(("hex", matches)) => {
             match lookup(
                 &game_data,
                 &mut data_file_set,
@@ -615,7 +618,7 @@ fn main() {
                 }
             }
         }
-        ("list", Some(matches)) => match parse_repository_path(matches.value_of("path")) {
+        Some(("list", matches)) => match parse_repository_path(matches.value_of("path")) {
             Some((category, expansion)) => {
                 if let Err(e) = list_files(&game_data, category, expansion, &mut statements) {
                     eprintln!("error: couldn't read indices, {}", e);
@@ -635,7 +638,7 @@ fn main() {
                 }
             }
         },
-        ("grep", Some(matches)) => {
+        Some(("grep", matches)) => {
             let mut builder = BytesRegexBuilder::new(matches.value_of("pattern").unwrap());
             if matches.is_present("ignore-case") {
                 builder.case_insensitive(true);
@@ -680,13 +683,13 @@ fn main() {
                 }
             }
         }
-        ("discover_paths", Some(_matches)) => {
+        Some(("discover_paths", _matches)) => {
             if let Err(e) = discover_paths(&game_data, &mut data_file_set) {
                 eprintln!("error: {}", e);
                 process::exit(1);
             }
         }
-        ("exd", Some(matches)) => {
+        Some(("exd", matches)) => {
             let original_path = matches.value_of("path").unwrap();
             let language_code = matches.value_of("language").unwrap_or("en");
             let language = match language_code.parse() {
@@ -749,7 +752,7 @@ fn main() {
             }
         }
         _ => {
-            eprintln!("{}", app_matches.usage());
+            eprintln!("{}", app().render_usage());
             process::exit(1);
         }
     }
@@ -759,7 +762,7 @@ fn main() {
 mod tests {
     use tomestone_sqpack::GameData;
 
-    use crate::{lookup, write_hex_dump, PATH_DISCOVERY_RE};
+    use crate::{app, lookup, write_hex_dump, PATH_DISCOVERY_RE};
 
     #[test]
     fn path_discovery_regex() {
@@ -1054,5 +1057,10 @@ mod tests {
         )
         .unwrap()
         .unwrap();
+    }
+
+    #[test]
+    fn verify_app() {
+        app().debug_assert();
     }
 }
