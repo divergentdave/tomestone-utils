@@ -1,0 +1,59 @@
+```
+$ tomestone-dump --help
+tomestone-dump 0.1.0
+David Cook <divergentdave@gmail.com>
+
+
+USAGE:
+    tomestone-dump [SUBCOMMAND]
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+SUBCOMMANDS:
+    discover_paths    Search all files for paths of other files, and update the path database
+    exd               Extract and dump EXHF/EXDF files
+    grep              Search file contents for regular expressions
+    help              Prints this message or the help of the given subcommand(s)
+    hex               Extract a file and print it as a hex dump
+    list              List files by hash or path (where available)
+    raw               Extract a file and write it to standard output
+```
+
+```
+$ tomestone-dump exd --help
+tomestone-dump-exd 
+Extract and dump EXHF/EXDF files
+
+USAGE:
+    tomestone-dump exd [OPTIONS] <path>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -l, --language <language>    
+
+ARGS:
+    <path>    
+```
+
+```
+$ tomestone-dump grep --help
+tomestone-dump-grep 
+Search file contents for regular expressions
+
+USAGE:
+    tomestone-dump grep [FLAGS] <pattern> [path]
+
+FLAGS:
+    -h, --help           Prints help information
+    -i, --ignore-case    
+    -V, --version        Prints version information
+
+ARGS:
+    <pattern>    
+    <path>       
+```
