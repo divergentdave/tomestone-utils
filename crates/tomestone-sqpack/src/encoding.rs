@@ -75,24 +75,29 @@ impl PackIO for RealPackIO {
 
 struct SqPackHeader([u8; 1024]);
 
-fn sqpack_header_skeleton(platform_id: PlatformId, pack_type: SqPackType) -> SqPackHeader {
-    let mut header = [0u8; 1024];
-    header[..6].copy_from_slice(b"SqPack");
-    header[8..12].copy_from_slice(&(platform_id as u32).to_le_bytes());
-    header[12..16].copy_from_slice(&1024u32.to_le_bytes());
-    header[16..20].copy_from_slice(&1u32.to_le_bytes());
-    header[20..24].copy_from_slice(&(pack_type as u32).to_le_bytes());
-    // date?
-    // unknown?
-    header[32..36].copy_from_slice(b"\xff\xff\xff\xff");
-    SqPackHeader(header)
-}
+impl SqPackHeader {
+    fn new(platform_id: PlatformId, pack_type: SqPackType) -> SqPackHeader {
+        let mut header = [0u8; 1024];
+        header[..6].copy_from_slice(b"SqPack");
+        header[8..12].copy_from_slice(&(platform_id as u32).to_le_bytes());
+        header[12..16].copy_from_slice(&1024u32.to_le_bytes());
+        header[16..20].copy_from_slice(&1u32.to_le_bytes());
+        header[20..24].copy_from_slice(&(pack_type as u32).to_le_bytes());
+        header[32..36].copy_from_slice(b"\xff\xff\xff\xff");
+        SqPackHeader(header)
+    }
 
-fn sqpack_header_finalize(header: &mut SqPackHeader) {
-    let mut sha = Sha1::new();
-    sha.update(&header.0[..0x3c0]);
-    let hash = sha.finalize();
-    header.0[0x3c0..0x3d4].copy_from_slice(&hash);
+    fn write_date_time(&mut self, packed_date: u32, packed_time: u32) {
+        self.0[24..28].copy_from_slice(&packed_date.to_le_bytes());
+        self.0[28..32].copy_from_slice(&packed_time.to_le_bytes());
+    }
+
+    fn finalize(&mut self) {
+        let mut sha = Sha1::new();
+        sha.update(&self.0[..0x3c0]);
+        let hash = sha.finalize();
+        self.0[0x3c0..0x3d4].copy_from_slice(&hash);
+    }
 }
 
 #[derive(Default)]
@@ -253,6 +258,7 @@ fn data_header_finalize(
 }
 
 struct DatFileRecord<IO: PackIO> {
+    dat_file_number: u8,
     file: IO::F,
     sqpack_header: SqPackHeader,
     data_header: DataHeader,
@@ -309,12 +315,12 @@ impl<IO: PackIO> PackSetWriter<IO> {
             _ => 2000000000,
         };
         let mut index = io.open_index_file()?;
-        let index_sqpack_header = sqpack_header_skeleton(platform_id, SqPackType::Index);
+        let index_sqpack_header = SqPackHeader::new(platform_id, SqPackType::Index);
         index.write_all(&index_sqpack_header.0)?;
         let index_segment_headers = index_segment_headers_skeleton();
         index.write_all(&index_segment_headers.buf)?;
         let mut index2 = io.open_index2_file()?;
-        let index2_sqpack_header = sqpack_header_skeleton(platform_id, SqPackType::Index);
+        let index2_sqpack_header = SqPackHeader::new(platform_id, SqPackType::Index);
         index2.write_all(&index2_sqpack_header.0)?;
         let index2_segment_headers = index_segment_headers_skeleton();
         index2.write_all(&index2_segment_headers.buf)?;
@@ -347,11 +353,12 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
     fn create_new_dat_file(&mut self) -> Result<(), io::Error> {
         let mut file = self.io.open_dat_file(self.dat_file_number)?;
-        let sqpack_header = sqpack_header_skeleton(self.platform_id, SqPackType::Data);
+        let sqpack_header = SqPackHeader::new(self.platform_id, SqPackType::Data);
         file.write_all(&sqpack_header.0)?;
         let data_header = data_header_skeleton(self.dat_file_number, self.file_size_limit);
         file.write_all(&data_header.buf)?;
         self.dats.push(DatFileRecord {
+            dat_file_number: self.dat_file_number,
             file,
             sqpack_header,
             data_header,
@@ -550,7 +557,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
         // write updated sqpack and index headers in first index file
         self.index.seek(SeekFrom::Start(0))?;
-        sqpack_header_finalize(&mut self.index_sqpack_header);
+        self.index_sqpack_header.finalize();
         self.index.write_all(&self.index_sqpack_header.0)?;
         index_segment_headers_finalize(
             &mut self.index_segment_headers,
@@ -579,7 +586,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
         self.index2.write_all(&index2_second_segment)?;
 
         self.index2.seek(SeekFrom::Start(0))?;
-        sqpack_header_finalize(&mut self.index2_sqpack_header);
+        self.index2_sqpack_header.finalize();
         self.index2.write_all(&self.index2_sqpack_header.0)?;
         index_segment_headers_finalize(
             &mut self.index2_segment_headers,
@@ -590,16 +597,23 @@ impl<IO: PackIO> PackSetWriter<IO> {
         self.index2.write_all(&self.index2_segment_headers.buf)?;
 
         for DatFileRecord {
+            dat_file_number,
             file,
             sqpack_header: header,
             data_header,
             data_section_hash,
         } in self.dats.iter_mut()
         {
+            if let Some((packed_date, packed_time)) =
+                self.side_table.sqpack_data_datetimes.get(dat_file_number)
+            {
+                header.write_date_time(*packed_date, *packed_time);
+            }
+
             let data_length = file.stream_position()?
                 - TryInto::<u64>::try_into(header.0.len() + data_header.buf.len()).unwrap();
             file.seek(SeekFrom::Start(0))?;
-            sqpack_header_finalize(header);
+            header.finalize();
             file.write_all(&header.0)?;
             data_header_finalize(
                 data_header,

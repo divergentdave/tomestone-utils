@@ -24,7 +24,7 @@ use crate::{
 #[derive(Default)]
 pub struct SideTables {
     pub file_entries: BTreeMap<IndexHash2, SideTableEntry>,
-    pub sqpack_data_datetimes: BTreeMap<(SqPackId, u8), (u32, u32)>,
+    pub sqpack_data_datetimes: BTreeMap<u8, (u32, u32)>,
 }
 
 #[derive(Clone)]
@@ -78,7 +78,7 @@ pub fn build_side_tables(
         assert!(reversed_index.insert(pointer, hash).is_none());
     }
 
-    let mut table = BTreeMap::new();
+    let mut file_entries = BTreeMap::new();
     for (locator, hash) in reversed_index.iter() {
         let mut file = data_file_set.open(pack_id, locator.data_file_id()).unwrap();
         file.seek(SeekFrom::Start(locator.offset().into())).unwrap();
@@ -148,12 +148,39 @@ pub fn build_side_tables(
                 content_type: entry_header_fields.1,
                 block_compression,
             };
-            table.insert(*hash, entry);
+            file_entries.insert(*hash, entry);
+        }
+    }
+
+    let mut sqpack_data_datetimes = BTreeMap::new();
+    for dat_file_number in 0..=data_file_set.max_dat_number(pack_id) {
+        let file = data_file_set.open(pack_id, dat_file_number).unwrap();
+        file.seek(SeekFrom::Start(24)).unwrap();
+        let mut buf = [0u8; 8];
+        file.read_exact(&mut buf).unwrap();
+        let packed_date = u32::from_le_bytes(buf[..4].try_into().unwrap());
+        let packed_time = u32::from_le_bytes(buf[4..].try_into().unwrap());
+        if packed_date != 0 || packed_time != 0 {
+            let year = packed_date / 10000;
+            assert!(year > 1900);
+            let month = (packed_date / 100) % 100;
+            assert!(month >= 1 && month <= 12);
+            let date = packed_date % 100;
+            assert!(date >= 1 && date <= 31);
+
+            let hour = packed_time / 1000000;
+            assert!(hour <= 24);
+            let minute = (packed_time / 10000) % 100;
+            assert!(minute <= 59);
+            let second = (packed_time / 100) % 100;
+            assert!(second <= 59);
+
+            sqpack_data_datetimes.insert(dat_file_number, (packed_date, packed_time));
         }
     }
 
     SideTables {
-        file_entries: table,
-        sqpack_data_datetimes: BTreeMap::new(),
+        file_entries,
+        sqpack_data_datetimes,
     }
 }

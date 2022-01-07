@@ -918,6 +918,18 @@ impl DataFileSet {
             ))
         }))
     }
+
+    pub fn max_dat_number(&self, pack_id: SqPackId) -> u8 {
+        let mut number = 0;
+        for i in 0u8.. {
+            if Self::build_data_path(&self.root_path, pack_id, i).is_file() {
+                number = i;
+            } else {
+                break;
+            }
+        }
+        number
+    }
 }
 
 pub enum PathOrHashes {
