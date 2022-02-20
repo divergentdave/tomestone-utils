@@ -308,10 +308,15 @@ impl Index<IndexEntry1> {
     }
 }
 
+struct CollisionIterExtraData<'a, E: IndexEntry> {
+    collision_table_iter: std::slice::Iter<'a, CollisionEntry<E::Hash>>,
+    hash_to_match: E::Hash,
+}
+
 struct IndexIter<'a, E: IndexEntry> {
     iter: std::slice::Iter<'a, E>,
     collision_table: &'a [CollisionEntry<E::Hash>],
-    collision_extra: Option<(std::slice::Iter<'a, CollisionEntry<E::Hash>>, E::Hash)>,
+    collision_extra: Option<CollisionIterExtraData<'a, E>>,
 }
 
 impl<'a, E: IndexEntry> Iterator for IndexIter<'a, E> {
@@ -319,9 +324,9 @@ impl<'a, E: IndexEntry> Iterator for IndexIter<'a, E> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some((collision_iter, hash)) = self.collision_extra.as_mut() {
-                for collision_entry in collision_iter {
-                    if &collision_entry.hash == hash {
+            if let Some(extra_data) = self.collision_extra.as_mut() {
+                for collision_entry in &mut extra_data.collision_table_iter {
+                    if collision_entry.hash == extra_data.hash_to_match {
                         return Some((collision_entry.hash, collision_entry.pointer));
                     }
                 }
@@ -332,7 +337,10 @@ impl<'a, E: IndexEntry> Iterator for IndexIter<'a, E> {
                     IndexPointer::Pointer(pointer) => return Some((entry.hash(), pointer)),
                     IndexPointer::Collision => {
                         let hash = entry.hash();
-                        self.collision_extra = Some((self.collision_table.iter(), hash));
+                        self.collision_extra = Some(CollisionIterExtraData {
+                            collision_table_iter: self.collision_table.iter(),
+                            hash_to_match: hash,
+                        });
                     }
                 }
             } else {
