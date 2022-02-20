@@ -10,7 +10,7 @@ use std::{
 };
 
 use nom::{
-    combinator::map_opt,
+    combinator::{map, map_opt},
     number::streaming::{le_u16, le_u32},
     sequence::tuple,
     IResult,
@@ -35,19 +35,45 @@ pub struct SideTableEntry {
     pub block_compression: Vec<bool>,
 }
 
-fn data_entry_header_raw(
-    input: &[u8],
-) -> IResult<&[u8], (u32, DataContentType, u32, u32, u32, u16, u16)> {
-    // header length, type, uncompressed size, unknown, block buffer size, number of blocks, unknown
-    tuple((
-        le_u32,
-        map_opt(le_u32, DataContentType::parse),
-        le_u32,
-        le_u32,
-        le_u32,
-        le_u16,
-        le_u16,
-    ))(input)
+struct DataEntryHeaderRaw {
+    header_length: u32,
+    data_content_type: DataContentType,
+    _uncompressed_size: u32,
+    unknown_1: u32,
+    _block_buffer_size: u32,
+    number_of_blocks: u16,
+    _unknown_2: u16,
+}
+
+fn data_entry_header_raw(input: &[u8]) -> IResult<&[u8], DataEntryHeaderRaw> {
+    map(
+        tuple((
+            le_u32,
+            map_opt(le_u32, DataContentType::parse),
+            le_u32,
+            le_u32,
+            le_u32,
+            le_u16,
+            le_u16,
+        )),
+        |(
+            header_length,
+            data_content_type,
+            _uncompressed_size,
+            unknown_1,
+            _block_buffer_size,
+            number_of_blocks,
+            _unknown_2,
+        )| DataEntryHeaderRaw {
+            header_length,
+            data_content_type,
+            _uncompressed_size,
+            unknown_1,
+            _block_buffer_size,
+            number_of_blocks,
+            _unknown_2,
+        },
+    )(input)
 }
 
 fn count_zeros(file: &mut File) -> Result<usize, std::io::Error> {
@@ -84,18 +110,19 @@ pub fn build_side_tables(
         file.seek(SeekFrom::Start(locator.offset().into())).unwrap();
         let entry_header_fields =
             drive_streaming_parser_smaller(&mut file, data_entry_header_raw).unwrap();
-        if let DataContentType::Binary = entry_header_fields.1 {
-            let mut block_table_buf = vec![0; entry_header_fields.5 as usize * 8];
+        if let DataContentType::Binary = entry_header_fields.data_content_type {
+            let mut block_table_buf = vec![0; entry_header_fields.number_of_blocks as usize * 8];
             file.read_exact(&mut block_table_buf).unwrap();
-            let block_table = type_2_block_table(entry_header_fields.5)(&block_table_buf)
-                .unwrap()
-                .1;
+            let block_table =
+                type_2_block_table(entry_header_fields.number_of_blocks)(&block_table_buf)
+                    .unwrap()
+                    .1;
             let block_compression = block_table
                 .iter()
                 .map(|(block_offset, _, _)| {
                     file.seek(SeekFrom::Start(
                         Into::<u64>::into(locator.offset())
-                            + Into::<u64>::into(entry_header_fields.0)
+                            + Into::<u64>::into(entry_header_fields.header_length)
                             + Into::<u64>::into(*block_offset),
                     ))
                     .unwrap();
@@ -111,7 +138,7 @@ pub fn build_side_tables(
             let last_block_offset = block_table.last().unwrap().0;
             file.seek(SeekFrom::Start(
                 Into::<u64>::into(locator.offset())
-                    + Into::<u64>::into(entry_header_fields.0)
+                    + Into::<u64>::into(entry_header_fields.header_length)
                     + Into::<u64>::into(last_block_offset),
             ))
             .unwrap();
@@ -124,13 +151,13 @@ pub fn build_side_tables(
                 u32::from_le_bytes(block_header_buf[12..16].try_into().unwrap());
             let last_block_end = if compressed_length == 32000 {
                 locator.offset()
-                    + entry_header_fields.0
+                    + entry_header_fields.header_length
                     + last_block_offset
                     + block_header_length
                     + decompressed_length
             } else {
                 locator.offset()
-                    + entry_header_fields.0
+                    + entry_header_fields.header_length
                     + last_block_offset
                     + block_header_length
                     + compressed_length
@@ -143,9 +170,9 @@ pub fn build_side_tables(
                 * 128;
 
             let entry = SideTableEntry {
-                unknown_entry_field: entry_header_fields.3,
+                unknown_entry_field: entry_header_fields.unknown_1,
                 padded_entry_size,
-                content_type: entry_header_fields.1,
+                content_type: entry_header_fields.data_content_type,
                 block_compression,
             };
             file_entries.insert(*hash, entry);
