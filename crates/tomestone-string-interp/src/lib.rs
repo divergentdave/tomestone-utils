@@ -242,7 +242,6 @@ pub trait Visitor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[allow(clippy::clippy::upper_case_acronyms)]
 pub enum Expression {
     GreaterThanOrEqual(Box<(Expression, Expression)>),
     TodoComparison1(Box<(Expression, Expression)>),

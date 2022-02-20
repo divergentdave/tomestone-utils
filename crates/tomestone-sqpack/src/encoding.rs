@@ -298,18 +298,17 @@ pub struct PackSetWriter<IO: PackIO> {
 
 impl<IO: PackIO> PackSetWriter<IO> {
     pub fn new(mut io: IO, platform_id: PlatformId, pack_id: SqPackId) -> Result<Self, io::Error> {
-        let segments_not_present_heuristic = match pack_id {
+        let segments_not_present_heuristic = matches!(
+            pack_id,
             SqPackId {
                 category: Category::Debug,
                 ..
-            }
-            | SqPackId {
+            } | SqPackId {
                 category: Category::SqpackTest,
                 expansion: Expansion::Base,
                 ..
-            } => true,
-            _ => false,
-        };
+            }
+        );
         let file_size_limit = match pack_id.category {
             Category::Debug => 200000000,
             _ => 2000000000,
@@ -509,7 +508,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 }
                 folder_table.push(FolderEntry {
                     folder_crc: hash.folder_crc,
-                    files_offset: files_offset,
+                    files_offset,
                     files_span: 0,
                 });
             }

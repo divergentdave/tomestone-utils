@@ -136,7 +136,7 @@ pub fn build_side_tables(
                     + compressed_length
             };
             file.seek(SeekFrom::Start(last_block_end.into())).unwrap();
-            let zeros = count_zeros(&mut file).unwrap();
+            let zeros = count_zeros(file).unwrap();
             let padded_entry_size = (last_block_end - locator.offset()
                 + TryInto::<u32>::try_into(zeros).unwrap())
                 / 128
@@ -164,9 +164,9 @@ pub fn build_side_tables(
             let year = packed_date / 10000;
             assert!(year > 1900);
             let month = (packed_date / 100) % 100;
-            assert!(month >= 1 && month <= 12);
+            assert!((1..=12).contains(&month));
             let date = packed_date % 100;
-            assert!(date >= 1 && date <= 31);
+            assert!((1..=31).contains(&date));
 
             let hour = packed_time / 1000000;
             assert!(hour <= 24);

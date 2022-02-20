@@ -294,7 +294,7 @@ impl<E: IndexEntry> Index<E> {
                         return Some(collision_entry.pointer);
                     }
                 }
-                return None;
+                None
             }
         }
     }
