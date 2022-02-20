@@ -2320,6 +2320,7 @@ dependencies = [
  "hex",
  "once_cell",
  "regex",
+ "tomestone-common",
  "tomestone-exdf",
  "tomestone-sqpack",
  "tomestone-string-interp",
@@ -2369,6 +2370,7 @@ dependencies = [
  "dotenv",
  "nom",
  "quickcheck",
+ "tomestone-common",
  "tomestone-exdf",
  "tomestone-sqpack",
 ]

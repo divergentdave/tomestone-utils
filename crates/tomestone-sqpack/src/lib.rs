@@ -975,6 +975,8 @@ mod tests {
         sync::{Arc, RwLock},
     };
 
+    use tomestone_common::test_game_data_or_skip;
+
     use crate::{
         encoding::{PackIO, PackSetWriter},
         parser::decompress_file,
@@ -1242,14 +1244,7 @@ mod tests {
     #[test]
     #[ignore = "slow test"]
     fn sqpack_data_round_trip() {
-        dotenv::dotenv().ok();
-        // Don't test anything if the game directory isn't provided
-        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-            root
-        } else {
-            return;
-        };
-        let game_data = GameData::new(root).unwrap();
+        let (game_data, _data_file_set) = test_game_data_or_skip!();
 
         for pack_id in game_data.iter_packs() {
             // TODOs

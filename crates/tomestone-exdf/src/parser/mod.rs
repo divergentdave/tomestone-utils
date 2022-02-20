@@ -100,20 +100,13 @@ pub fn parse_row<'a>(
 #[cfg(test)]
 mod tests {
     use crate::{Language, RootList};
+    use tomestone_common::test_game_data_or_skip;
     use tomestone_sqpack::GameData;
 
     #[test]
     #[ignore = "slow test"]
     fn exdf_game_data() {
-        dotenv::dotenv().ok();
-        // Don't test anything if the game directory isn't probided
-        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-            root
-        } else {
-            return;
-        };
-        let game_data = GameData::new(root).unwrap();
-        let mut data_file_set = game_data.data_files();
+        let (game_data, mut data_file_set) = test_game_data_or_skip!();
 
         let root_list = RootList::open(&game_data, &mut data_file_set).unwrap();
         for name in root_list.iter() {

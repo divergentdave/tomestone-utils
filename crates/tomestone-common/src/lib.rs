@@ -25,3 +25,19 @@ where
         }
     }
 }
+
+#[macro_export]
+macro_rules! test_game_data_or_skip {
+    () => {{
+        dotenv::dotenv().ok();
+        // Don't test anything if the game directory isn't provided
+        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
+            root
+        } else {
+            return;
+        };
+        let game_data = GameData::new(root).unwrap();
+        let data_file_set = game_data.data_files();
+        (game_data, data_file_set)
+    }};
+}

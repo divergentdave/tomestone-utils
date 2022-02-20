@@ -188,21 +188,15 @@ pub fn parse_exhf(input: &[u8]) -> IResult<&[u8], Exhf> {
 
 #[cfg(test)]
 mod tests {
+    use tomestone_common::test_game_data_or_skip;
     use tomestone_sqpack::GameData;
 
     use super::{exhf_header, parse_exhf};
 
     #[test]
     fn exhf_game_data() {
-        dotenv::dotenv().ok();
-        // Don't test anything if the game directory isn't provided
-        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-            root
-        } else {
-            return;
-        };
-        let game_data = GameData::new(root).unwrap();
-        let mut data_file_set = game_data.data_files();
+        let (game_data, mut data_file_set) = test_game_data_or_skip!();
+
         const EXH_PATH: &str = "exd/fcauthority.exh";
 
         let exh_data = game_data

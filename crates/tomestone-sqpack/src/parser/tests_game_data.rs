@@ -1,14 +1,14 @@
-use std::{
-    fs::File,
-    panic::{catch_unwind, RefUnwindSafe, UnwindSafe},
-    path::PathBuf,
-};
-
 use super::{index_entry_1, index_entry_2, load_index_reader, GrowableBufReader};
 use crate::{
     parser::{collision_entry_1, collision_entry_2},
     Expansion, GameData, Index, IndexEntry, IndexHash, IndexHash1, IndexHash2,
 };
+use std::{
+    fs::File,
+    panic::{catch_unwind, RefUnwindSafe, UnwindSafe},
+    path::PathBuf,
+};
+use tomestone_common::test_game_data_or_skip;
 
 fn forall_sqpack(f: impl Fn(PathBuf, GrowableBufReader<File>) + UnwindSafe + RefUnwindSafe) {
     dotenv::dotenv().ok();
@@ -73,15 +73,8 @@ fn check_index_order() {
 
 #[test]
 fn game_data() {
-    dotenv::dotenv().ok();
-    // Don't test anything if the game directory isn't provided
-    let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-        root
-    } else {
-        return;
-    };
-    let game_data = GameData::new(root).unwrap();
-    let mut data_file_set = game_data.data_files();
+    let (game_data, mut data_file_set) = test_game_data_or_skip!();
+
     const SCD_PATH: &str = "music/ffxiv/BGM_System_Title.scd";
 
     let scd_data = game_data

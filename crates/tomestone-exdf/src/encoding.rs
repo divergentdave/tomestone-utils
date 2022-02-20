@@ -194,6 +194,7 @@ pub fn encode_exhf(header: &Exhf) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    use tomestone_common::test_game_data_or_skip;
     use tomestone_sqpack::GameData;
 
     use crate::{parser::exhf::parse_exhf, RootList};
@@ -201,15 +202,7 @@ mod tests {
     #[test]
     #[ignore = "slow test"]
     fn exh_round_trip() {
-        dotenv::dotenv().ok();
-        // Don't test anything if the game directory isn't provided
-        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-            root
-        } else {
-            return;
-        };
-        let game_data = GameData::new(root).unwrap();
-        let mut data_file_set = game_data.data_files();
+        let (game_data, mut data_file_set) = test_game_data_or_skip!();
 
         let root_list = RootList::open(&game_data, &mut data_file_set).unwrap();
         for name in root_list.iter() {

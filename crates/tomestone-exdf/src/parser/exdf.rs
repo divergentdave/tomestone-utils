@@ -137,6 +137,7 @@ fn data_row(input: &[u8]) -> IResult<&[u8], RawDataRow<'_>> {
 mod tests {
     use std::convert::TryInto;
 
+    use tomestone_common::test_game_data_or_skip;
     use tomestone_sqpack::{Category, Expansion, GameData};
 
     use super::{exdf_header, Exdf};
@@ -144,15 +145,8 @@ mod tests {
 
     #[test]
     fn exdf_game_data() {
-        dotenv::dotenv().ok();
-        // Don't test anything if the game directory isn't provided
-        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-            root
-        } else {
-            return;
-        };
-        let game_data = GameData::new(root).unwrap();
-        let mut data_file_set = game_data.data_files();
+        let (game_data, mut data_file_set) = test_game_data_or_skip!();
+
         const EXH_PATH: &str = "exd/fcauthority.exh";
         const EXD_PATH: &str = "exd/fcauthority_0_en.exd";
 
@@ -172,15 +166,8 @@ mod tests {
     #[test]
     #[ignore = "slow test"]
     fn check_exdf_offset_table_order() {
-        dotenv::dotenv().ok();
-        // Don't test anything if the game directory isn't provided
-        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-            root
-        } else {
-            return;
-        };
-        let game_data = GameData::new(root).unwrap();
-        let mut data_file_set = game_data.data_files();
+        let (game_data, mut data_file_set) = test_game_data_or_skip!();
+
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(Category::Exd, *expansion) {
                 let index = game_data.get_index_2(&pack_id).unwrap().unwrap();
@@ -204,15 +191,8 @@ mod tests {
     #[test]
     #[ignore = "slow test"]
     fn check_exdf_file_size() {
-        dotenv::dotenv().ok();
-        // Don't test anything if the game directory isn't provided
-        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-            root
-        } else {
-            return;
-        };
-        let game_data = GameData::new(root).unwrap();
-        let mut data_file_set = game_data.data_files();
+        let (game_data, mut data_file_set) = test_game_data_or_skip!();
+
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(Category::Exd, *expansion) {
                 let index = game_data.get_index_2(&pack_id).unwrap().unwrap();
@@ -234,15 +214,7 @@ mod tests {
     #[test]
     #[ignore = "slow test"]
     fn exd_round_trip_rows() {
-        dotenv::dotenv().ok();
-        // Don't test anything if the game directory isn't provided
-        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-            root
-        } else {
-            return;
-        };
-        let game_data = GameData::new(root).unwrap();
-        let mut data_file_set = game_data.data_files();
+        let (game_data, mut data_file_set) = test_game_data_or_skip!();
 
         let root_list = RootList::open(&game_data, &mut data_file_set).unwrap();
         for name in root_list.iter() {
@@ -286,15 +258,7 @@ mod tests {
     #[test]
     #[ignore = "slow test"]
     fn exd_round_trip_pages() {
-        dotenv::dotenv().ok();
-        // Don't test anything if the game directory isn't provided
-        let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-            root
-        } else {
-            return;
-        };
-        let game_data = GameData::new(root).unwrap();
-        let mut data_file_set = game_data.data_files();
+        let (game_data, mut data_file_set) = test_game_data_or_skip!();
 
         let root_list = RootList::open(&game_data, &mut data_file_set).unwrap();
         for name in root_list.iter() {
