@@ -865,7 +865,7 @@ impl DataFileSet {
         }
     }
 
-    fn build_data_path(root_path: &PathBuf, id: SqPackId, dat_number: u8) -> PathBuf {
+    fn build_data_path(root_path: &Path, id: SqPackId, dat_number: u8) -> PathBuf {
         root_path
             .join("game")
             .join("sqpack")

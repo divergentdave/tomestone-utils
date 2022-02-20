@@ -244,7 +244,7 @@ impl<'a> Iterator for DatasetPageIter<'a> {
             Ok((row_number, row_data)) => (row_number, row_data),
             Err(e) => return Some(Err(e.into())),
         };
-        match parse_row(row_data, &self.exhf) {
+        match parse_row(row_data, self.exhf) {
             Ok(row) => Some(Ok(Row {
                 number: row_number,
                 sub_rows: row,

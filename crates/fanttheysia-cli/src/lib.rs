@@ -28,6 +28,12 @@ impl GenderExpressionVisitor {
     }
 }
 
+impl Default for GenderExpressionVisitor {
+    fn default() -> GenderExpressionVisitor {
+        GenderExpressionVisitor::new()
+    }
+}
+
 impl Visitor for GenderExpressionVisitor {
     fn visit_expression(&mut self, expr: &Expression) {
         if let Expression::PlayerParameter(child_expr) = expr {
@@ -73,7 +79,13 @@ pub struct GenderConditionalTextVisitor {
 impl GenderConditionalTextVisitor {
     /// Construct a new visitor.
     pub fn new() -> GenderConditionalTextVisitor {
-        GenderConditionalTextVisitor { ifs: vec![] }
+        GenderConditionalTextVisitor { ifs: Vec::new() }
+    }
+}
+
+impl Default for GenderConditionalTextVisitor {
+    fn default() -> GenderConditionalTextVisitor {
+        GenderConditionalTextVisitor::new()
     }
 }
 

@@ -329,7 +329,7 @@ fn do_grep(
     let mut locked = stdout.lock();
     for pack_id in game_data.iter_packs_category_expansion(category, expansion) {
         if let Some(Ok(index)) = game_data.get_index_1(&pack_id) {
-            for res in data_file_set.iter_files(pack_id, &index)? {
+            for res in data_file_set.iter_files(pack_id, index)? {
                 let (hash, file) = res?;
                 if re.is_match(&file) {
                     locked.write_all(b"File ").unwrap();
@@ -339,7 +339,7 @@ fn do_grep(
             }
         } else {
             let index = game_data.get_index_2(&pack_id).unwrap()?;
-            for res in data_file_set.iter_files(pack_id, &index)? {
+            for res in data_file_set.iter_files(pack_id, index)? {
                 let (hash, file) = res?;
                 if re.is_match(&file) {
                     locked.write_all(b"File ").unwrap();
@@ -392,7 +392,7 @@ fn discover_paths(
     }
 
     for (pack_id, index) in indices.iter() {
-        for res in data_file_set.iter_files(*pack_id, &index)? {
+        for res in data_file_set.iter_files(*pack_id, index)? {
             let (_hash, file) = res?;
             for caps in PATH_DISCOVERY_RE.captures_iter(&file) {
                 let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();
@@ -417,7 +417,7 @@ fn discover_paths(
         }
     }
 
-    let root_list = RootList::open(&game_data, data_file_set)?;
+    let root_list = RootList::open(game_data, data_file_set)?;
     for name in root_list.iter() {
         let exh_path = format!("exd/{}.exh", name);
         if let Some(exh_data) = game_data.lookup_path_data(data_file_set, &exh_path)? {
@@ -467,9 +467,9 @@ fn discover_paths(
                 ]
                 .iter()
                 {
-                    if game_data.lookup_path_locator(&luab_path)?.is_some() {
+                    if game_data.lookup_path_locator(luab_path)?.is_some() {
                         statements
-                            .add_path(&luab_path)
+                            .add_path(luab_path)
                             .map_err::<tomestone_sqpack::Error, _>(From::from)?;
                     }
                 }
