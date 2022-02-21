@@ -52,6 +52,19 @@ fn sqpack_type(input: &[u8]) -> IResult<&[u8], SqPackType> {
     map_res(le_u32, SqPackType::from_u32)(input)
 }
 
+/// Parses a SqPack header (excluding its integrity check hash).
+///
+/// ```text
+/// 0x000-0x008: "SqPack\x00\x00" or "\x80\x00\x00\x00\x00\x00\x00\x00"
+/// 0x008-0x00C: Platform ID
+/// 0x00C-0x010: Size
+/// 0x010-0x014: Version (0 or 1)
+/// 0x014-0x018: Type (1 for data, 2 for index)
+/// 0x018-0x01C: Date
+/// 0x01C-0x020: Time
+/// 0x020-0x024: "\xff\xff\xff\xff"
+/// 0x024-0x3c0: Null bytes
+/// ```
 fn sqpack_header_inner(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {
     map(
         tuple((
@@ -66,7 +79,7 @@ fn sqpack_header_inner(input: &[u8]) -> IResult<&[u8], (PlatformId, u32, u32, Sq
             tag(b"\xff\xff\xff\xff"),
             null_padding(0x39c),
         )),
-        |(_, platform_id, _, size, version, sqpack_type, _date, _unknown, _, _)| {
+        |(_, platform_id, _, size, version, sqpack_type, _date, _time, _, _)| {
             (platform_id, size, version, sqpack_type)
         },
     )(input)
@@ -108,6 +121,21 @@ pub fn integrity_checked_header<
     )(input)
 }
 
+/// Parses a SqPack header.
+///
+/// ```text
+/// 0x000-0x008: "SqPack\x00\x00" or "\x80\x00\x00\x00\x00\x00\x00\x00"
+/// 0x008-0x00C: Platform ID
+/// 0x00C-0x010: Size
+/// 0x010-0x014: Version (0 or 1)
+/// 0x014-0x018: Type (1 for data, 2 for index)
+/// 0x018-0x01C: Date
+/// 0x01C-0x020: Time
+/// 0x020-0x024: "\xff\xff\xff\xff"
+/// 0x024-0x3c0: Null bytes
+/// 0x3c0-0x3d4: SHA-1 hash of the preceding 0x3c0 bytes
+/// 0x3d4-0x400: Null bytes
+/// ```
 pub(crate) fn sqpack_header_outer(
     input: &[u8],
 ) -> IResult<&[u8], (PlatformId, u32, u32, SqPackType)> {

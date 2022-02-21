@@ -986,7 +986,7 @@ mod tests {
     use tomestone_common::test_game_data_or_skip;
 
     use crate::{
-        encoding::{PackIO, PackSetWriter},
+        encoding::{PackIO, PackSetWriter, SetLen},
         parser::decompress_file,
         sidetables::build_side_tables,
         Expansion, FilePointer, GameData, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2,
@@ -1061,7 +1061,13 @@ mod tests {
         }
     }
 
-    impl<'a> Write for MockFile {
+    impl Read for MockFile {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.inner.write().unwrap().read(buf)
+        }
+    }
+
+    impl Write for MockFile {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
             self.inner.write().unwrap().write(buf)
         }
@@ -1071,9 +1077,20 @@ mod tests {
         }
     }
 
-    impl<'a> Seek for MockFile {
+    impl Seek for MockFile {
         fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
             self.inner.write().unwrap().seek(pos)
+        }
+    }
+
+    impl SetLen for MockFile {
+        fn set_len(&self, size: u64) -> std::io::Result<()> {
+            self.inner
+                .write()
+                .unwrap()
+                .get_mut()
+                .resize(size.try_into().unwrap(), 0);
+            Ok(())
         }
     }
 

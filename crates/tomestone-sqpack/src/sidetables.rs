@@ -21,18 +21,37 @@ use crate::{
     DataFileSet, FilePointer, GameData, IndexHash2, SqPackId,
 };
 
+/// This structure provides extra information, beyond the list of compressed files in each SqPack
+/// set, that is needed to perform a byte-exact round-trip of index and data files. Certain
+/// choices, such as whether compression is used, the positions of entries in the data files, etc.
+/// are captured in this data structure, to enable round-trip reference tests, and in turn learn
+/// more about the file format. The data stored here applies to one pack identifier, i.e., one
+/// combination of pack type, expansion, and pack number. Thus, the information will be applicable
+/// to one `.index` file, one `.index2` file, and one `.dat0` file, along with any other additional
+/// data files.
 #[derive(Default)]
 pub struct SideTables {
-    pub file_entries: BTreeMap<IndexHash2, SideTableEntry>,
+    /// Extra information about individual data file entries.
+    pub file_entries: BTreeMap<IndexHash2, FileEntryAux>,
+    /// When encoding a SqPack data file using side tables, the first part of each file is reserved
+    /// for entries to be re-encoded in their original positions. If any files to be encoded do not
+    /// appear in the list of existing positions, or the space they were supposed to occupy has
+    /// been taken up by a longer entry, then those entries must be stored at an offset greater
+    /// `reserved_file_space`, in the second part of the file, where they can be stored
+    /// sequentially, without impacting any other entries' original positions.
+    pub reserved_file_space: Vec<u32>,
+    /// Modification datetimes from .dat* files. The packed date fields and packed time fields are
+    /// stored here, if they aren't all null bytes. (Index files appear to have all null bytes in
+    /// these fields.)
     pub sqpack_data_datetimes: BTreeMap<u8, (u32, u32)>,
 }
 
 #[derive(Clone)]
-pub struct SideTableEntry {
+pub struct FileEntryAux {
     pub unknown_entry_field: u32,
-    pub padded_entry_size: u32,
     pub content_type: DataContentType,
     pub block_compression: Vec<bool>,
+    pub entry_pointer: FilePointer,
 }
 
 struct DataEntryHeaderRaw {
@@ -169,19 +188,25 @@ pub fn build_side_tables(
                 / 128
                 * 128;
 
-            let entry = SideTableEntry {
+            let entry = FileEntryAux {
                 unknown_entry_field: entry_header_fields.unknown_1,
-                padded_entry_size,
                 content_type: entry_header_fields.data_content_type,
                 block_compression,
+                entry_pointer: *locator,
             };
             file_entries.insert(*hash, entry);
         }
     }
 
     let mut sqpack_data_datetimes = BTreeMap::new();
-    for dat_file_number in 0..=data_file_set.max_dat_number(pack_id) {
+    let max_dat_number = data_file_set.max_dat_number(pack_id);
+    let mut reserved_file_space = vec![0; (max_dat_number + 1).into()];
+    for dat_file_number in 0..=max_dat_number {
         let file = data_file_set.open(pack_id, dat_file_number).unwrap();
+
+        let file_len = file.metadata().unwrap().len().try_into().unwrap();
+        reserved_file_space[usize::from(dat_file_number)] = file_len;
+
         file.seek(SeekFrom::Start(24)).unwrap();
         let mut buf = [0u8; 8];
         file.read_exact(&mut buf).unwrap();
@@ -209,5 +234,6 @@ pub fn build_side_tables(
     SideTables {
         file_entries,
         sqpack_data_datetimes,
+        reserved_file_space,
     }
 }

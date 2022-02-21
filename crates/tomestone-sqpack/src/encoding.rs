@@ -1,7 +1,8 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::File,
-    io::{self, Seek, SeekFrom, Write},
+    io::{self, Read, Seek, SeekFrom, Write},
+    ops::Range,
     path::PathBuf,
 };
 
@@ -17,8 +18,18 @@ use crate::{
 
 static ZEROS: [u8; 4096] = [0; 4096];
 
+pub trait SetLen {
+    fn set_len(&self, size: u64) -> Result<(), io::Error>;
+}
+
+impl SetLen for File {
+    fn set_len(&self, size: u64) -> Result<(), io::Error> {
+        self.set_len(size)
+    }
+}
+
 pub trait PackIO {
-    type F: Write + Seek;
+    type F: Read + Write + Seek + SetLen;
 
     fn open_index_file(&mut self) -> Result<Self::F, io::Error>;
     fn open_index2_file(&mut self) -> Result<Self::F, io::Error>;
@@ -227,6 +238,22 @@ fn index_segment_headers_finalize(
     header.buf[0x3c0..0x3d4].copy_from_slice(&hash);
 }
 
+/// Data header, after the SqPack header.
+///
+/// ```text
+/// 0x000-0x004: Data header length
+/// 0x004-0x008: Null bytes
+/// 0x008-0x00C: 16
+/// 0x00C-0x010: File length, shifted right by 7
+/// 0x010-0x014: Data file number plus one (1 through 8)
+/// 0x014-0x018: Null bytes
+/// 0x018-0x01C: Data file size limit
+/// 0x01C-0x020: Null bytes
+/// 0x020-0x034: SHA-1 hash of the data section
+/// 0x034-0x3c0: Null bytes
+/// 0x3c0-0x3d4: SHA-1 hash of the preceding 0x3c0 bytes
+/// 0x3d4-0x400: Null bytes
+/// ```
 struct DataHeader {
     buf: [u8; 1024],
 }
@@ -242,13 +269,13 @@ fn data_header_skeleton(dat_file_number: u8, file_size_limit: u32) -> DataHeader
 
 fn data_header_finalize(
     header: &mut DataHeader,
-    data_section_hash: &mut Option<Sha1>,
     segments_not_present_heuristic: bool,
     data_length: u64,
+    data_section_hash: Sha1,
 ) {
     header.buf[12..16].copy_from_slice(&u32::to_le_bytes((data_length >> 7).try_into().unwrap()));
     if !segments_not_present_heuristic {
-        header.buf[32..52].copy_from_slice(&data_section_hash.take().unwrap().finalize());
+        header.buf[32..52].copy_from_slice(&data_section_hash.finalize());
     }
 
     let mut sha = Sha1::new();
@@ -262,7 +289,7 @@ struct DatFileRecord<IO: PackIO> {
     file: IO::F,
     sqpack_header: SqPackHeader,
     data_header: DataHeader,
-    data_section_hash: Option<Sha1>,
+    free_list: FreeList,
 }
 
 struct CompressionBlock {
@@ -288,7 +315,6 @@ pub struct PackSetWriter<IO: PackIO> {
     index2_segment_headers: IndexHeader,
     dats: Vec<DatFileRecord<IO>>,
     dat_file_number: u8,
-    dat_file_position: u32,
     entries: BTreeMap<IndexHash1, FilePointer>,
     entries2: BTreeMap<IndexHash2, FilePointer>,
     file_size_limit: u32,
@@ -323,7 +349,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
         index2.write_all(&index2_sqpack_header.0)?;
         let index2_segment_headers = index_segment_headers_skeleton();
         index2.write_all(&index2_segment_headers.buf)?;
-        let mut writer = PackSetWriter {
+        let writer = PackSetWriter {
             io,
             platform_id,
             index,
@@ -334,14 +360,12 @@ impl<IO: PackIO> PackSetWriter<IO> {
             index2_segment_headers,
             dats: Vec::new(),
             dat_file_number: 0,
-            dat_file_position: 2048,
             entries: BTreeMap::new(),
             entries2: BTreeMap::new(),
             file_size_limit,
             segments_not_present_heuristic,
             side_table: Default::default(),
         };
-        writer.create_new_dat_file()?;
         Ok(writer)
     }
 
@@ -352,16 +376,36 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
     fn create_new_dat_file(&mut self) -> Result<(), io::Error> {
         let mut file = self.io.open_dat_file(self.dat_file_number)?;
+
+        if let Some(reserved_length) = self
+            .side_table
+            .reserved_file_space
+            .get(usize::from(self.dat_file_number))
+        {
+            file.set_len((*reserved_length).into())?
+        }
+
         let sqpack_header = SqPackHeader::new(self.platform_id, SqPackType::Data);
         file.write_all(&sqpack_header.0)?;
         let data_header = data_header_skeleton(self.dat_file_number, self.file_size_limit);
         file.write_all(&data_header.buf)?;
+
+        let mut free_list = FreeList::new(self.file_size_limit);
+        // Reserve space for the headers that were just written
+        free_list
+            .reserve(
+                0..(sqpack_header.0.len() + data_header.buf.len())
+                    .try_into()
+                    .unwrap(),
+            )
+            .unwrap();
+
         self.dats.push(DatFileRecord {
             dat_file_number: self.dat_file_number,
             file,
             sqpack_header,
             data_header,
-            data_section_hash: Some(Sha1::new()),
+            free_list,
         });
         Ok(())
     }
@@ -372,12 +416,69 @@ impl<IO: PackIO> PackSetWriter<IO> {
         self.add_file_by_hashes(hash1, hash2, data)
     }
 
+    fn choose_entry_location(
+        &mut self,
+        hash2: IndexHash2,
+        total_size_padded: u32,
+    ) -> Result<FilePointer, io::Error> {
+        // Check for a preferred location from the side tables, and check if it's free.
+        if let Some(side_table_entry) = self.side_table.file_entries.get(&hash2) {
+            let data_file_id = side_table_entry.entry_pointer.data_file_id;
+            let desired_range = side_table_entry.entry_pointer.offset
+                ..side_table_entry.entry_pointer.offset + total_size_padded;
+            if self.dats[usize::from(data_file_id)]
+                .free_list
+                .reserve(desired_range)
+                .is_ok()
+            {
+                return Ok(side_table_entry.entry_pointer);
+            }
+        }
+
+        // Check for free and non-reserved space in each data file.
+        for (i, dat) in self.dats.iter_mut().enumerate() {
+            let search_start = self
+                .side_table
+                .reserved_file_space
+                .get(i)
+                .copied()
+                .unwrap_or_default();
+            if let Ok(offset) = dat.free_list.reserve_next(search_start, total_size_padded) {
+                return Ok(FilePointer::new(dat.dat_file_number, offset));
+            }
+        }
+
+        // Allocate a new data file, and try to allcate space in it. Repeat until a new data file
+        // has enough non-reserved space to service the request.
+        loop {
+            self.dat_file_number += 1;
+            self.create_new_dat_file()?;
+
+            let search_start = self
+                .side_table
+                .reserved_file_space
+                .get(usize::from(self.dat_file_number))
+                .copied()
+                .unwrap_or_default();
+            let dat = &mut self.dats[usize::from(self.dat_file_number)];
+            if let Ok(offset) = dat.free_list.reserve_next(search_start, total_size_padded) {
+                return Ok(FilePointer::new(dat.dat_file_number, offset));
+            }
+        }
+    }
+
     pub fn add_file_by_hashes(
         &mut self,
         hash1: IndexHash1,
         hash2: IndexHash2,
         data: &[u8],
     ) -> Result<(), io::Error> {
+        // deferred initial set-up of the first file, do this during this call instead of the
+        // constructor so that the side table can be set up before we create the data file header.
+        if self.dats.is_empty() {
+            self.create_new_dat_file()?;
+        }
+
         // for now, assume the data entry has the binary type
         let blocks: Vec<CompressionBlock> = data
             .chunks(16000)
@@ -404,22 +505,13 @@ impl<IO: PackIO> PackSetWriter<IO> {
             )
             .unwrap();
         let total_size_padded_shifted = (total_size_unpadded + 127) / 128;
-        let mut total_size_padded = total_size_padded_shifted * 128;
-        let current_file_size = self.dats.last_mut().unwrap().file.stream_position()?;
-        if current_file_size + total_size_padded as u64 > self.file_size_limit as u64 {
-            self.dat_file_number += 1;
-            self.dat_file_position = 2048;
-            self.create_new_dat_file()?;
-        }
+        let total_size_padded = total_size_padded_shifted * 128;
 
-        let pointer = FilePointer::new(self.dat_file_number, self.dat_file_position);
+        let pointer = self.choose_entry_location(hash2, total_size_padded)?;
 
         let mut unknown = total_size_padded_shifted - 1; // still working on this, needs corrections
         if let Some(entry) = self.side_table.file_entries.get(&hash2) {
             unknown = entry.unknown_entry_field;
-            if entry.padded_entry_size > total_size_unpadded {
-                total_size_padded = entry.padded_entry_size;
-            }
         }
 
         let block_buffer_size: u32 = blocks
@@ -446,12 +538,13 @@ impl<IO: PackIO> PackSetWriter<IO> {
             block_offset += block.block_size as u32;
         }
 
-        let dat_file_record = &mut self.dats.last_mut().unwrap();
+        let dat_file_record = &mut self
+            .dats
+            .get_mut(usize::try_from(pointer.data_file_id).unwrap())
+            .unwrap();
         let dat_file = &mut dat_file_record.file;
-        let data_section_hash = dat_file_record.data_section_hash.as_mut().unwrap();
-        let position_before = dat_file.stream_position()?;
+        dat_file.seek(SeekFrom::Start(pointer.offset.into()))?;
         dat_file.write_all(&entry_header_buf)?;
-        data_section_hash.update(&entry_header_buf);
 
         for block in blocks.iter() {
             let compressed_size: u32 = block.compressed.len().try_into().unwrap();
@@ -463,28 +556,26 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 .copy_from_slice(&u32::to_le_bytes(block.original_len.try_into().unwrap()));
 
             dat_file.write_all(&block_header_buf)?;
-            data_section_hash.update(&block_header_buf);
 
             // compressed data is next
             dat_file.write_all(&block.compressed)?;
-            data_section_hash.update(&block.compressed);
             // pad out before next block
             let padding_length = (16 + compressed_size + 127) / 128 * 128 - (16 + compressed_size);
             dat_file.write_all(&[0; 127][..padding_length as usize])?;
-            data_section_hash.update(&[0; 127][..padding_length as usize]);
         }
 
         let position_after = dat_file.stream_position()?;
-        assert_eq!(total_size_unpadded as u64, position_after - position_before);
-        self.dat_file_position += total_size_padded;
+        assert_eq!(
+            u64::from(total_size_unpadded),
+            position_after - u64::from(pointer.offset)
+        );
+
         let padding_length =
             TryInto::<usize>::try_into(total_size_padded - total_size_unpadded).unwrap();
         for _ in 0..(padding_length / ZEROS.len()) {
             dat_file.write_all(&ZEROS)?;
-            data_section_hash.update(&ZEROS);
         }
         dat_file.write_all(&ZEROS[..padding_length % ZEROS.len()])?;
-        data_section_hash.update(&ZEROS[..padding_length % ZEROS.len()]);
 
         // TODO: not handling collisions yet
         assert!(self.entries.insert(hash1, pointer).is_none());
@@ -600,7 +691,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             file,
             sqpack_header: header,
             data_header,
-            data_section_hash,
+            free_list: _,
         } in self.dats.iter_mut()
         {
             if let Some((packed_date, packed_time)) =
@@ -609,20 +700,321 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 header.write_date_time(*packed_date, *packed_time);
             }
 
-            let data_length = file.stream_position()?
-                - TryInto::<u64>::try_into(header.0.len() + data_header.buf.len()).unwrap();
+            let data_section_start = (header.0.len() + data_header.buf.len()).try_into().unwrap();
+
+            // Compute the data section hash.
+            file.seek(SeekFrom::Start(data_section_start))?;
+            let mut data_section_hash = Sha1::new();
+            let mut temp_buf = [0u8; 4096];
+            loop {
+                let count = file.read(&mut temp_buf)?;
+                if count == 0 {
+                    break;
+                }
+                data_section_hash.update(&temp_buf[..count]);
+            }
+
+            // Save the data section length.
+            let data_length = file.stream_position()? - data_section_start;
+
+            // Write out the completed headers.
             file.seek(SeekFrom::Start(0))?;
             header.finalize();
             file.write_all(&header.0)?;
             data_header_finalize(
                 data_header,
-                data_section_hash,
                 self.segments_not_present_heuristic,
                 data_length,
+                data_section_hash,
             );
             file.write_all(&data_header.buf)?;
         }
 
         Ok(self.io)
+    }
+}
+
+#[derive(Clone)]
+struct FreeListEntry(Range<u32>);
+
+impl Ord for FreeListEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0
+            .start
+            .cmp(&other.0.start)
+            .then_with(|| self.0.end.cmp(&other.0.end))
+    }
+}
+
+impl PartialOrd for FreeListEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for FreeListEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for FreeListEntry {}
+
+#[derive(Debug, PartialEq, Eq)]
+struct FreeListExhaustedError;
+
+/// This records which sections of a data file are occupied or not, internally stored as an ordered
+/// list of ranges. When space is reserved in the file, free space ranges will be removed,
+/// truncated, or split.
+struct FreeList {
+    inner: BTreeSet<FreeListEntry>,
+}
+
+impl FreeList {
+    fn new(length: u32) -> FreeList {
+        let mut inner = BTreeSet::new();
+        inner.insert(FreeListEntry(0..length));
+        FreeList { inner }
+    }
+
+    /// Helper method to remove a free list entry, allocate a region from it, and add the
+    /// remainders back to the free list.
+    fn split_entry(&mut self, entry: &FreeListEntry, allocation: Range<u32>) {
+        assert!(self.inner.remove(entry));
+        if entry.0.start < allocation.start {
+            self.inner
+                .insert(FreeListEntry((entry.0.start)..(allocation.start)));
+        }
+        if entry.0.end > allocation.end {
+            self.inner
+                .insert(FreeListEntry((allocation.end)..(entry.0.end)));
+        }
+    }
+
+    /// Reserve a particular range from the free list, return `Ok(())` if successful, or an error
+    /// if the requested space is already taken.
+    fn reserve(&mut self, to_reserve: Range<u32>) -> Result<(), FreeListExhaustedError> {
+        let pivot = FreeListEntry((to_reserve.start)..(to_reserve.start));
+
+        // Use a reverse range iterator to check the free list entry immediately before the pivot.
+        // If there is an entry, and it covers the entire requested range, then we can remove it,
+        // split it, re-insert the remainders, and return success.
+        if let Some(left_free_entry) = self.inner.range(..=pivot.clone()).rev().next() {
+            if left_free_entry.0.contains(&to_reserve.start)
+                && left_free_entry.0.contains(&(to_reserve.end - 1))
+            {
+                let left_free_entry = left_free_entry.clone();
+                self.split_entry(&left_free_entry, to_reserve);
+                return Ok(());
+            }
+        }
+
+        // If the leftward check didn't succeed, the remaining case is that there may be a free
+        // list entry beginning right where our desired start is. Check for that, and check if
+        // the free list entry is long enough. If so, remove it, truncate it from the left, and
+        // re-insert it, returning success. If not, return failure.
+        if let Some(right_free_entry) = self.inner.range(pivot..).next() {
+            if right_free_entry.0.contains(&to_reserve.start)
+                && right_free_entry.0.contains(&(to_reserve.end - 1))
+            {
+                let right_free_entry = right_free_entry.clone();
+                self.split_entry(&right_free_entry, to_reserve);
+                return Ok(());
+            }
+        }
+
+        Err(FreeListExhaustedError)
+    }
+
+    /// Reserve the next available region of a given length, starting the search at the given
+    /// offset. Returns an error if there is no contiguous free region of this length available.
+    fn reserve_next(
+        &mut self,
+        search_range_start: u32,
+        requested_length: u32,
+    ) -> Result<u32, FreeListExhaustedError> {
+        let pivot = FreeListEntry(search_range_start..search_range_start);
+
+        // First, use a reverse range iterator to check if the start of the search range is already
+        // within a free list entry. If so, and there's enough room from the start of the search
+        // range to the end of the free list entry for the requested length, carve it up and
+        // return it.
+        if let Some(left_free_entry) = self.inner.range(..=pivot.clone()).rev().next() {
+            if left_free_entry.0.contains(&search_range_start)
+                && left_free_entry
+                    .0
+                    .contains(&(search_range_start + requested_length - 1))
+            {
+                let left_free_entry = left_free_entry.clone();
+                let new_range = search_range_start..search_range_start + requested_length;
+                self.split_entry(&left_free_entry, new_range);
+                return Ok(search_range_start);
+            }
+        }
+
+        // Failing that, check all free list entries at higher offsets for space, and allocate from
+        // the beginning of the first one that's large enough.
+        for free_entry in self.inner.range(pivot..) {
+            if free_entry.0.end - free_entry.0.start >= requested_length {
+                let free_entry = free_entry.clone();
+                self.split_entry(
+                    &free_entry,
+                    free_entry.0.start..free_entry.0.start + requested_length,
+                );
+                return Ok(free_entry.0.start);
+            }
+        }
+
+        Err(FreeListExhaustedError)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FreeList, FreeListExhaustedError};
+    use quickcheck::{Arbitrary, QuickCheck, TestResult};
+    use std::ops::Range;
+
+    const SIZE_LIMIT: usize = 256;
+
+    /// This is a simplified implementation of FreeList's API, for model-based testing purposes.
+    /// It represents free/occupied space with a bit map rather than ranges. The available range
+    /// is fixed at SIZE_LIMIT.
+    struct FreeListModel {
+        occupied: [bool; SIZE_LIMIT],
+    }
+
+    impl FreeListModel {
+        fn new() -> FreeListModel {
+            FreeListModel {
+                occupied: [false; SIZE_LIMIT],
+            }
+        }
+
+        fn reserve(&mut self, to_reserve: Range<u32>) -> Result<(), FreeListExhaustedError> {
+            assert!(usize::try_from(to_reserve.start).unwrap() < SIZE_LIMIT);
+            assert!(usize::try_from(to_reserve.end).unwrap() <= SIZE_LIMIT);
+
+            for i in to_reserve.clone() {
+                let i = usize::try_from(i).unwrap();
+                if self.occupied[i] {
+                    return Err(FreeListExhaustedError);
+                }
+            }
+            for i in to_reserve {
+                let i = usize::try_from(i).unwrap();
+                self.occupied[i] = true;
+            }
+
+            Ok(())
+        }
+
+        fn reserve_next(
+            &mut self,
+            search_range_start: u32,
+            requested_length: u32,
+        ) -> Result<u32, FreeListExhaustedError> {
+            let mut start: usize = search_range_start.try_into().unwrap();
+            let requested_length_usize = usize::try_from(requested_length).unwrap();
+            loop {
+                if SIZE_LIMIT - start < requested_length_usize {
+                    return Err(FreeListExhaustedError);
+                }
+                if let Some(next_occupied) = self.occupied[start..SIZE_LIMIT]
+                    .iter()
+                    .take(requested_length_usize)
+                    .position(|o| *o)
+                {
+                    start += next_occupied + 1;
+                } else {
+                    self.occupied[start..start + requested_length_usize].fill(true);
+                    return Ok(start.try_into().unwrap());
+                }
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    enum Op {
+        Reserve(Range<u32>),
+        ReserveNext(u32, u32),
+    }
+
+    impl Arbitrary for Op {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Op {
+            if bool::arbitrary(g) {
+                let mut a = 0;
+                let mut b = 0;
+                while a == b {
+                    a = u32::arbitrary(g) % u32::try_from(SIZE_LIMIT).unwrap();
+                    b = u32::arbitrary(g) % u32::try_from(SIZE_LIMIT).unwrap();
+                }
+                Op::Reserve(std::cmp::min(a, b)..std::cmp::max(a, b))
+            } else {
+                let start = u32::arbitrary(g) % u32::try_from(SIZE_LIMIT).unwrap();
+                let mut length = 0;
+                while length == 0 {
+                    length = u32::arbitrary(g) % u32::try_from(SIZE_LIMIT).unwrap();
+                }
+                Op::ReserveNext(start, length)
+            }
+        }
+    }
+
+    /// Check that the internal state of the free list is consistent, with none of the free ranges
+    /// overlapping, and no empty ranges.
+    fn validate_free_list(free_list: &FreeList) -> bool {
+        let mut last_end = 0;
+        for entry in free_list.inner.iter() {
+            let range = &entry.0;
+            if range.start >= range.end {
+                return false;
+            }
+            if range.start < last_end {
+                return false;
+            }
+            last_end = range.end;
+        }
+        true
+    }
+
+    fn property_model_equivalent(operations: Vec<Op>) -> TestResult {
+        let mut free_list = FreeList::new(SIZE_LIMIT.try_into().unwrap());
+        let mut free_list_model = FreeListModel::new();
+        for op in operations.iter() {
+            match op {
+                Op::Reserve(to_reserve) => {
+                    let actual_result = free_list.reserve(to_reserve.clone());
+                    let model_result = free_list_model.reserve(to_reserve.clone());
+                    if actual_result != model_result {
+                        return TestResult::failed();
+                    }
+                }
+                Op::ReserveNext(search_range_start, requested_length) => {
+                    let actual_result =
+                        free_list.reserve_next(*search_range_start, *requested_length);
+                    let model_result =
+                        free_list_model.reserve_next(*search_range_start, *requested_length);
+                    if actual_result != model_result {
+                        return TestResult::failed();
+                    }
+                }
+            }
+            if !validate_free_list(&free_list) {
+                return TestResult::failed();
+            }
+        }
+        return TestResult::passed();
+    }
+
+    #[test]
+    fn free_list_model_quickcheck() {
+        let mut qc = QuickCheck::new();
+        qc.quickcheck(property_model_equivalent as fn(Vec<Op>) -> TestResult);
+    }
+
+    #[test]
+    fn free_list_model_regression_1() {
+        assert!(!property_model_equivalent(vec![Op::ReserveNext(255, 1)]).is_failure());
     }
 }

@@ -21,3 +21,4 @@ tomestone-common = { path = "../tomestone-common" }
 [dev-dependencies]
 dotenv = "0.15.0"
 hex = "0.4.2"
+quickcheck = "1.0.3"
