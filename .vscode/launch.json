@@ -145,6 +145,30 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug sqpack_data_round_trip test",
+            "cargo": {
+                "args": [
+                    "test",
+                    "-p",
+                    "tomestone-sqpack",
+                    "--no-run",
+                    "--lib",
+                    "--package=tomestone-sqpack"
+                ],
+                "filter": {
+                    "name": "tomestone-sqpack",
+                    "kind": "lib"
+                }
+            },
+            "args": [
+                "--ignored",
+                "sqpack_data_round_trip"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'tomestone-dump'",
             "cargo": {
                 "args": [

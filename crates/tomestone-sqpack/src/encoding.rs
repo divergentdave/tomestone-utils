@@ -584,6 +584,23 @@ impl<IO: PackIO> PackSetWriter<IO> {
     }
 
     pub fn finalize(mut self) -> Result<IO, io::Error> {
+        // Write out zero-type entries, if their file locations have not been taken.
+        for (pointer, shifted_length) in self.side_table.zero_entries.iter() {
+            // add one for the entry header.
+            let total_length = (shifted_length + 1) * 128;
+            let offset = pointer.offset();
+            let to_reserve = offset..offset + total_length;
+            let data_file_id = pointer.data_file_id();
+            let dat_file_record = &mut self.dats[usize::from(data_file_id)];
+            if dat_file_record.free_list.reserve(to_reserve).is_ok() {
+                let mut entry_header_buf = [0u8; 16];
+                entry_header_buf[0] = 0x80;
+                entry_header_buf[12..16].copy_from_slice(&shifted_length.to_le_bytes());
+                dat_file_record.file.seek(SeekFrom::Start(offset.into()))?;
+                dat_file_record.file.write_all(&entry_header_buf)?;
+            }
+        }
+
         // Write file index entries into the first segment of the body, and
         // save folder hashes and ranges for a later section.
         let mut entry_buffer = [0; 16];

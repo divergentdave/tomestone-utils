@@ -4,7 +4,7 @@
 //! calculations, once I have a better understanding of the file format.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::File,
     io::{Read, Seek, SeekFrom},
 };
@@ -13,12 +13,12 @@ use nom::{
     combinator::{map, map_opt},
     number::streaming::{le_u16, le_u32},
     sequence::tuple,
-    IResult,
+    Finish, IResult,
 };
 
 use crate::{
     parser::{drive_streaming_parser_smaller, type_2_block_table, DataContentType},
-    DataFileSet, FilePointer, GameData, IndexHash2, SqPackId,
+    DataFileSet, Error, FilePointer, GameData, IndexHash2, SqPackId,
 };
 
 /// This structure provides extra information, beyond the list of compressed files in each SqPack
@@ -33,6 +33,8 @@ use crate::{
 pub struct SideTables {
     /// Extra information about individual data file entries.
     pub file_entries: BTreeMap<IndexHash2, FileEntryAux>,
+    /// Locations and (shifted) lengths of entries with type 0.
+    pub zero_entries: Vec<(FilePointer, u32)>,
     /// When encoding a SqPack data file using side tables, the first part of each file is reserved
     /// for entries to be re-encoded in their original positions. If any files to be encoded do not
     /// appear in the list of existing positions, or the space they were supposed to occupy has
@@ -95,20 +97,68 @@ fn data_entry_header_raw(input: &[u8]) -> IResult<&[u8], DataEntryHeaderRaw> {
     )(input)
 }
 
-fn count_zeros(file: &mut File) -> Result<usize, std::io::Error> {
-    let mut buf = [0; 4096];
-    let mut count = 0;
-    loop {
-        let read_count = file.read(&mut buf)?;
-        if read_count == 0 {
-            break;
+/// This function assumes the file handle it is passed has its cursor at the beginning of a data
+/// entry. It will read enough of the entry to determine its length, and seek to the end of it,
+/// rounded up to the next 128-byte boundary.
+fn skip_entry(
+    file: &mut File,
+    entry_offset: u64,
+    entry_header_fields: &DataEntryHeaderRaw,
+) -> Result<(), Error> {
+    match entry_header_fields.data_content_type {
+        DataContentType::Empty => todo!(),
+        DataContentType::Binary => {
+            // Read the last block table entry.
+            file.seek(SeekFrom::Current(
+                (entry_header_fields.number_of_blocks as i64 - 1) * 8,
+            ))?;
+            let mut block_table_entry_buf = vec![0; 8];
+            file.read_exact(&mut block_table_entry_buf)?;
+            let block_entry = type_2_block_table(1)(&block_table_entry_buf)
+                .finish()
+                .map_err(|e| e.code)?
+                .1[0];
+            let last_block_offset = block_entry.0;
+
+            // Read the last block's header.
+            file.seek(SeekFrom::Start(
+                entry_offset
+                    + u64::from(entry_header_fields.header_length)
+                    + u64::from(last_block_offset),
+            ))?;
+            let mut block_header_buf = [0; 16];
+            file.read_exact(&mut block_header_buf)?;
+            let block_header_length =
+                u32::from_le_bytes(block_header_buf[0..4].try_into().unwrap());
+            let compressed_length = u32::from_le_bytes(block_header_buf[8..12].try_into().unwrap());
+            let decompressed_length =
+                u32::from_le_bytes(block_header_buf[12..16].try_into().unwrap());
+
+            let last_block_end = if compressed_length == 32000 {
+                entry_offset
+                    + u64::from(entry_header_fields.header_length)
+                    + u64::from(last_block_offset)
+                    + u64::from(block_header_length)
+                    + u64::from(decompressed_length)
+            } else {
+                entry_offset
+                    + u64::from(entry_header_fields.header_length)
+                    + u64::from(last_block_offset)
+                    + u64::from(block_header_length)
+                    + u64::from(compressed_length)
+            };
+            let final_position = (last_block_end + 127) / 128 * 128;
+            file.seek(SeekFrom::Start(final_position))?;
         }
-        if let Some(nonzero_pos) = buf[..read_count].iter().position(|byte| *byte != 0) {
-            return Ok(count + nonzero_pos);
+        DataContentType::Model => todo!(),
+        DataContentType::Texture => todo!(),
+        DataContentType::Unsupported => {
+            file.seek(SeekFrom::Start(
+                entry_offset + u64::from(entry_header_fields.unknown_1) * 128,
+            ))?;
         }
-        count += read_count;
     }
-    Ok(count)
+    Ok(())
 }
 
 #[allow(unused)]
@@ -124,7 +174,9 @@ pub fn build_side_tables(
     }
 
     let mut file_entries = BTreeMap::new();
+    let mut file_pointers = BTreeSet::new();
     for (locator, hash) in reversed_index.iter() {
+        file_pointers.insert(*locator);
         let mut file = data_file_set.open(pack_id, locator.data_file_id()).unwrap();
         file.seek(SeekFrom::Start(locator.offset().into())).unwrap();
         let entry_header_fields =
@@ -153,41 +205,6 @@ pub fn build_side_tables(
                 })
                 .collect();
 
-            // find the first non-null byte after the last block, and round to 128
-            let last_block_offset = block_table.last().unwrap().0;
-            file.seek(SeekFrom::Start(
-                Into::<u64>::into(locator.offset())
-                    + Into::<u64>::into(entry_header_fields.header_length)
-                    + Into::<u64>::into(last_block_offset),
-            ))
-            .unwrap();
-            let mut block_header_buf = [0; 16];
-            file.read_exact(&mut block_header_buf).unwrap();
-            let block_header_length =
-                u32::from_le_bytes(block_header_buf[0..4].try_into().unwrap());
-            let compressed_length = u32::from_le_bytes(block_header_buf[8..12].try_into().unwrap());
-            let decompressed_length =
-                u32::from_le_bytes(block_header_buf[12..16].try_into().unwrap());
-            let last_block_end = if compressed_length == 32000 {
-                locator.offset()
-                    + entry_header_fields.header_length
-                    + last_block_offset
-                    + block_header_length
-                    + decompressed_length
-            } else {
-                locator.offset()
-                    + entry_header_fields.header_length
-                    + last_block_offset
-                    + block_header_length
-                    + compressed_length
-            };
-            file.seek(SeekFrom::Start(last_block_end.into())).unwrap();
-            let zeros = count_zeros(file).unwrap();
-            let padded_entry_size = (last_block_end - locator.offset()
-                + TryInto::<u32>::try_into(zeros).unwrap())
-                / 128
-                * 128;
-
             let entry = FileEntryAux {
                 unknown_entry_field: entry_header_fields.unknown_1,
                 content_type: entry_header_fields.data_content_type,
@@ -201,12 +218,15 @@ pub fn build_side_tables(
     let mut sqpack_data_datetimes = BTreeMap::new();
     let max_dat_number = data_file_set.max_dat_number(pack_id);
     let mut reserved_file_space = vec![0; (max_dat_number + 1).into()];
+    let mut zero_entries = Vec::new();
     for dat_file_number in 0..=max_dat_number {
-        let file = data_file_set.open(pack_id, dat_file_number).unwrap();
+        let mut file = data_file_set.open(pack_id, dat_file_number).unwrap();
 
+        // Save the original lengths of each data file.
         let file_len = file.metadata().unwrap().len().try_into().unwrap();
         reserved_file_space[usize::from(dat_file_number)] = file_len;
 
+        // Save the date and time fields from each data header.
         file.seek(SeekFrom::Start(24)).unwrap();
         let mut buf = [0u8; 8];
         file.read_exact(&mut buf).unwrap();
@@ -229,10 +249,50 @@ pub fn build_side_tables(
 
             sqpack_data_datetimes.insert(dat_file_number, (packed_date, packed_time));
         }
+
+        // Linear scan to read all entry headers, store the tombstones (type zero) and their lengths.
+        const SQPACK_HEADER_LENGTH: u32 = 1024;
+        file.seek(SeekFrom::Start(SQPACK_HEADER_LENGTH.into()))
+            .unwrap();
+        let mut data_header_length_buf = [0u8; 4];
+        file.read_exact(&mut data_header_length_buf).unwrap();
+        let data_header_length = u32::from_le_bytes(data_header_length_buf);
+        let entry_offset = SQPACK_HEADER_LENGTH + data_header_length;
+        file.seek(SeekFrom::Start(u64::from(entry_offset))).unwrap();
+
+        'outer: loop {
+            let entry_offset = file.stream_position().unwrap();
+            let entry_header_fields =
+                drive_streaming_parser_smaller(&mut file, data_entry_header_raw).unwrap();
+
+            if let DataContentType::Unsupported = entry_header_fields.data_content_type {
+                let pointer = FilePointer::new(dat_file_number, entry_offset.try_into().unwrap());
+                zero_entries.push((pointer, entry_header_fields.unknown_1));
+            }
+
+            skip_entry(file, entry_offset, &entry_header_fields).unwrap();
+
+            // Scan through null padding until there's a new entry header (aligned to 128).
+            let mut chunk_buf = [0; 128];
+            loop {
+                let res = file.read_exact(&mut chunk_buf);
+                if let Err(e) = &res {
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                        break 'outer;
+                    }
+                }
+                res.unwrap();
+                if chunk_buf[0..4] != [0, 0, 0, 0] {
+                    file.seek(SeekFrom::Current(-128)).unwrap();
+                    break;
+                }
+            }
+        }
     }
 
     SideTables {
         file_entries,
+        zero_entries,
         sqpack_data_datetimes,
         reserved_file_space,
     }
