@@ -304,6 +304,27 @@ fn type_4_block_table<'a>(
     }
 }
 
+/// Parses the headers of a data entry. The first several fields are common to all types of
+/// entries, and each type defines a different block table that occupies the rest of the headers.
+///
+/// ```text
+/// 0x00-0x04: Header length
+/// 0x04-0x08: Type (0: all zeros/tombstone, 1: empty?, 2: binary, 3: model, 4: texture)
+/// 0x08-0x0c: Uncompressed size
+/// 0x0c-0x10: Unknown
+/// 0x10-0x14: Block buffer size (shifted right by 7)
+/// 0x14-0x16: Number of blocks
+/// 0x16-0x18: Unknown
+/// 0x18-end: Block tables (varies)
+/// ```
+///
+/// Type 2/binary entry block table:
+/// ```text
+/// 0x18-0x1c: block offset
+/// 0x1c-0x1e: block size
+/// 0x1e-0x20: decompressed data size
+/// (repeats)
+/// ```
 fn data_entry_headers(start_position: u32) -> impl FnMut(&[u8]) -> IResult<&[u8], DataBlocks> {
     move |input: &[u8]| {
         let (input, header_data) = length_data(peek(le_u32))(input)?;

@@ -292,10 +292,26 @@ struct DatFileRecord<IO: PackIO> {
     free_list: FreeList,
 }
 
-struct CompressionBlock {
-    original_len: usize,
-    compressed: Vec<u8>,
-    block_size: u16,
+enum Block {
+    Compressed {
+        uncompressed_len: usize,
+        compressed: Vec<u8>,
+        block_size: u16,
+    },
+    Uncompressed {
+        len: u32,
+        data: Vec<u8>,
+        block_size: u16,
+    },
+}
+
+impl Block {
+    fn block_size(&self) -> u16 {
+        match self {
+            Block::Compressed { block_size, .. } => *block_size,
+            Block::Uncompressed { block_size, .. } => *block_size,
+        }
+    }
 }
 
 struct FolderEntry {
@@ -479,44 +495,57 @@ impl<IO: PackIO> PackSetWriter<IO> {
             self.create_new_dat_file()?;
         }
 
+        let file_entry_opt = self.side_table.file_entries.get(&hash2);
+
         // for now, assume the data entry has the binary type
-        let blocks: Vec<CompressionBlock> = data
+        let blocks: Vec<Block> = data
             .chunks(16000)
-            .map(|slice| {
-                let compressed = compression::compress_sqpack_block(slice)?;
-                let block_size =
-                    TryInto::<u16>::try_into((16 + compressed.len() + 127) / 128 * 128).unwrap();
-                Ok(CompressionBlock {
-                    original_len: slice.len(),
-                    compressed,
-                    block_size,
-                })
+            .enumerate()
+            .map(|(i, slice)| {
+                if file_entry_opt
+                    .and_then(|file_entry| file_entry.block_compression.get(i).copied())
+                    .unwrap_or(true)
+                {
+                    let compressed = compression::compress_sqpack_block(slice)?;
+                    let block_size =
+                        u16::try_from((16 + compressed.len() + 127) / 128 * 128).unwrap();
+                    Ok(Block::Compressed {
+                        uncompressed_len: slice.len(),
+                        compressed,
+                        block_size,
+                    })
+                } else {
+                    let len = slice.len().try_into().unwrap();
+                    let block_size = u16::try_from((16 + len + 127) / 128 * 128).unwrap();
+                    Ok(Block::Uncompressed {
+                        len,
+                        data: slice.to_vec(),
+                        block_size,
+                    })
+                }
             })
-            .collect::<Result<Vec<CompressionBlock>, io::Error>>()?;
+            .collect::<Result<Vec<Block>, io::Error>>()?;
         let entry_header_size: u32 = (((24 + 8 * blocks.len()) + 127) / 128 * 128)
             .try_into()
             .unwrap();
         let total_size_unpadded: u32 = entry_header_size
-            + TryInto::<u32>::try_into(
-                blocks
-                    .iter()
-                    .map(|chunk| (16 + chunk.compressed.len() + 127) / 128 * 128)
-                    .sum::<usize>(),
-            )
-            .unwrap();
+            + blocks
+                .iter()
+                .map(|chunk| u32::from(chunk.block_size()))
+                .sum::<u32>();
         let total_size_padded_shifted = (total_size_unpadded + 127) / 128;
         let total_size_padded = total_size_padded_shifted * 128;
 
-        let pointer = self.choose_entry_location(hash2, total_size_padded)?;
-
         let mut unknown = total_size_padded_shifted - 1; // still working on this, needs corrections
-        if let Some(entry) = self.side_table.file_entries.get(&hash2) {
+        if let Some(entry) = file_entry_opt {
             unknown = entry.unknown_entry_field;
         }
 
+        let pointer = self.choose_entry_location(hash2, total_size_padded)?;
+
         let block_buffer_size: u32 = blocks
             .iter()
-            .map(|block| (block.block_size >> 7) as u32)
+            .map(|block| u32::from(block.block_size() >> 7))
             .sum();
         let mut entry_header_buf = vec![0; entry_header_size as usize];
         entry_header_buf[0..4].copy_from_slice(&u32::to_le_bytes(entry_header_size)); // data entry header length
@@ -532,10 +561,16 @@ impl<IO: PackIO> PackSetWriter<IO> {
         for (i, block) in blocks.iter().enumerate() {
             entry_header_buf[24 + i * 8..28 + i * 8].copy_from_slice(&block_offset.to_le_bytes()); // offset
             entry_header_buf[28 + i * 8..30 + i * 8]
-                .copy_from_slice(&u16::to_le_bytes(block.block_size)); // block size
-            entry_header_buf[30 + i * 8..32 + i * 8]
-                .copy_from_slice(&u16::to_le_bytes(block.original_len.try_into().unwrap()));
-            block_offset += block.block_size as u32;
+                .copy_from_slice(&u16::to_le_bytes(block.block_size())); // block size
+            entry_header_buf[30 + i * 8..32 + i * 8].copy_from_slice(&u16::to_le_bytes(
+                match block {
+                    Block::Compressed {
+                        uncompressed_len, ..
+                    } => (*uncompressed_len).try_into().unwrap(),
+                    Block::Uncompressed { len, .. } => (*len).try_into().unwrap(),
+                },
+            ));
+            block_offset += u32::from(block.block_size());
         }
 
         let dat_file_record = &mut self
@@ -547,18 +582,31 @@ impl<IO: PackIO> PackSetWriter<IO> {
         dat_file.write_all(&entry_header_buf)?;
 
         for block in blocks.iter() {
-            let compressed_size: u32 = block.compressed.len().try_into().unwrap();
+            let (data, original_len) = match block {
+                Block::Compressed {
+                    compressed,
+                    uncompressed_len,
+                    ..
+                } => (compressed, *uncompressed_len),
+                Block::Uncompressed { data, .. } => (data, data.len()),
+            };
+
+            let compressed_size: u32 = data.len().try_into().unwrap();
+            let mut compressed_size_field = compressed_size;
+            if let Block::Uncompressed { .. } = block {
+                compressed_size_field = 32000;
+            }
             // the block itself is next
             let mut block_header_buf = [0; 16];
             block_header_buf[0] = 16;
-            block_header_buf[8..12].copy_from_slice(&compressed_size.to_le_bytes());
+            block_header_buf[8..12].copy_from_slice(&compressed_size_field.to_le_bytes());
             block_header_buf[12..16]
-                .copy_from_slice(&u32::to_le_bytes(block.original_len.try_into().unwrap()));
+                .copy_from_slice(&u32::to_le_bytes(original_len.try_into().unwrap()));
 
             dat_file.write_all(&block_header_buf)?;
 
             // compressed data is next
-            dat_file.write_all(&block.compressed)?;
+            dat_file.write_all(data)?;
             // pad out before next block
             let padding_length = (16 + compressed_size + 127) / 128 * 128 - (16 + compressed_size);
             dat_file.write_all(&[0; 127][..padding_length as usize])?;
