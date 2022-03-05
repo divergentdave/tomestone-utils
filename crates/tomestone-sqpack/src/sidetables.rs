@@ -21,6 +21,21 @@ use crate::{
     DataFileSet, Error, FilePointer, GameData, IndexHash2, SqPackId,
 };
 
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub struct ZeroEntry {
+    pub shifted_length: u32,
+    pub pointer: FilePointer,
+}
+
+impl ZeroEntry {
+    pub fn new(pointer: FilePointer, shifted_length: u32) -> ZeroEntry {
+        ZeroEntry {
+            pointer,
+            shifted_length,
+        }
+    }
+}
+
 /// This structure provides extra information, beyond the list of compressed files in each SqPack
 /// set, that is needed to perform a byte-exact round-trip of index and data files. Certain
 /// choices, such as whether compression is used, the positions of entries in the data files, etc.
@@ -34,7 +49,7 @@ pub struct SideTables {
     /// Extra information about individual data file entries.
     pub file_entries: BTreeMap<IndexHash2, FileEntryAux>,
     /// Locations and (shifted) lengths of entries with type 0.
-    pub zero_entries: Vec<(FilePointer, u32)>,
+    pub zero_entries: BTreeSet<ZeroEntry>,
     /// When encoding a SqPack data file using side tables, the first part of each file is reserved
     /// for entries to be re-encoded in their original positions. If any files to be encoded do not
     /// appear in the list of existing positions, or the space they were supposed to occupy has
@@ -218,7 +233,7 @@ pub fn build_side_tables(
     let mut sqpack_data_datetimes = BTreeMap::new();
     let max_dat_number = data_file_set.max_dat_number(pack_id);
     let mut reserved_file_space = vec![0; (max_dat_number + 1).into()];
-    let mut zero_entries = Vec::new();
+    let mut zero_entries = BTreeSet::new();
     for dat_file_number in 0..=max_dat_number {
         let mut file = data_file_set.open(pack_id, dat_file_number).unwrap();
 
@@ -267,7 +282,7 @@ pub fn build_side_tables(
 
             if let DataContentType::Unsupported = entry_header_fields.data_content_type {
                 let pointer = FilePointer::new(dat_file_number, entry_offset.try_into().unwrap());
-                zero_entries.push((pointer, entry_header_fields.unknown_1));
+                zero_entries.insert(ZeroEntry::new(pointer, entry_header_fields.unknown_1));
             }
 
             skip_entry(file, entry_offset, &entry_header_fields).unwrap();

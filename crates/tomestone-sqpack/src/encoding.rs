@@ -159,21 +159,31 @@ fn index_segment_headers_skeleton() -> IndexHeader {
 fn index_segment_headers_finalize(
     header: &mut IndexHeader,
     second_segment: &[u8],
-    folder_segment_present: bool,
     segments_not_present_heuristic: bool,
 ) {
-    header.segment_accumulators[1].offset = Some(2048 + header.segment_accumulators[0].length);
+    let mut next_segment_offset = 2048 + header.segment_accumulators[0].length;
+
+    // unknown
+    header.segment_accumulators[1].offset = Some(next_segment_offset);
     header.segment_accumulators[1].length = 256;
+    next_segment_offset += header.segment_accumulators[1].length;
     header.segment_accumulators[1]
         .hash
         .as_mut()
         .unwrap()
         .update(second_segment);
-    header.segment_accumulators[2].offset = Some(0);
-    if folder_segment_present {
-        header.segment_accumulators[3].offset = Some(
-            2048 + header.segment_accumulators[0].length + header.segment_accumulators[1].length,
-        );
+
+    // tombstone entries
+    if header.segment_accumulators[2].length == 0 {
+        header.segment_accumulators[2].offset = Some(0);
+    } else {
+        header.segment_accumulators[2].offset = Some(next_segment_offset);
+        next_segment_offset += header.segment_accumulators[2].length;
+    }
+
+    // folders
+    if header.segment_accumulators[3].length > 0 {
+        header.segment_accumulators[3].offset = Some(next_segment_offset);
     } else {
         header.segment_accumulators[3].offset = Some(0);
     }
@@ -227,7 +237,7 @@ fn index_segment_headers_finalize(
                 .finalize(),
         );
     }
-    if !folder_segment_present {
+    if header.segment_accumulators[3].length == 0 {
         // what is this? comes after fourth segment header and another 44 null bytes.
         header.buf[300] = 2;
     }
@@ -632,23 +642,6 @@ impl<IO: PackIO> PackSetWriter<IO> {
     }
 
     pub fn finalize(mut self) -> Result<IO, io::Error> {
-        // Write out zero-type entries, if their file locations have not been taken.
-        for (pointer, shifted_length) in self.side_table.zero_entries.iter() {
-            // add one for the entry header.
-            let total_length = (shifted_length + 1) * 128;
-            let offset = pointer.offset();
-            let to_reserve = offset..offset + total_length;
-            let data_file_id = pointer.data_file_id();
-            let dat_file_record = &mut self.dats[usize::from(data_file_id)];
-            if dat_file_record.free_list.reserve(to_reserve).is_ok() {
-                let mut entry_header_buf = [0u8; 16];
-                entry_header_buf[0] = 0x80;
-                entry_header_buf[12..16].copy_from_slice(&shifted_length.to_le_bytes());
-                dat_file_record.file.seek(SeekFrom::Start(offset.into()))?;
-                dat_file_record.file.write_all(&entry_header_buf)?;
-            }
-        }
-
         // Write file index entries into the first segment of the body, and
         // save folder hashes and ranges for a later section.
         let mut entry_buffer = [0; 16];
@@ -698,7 +691,36 @@ impl<IO: PackIO> PackSetWriter<IO> {
         index_second_segment[12..16].fill(0xff);
         self.index.write_all(&index_second_segment)?;
 
-        // folder segment
+        // Write out zero-type/tombstone entries, if their file locations have not been taken.
+        // Write their positions in the third segment, sorted first by increasing length, then by
+        // increasing offset.
+        let mut entry_header_buf = [0u8; 16];
+        let mut index_entry_buf = [0u8; 16];
+        let seg_accum = &mut self.index_segment_headers.segment_accumulators[2];
+        for entry in self.side_table.zero_entries.iter() {
+            // add one for the entry header.
+            let total_length = (entry.shifted_length + 1) * 128;
+            let offset = entry.pointer.offset();
+            let to_reserve = offset..offset + total_length;
+            let data_file_id = entry.pointer.data_file_id();
+            let dat_file_record = &mut self.dats[usize::from(data_file_id)];
+            if dat_file_record.free_list.reserve(to_reserve).is_ok() {
+                // write entry header to data file.
+                entry_header_buf[0] = 0x80;
+                entry_header_buf[12..16].copy_from_slice(&entry.shifted_length.to_le_bytes());
+                dat_file_record.file.seek(SeekFrom::Start(offset.into()))?;
+                dat_file_record.file.write_all(&entry_header_buf)?;
+
+                // write index entry to index segment.
+                index_entry_buf[4..8].copy_from_slice(&(entry.pointer.offset() >> 7).to_le_bytes()); // TODO: what about file ID?
+                index_entry_buf[8..12].copy_from_slice(&(entry.shifted_length + 1).to_le_bytes());
+                self.index.write_all(&index_entry_buf)?;
+                seg_accum.length += 16;
+                seg_accum.hash.as_mut().unwrap().update(&index_entry_buf);
+            }
+        }
+
+        // folders in the fourth segment.
         let mut entry_buffer = [0; 16];
         let seg_accum = &mut self.index_segment_headers.segment_accumulators[3];
         for folder in folder_table {
@@ -717,7 +739,6 @@ impl<IO: PackIO> PackSetWriter<IO> {
         index_segment_headers_finalize(
             &mut self.index_segment_headers,
             &index_second_segment,
-            true,
             self.segments_not_present_heuristic,
         );
         self.index.write_all(&self.index_segment_headers.buf)?;
@@ -746,7 +767,6 @@ impl<IO: PackIO> PackSetWriter<IO> {
         index_segment_headers_finalize(
             &mut self.index2_segment_headers,
             &index2_second_segment,
-            false,
             self.segments_not_present_heuristic,
         );
         self.index2.write_all(&self.index2_segment_headers.buf)?;

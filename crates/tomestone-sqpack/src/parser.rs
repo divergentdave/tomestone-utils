@@ -153,6 +153,28 @@ fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
     )(input)
 }
 
+/// Parses an index file header.
+///
+/// ```text
+/// 0x400-0x404: Header length
+/// 0x404-0x408: Always 01000000
+/// 0x408-0x40c: First index segment offset
+/// 0x40c-0x410: First index segment size
+/// 0x410-0x424: First index segment SHA-1 hash
+/// 0x424-0x450: Null bytes
+/// 0x450-0x454: Number of .dat* files in this set
+/// 0x454-0x458: Second index segment offset
+/// 0x458-0x45c: Second index segment size
+/// 0x45c-0x470: Second index segment SHA-1 hash
+/// 0x470-0x49c: Null bytes
+/// 0x49c-0x4a0: Third index segment offset
+/// 0x4a0-0x4a4: Third index segment size
+/// 0x4a4-0x4b8: Third index segment SHA-1 hash
+/// 0x4b8-0x4e4: Null bytes
+/// 0x4e4-0x4e8: Fourth index segment offset
+/// 0x4e8-0x4ec: Fourth index segment size
+/// 0x4ec-0x500: Fourth index segment SHA-1 hash
+/// ```
 fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, u32, [IndexSegmentHeader; 4])> {
     integrity_checked_header(
         input,
