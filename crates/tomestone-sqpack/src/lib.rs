@@ -1278,14 +1278,13 @@ mod tests {
                     category: crate::Category::Bg,
                     expansion: crate::Expansion::Ex3,
                     number: 5,
-                }/*
-            || pack_id
-                == SqPackId {
-                    category: crate::Category::GameScript,
-                    expansion: crate::Expansion::Base,
-                    number: 0,
                 }
-            */)
+                || pack_id
+                    == SqPackId {
+                        category: crate::Category::GameScript,
+                        expansion: crate::Expansion::Base,
+                        number: 0,
+                    })
             {
                 continue;
             }

@@ -347,6 +347,8 @@ pub struct PackSetWriter<IO: PackIO> {
     segments_not_present_heuristic: bool,
     side_table: SideTables,
     extra_folder_heuristic: bool,
+    index_second_segment_heuristic: bool,
+    index2_second_segment_heuristic: bool,
 }
 
 impl<IO: PackIO> PackSetWriter<IO> {
@@ -363,6 +365,15 @@ impl<IO: PackIO> PackSetWriter<IO> {
             }
         );
         let extra_folder_heuristic = matches!(
+            pack_id,
+            SqPackId {
+                category: Category::Bg,
+                expansion: Expansion::Ex3,
+                ..
+            }
+        );
+        let index_second_segment_heuristic = true;
+        let index2_second_segment_heuristic = !matches!(
             pack_id,
             SqPackId {
                 category: Category::Bg,
@@ -401,6 +412,8 @@ impl<IO: PackIO> PackSetWriter<IO> {
             segments_not_present_heuristic,
             side_table: Default::default(),
             extra_folder_heuristic,
+            index_second_segment_heuristic,
+            index2_second_segment_heuristic,
         };
         Ok(writer)
     }
@@ -699,7 +712,11 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
         // unknown data in the second segment.
         let mut index_second_segment = [0; 256];
-        index_second_segment[0..8].fill(0xff);
+        if self.index_second_segment_heuristic {
+            index_second_segment[0..8].fill(0xff);
+        } else {
+            index_second_segment[0..4].fill(0xff);
+        }
         index_second_segment[12..16].fill(0xff);
         self.index.write_all(&index_second_segment)?;
 
@@ -769,7 +786,11 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
         // unknown data in the second segment.
         let mut index2_second_segment = [0; 256];
-        index2_second_segment[0..4].fill(0xff);
+        if self.index2_second_segment_heuristic {
+            index2_second_segment[0..8].fill(0xff);
+        } else {
+            index2_second_segment[0..4].fill(0xff);
+        }
         index2_second_segment[12..16].fill(0xff);
         self.index2.write_all(&index2_second_segment)?;
 
