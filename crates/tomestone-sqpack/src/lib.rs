@@ -1284,6 +1284,12 @@ mod tests {
                         category: crate::Category::GameScript,
                         expansion: crate::Expansion::Base,
                         number: 0,
+                    }
+                || pack_id
+                    == SqPackId {
+                        category: crate::Category::Exd,
+                        expansion: crate::Expansion::Base,
+                        number: 0,
                     })
             {
                 continue;
