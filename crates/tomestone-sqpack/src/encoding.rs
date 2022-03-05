@@ -346,6 +346,7 @@ pub struct PackSetWriter<IO: PackIO> {
     file_size_limit: u32,
     segments_not_present_heuristic: bool,
     side_table: SideTables,
+    extra_folder_heuristic: bool,
 }
 
 impl<IO: PackIO> PackSetWriter<IO> {
@@ -358,6 +359,14 @@ impl<IO: PackIO> PackSetWriter<IO> {
             } | SqPackId {
                 category: Category::SqpackTest,
                 expansion: Expansion::Base,
+                ..
+            }
+        );
+        let extra_folder_heuristic = matches!(
+            pack_id,
+            SqPackId {
+                category: Category::Bg,
+                expansion: Expansion::Ex3,
                 ..
             }
         );
@@ -391,6 +400,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             file_size_limit,
             segments_not_present_heuristic,
             side_table: Default::default(),
+            extra_folder_heuristic,
         };
         Ok(writer)
     }
@@ -676,14 +686,16 @@ impl<IO: PackIO> PackSetWriter<IO> {
         }
 
         // TODO: need to figure out where this comes from, hardcoded for now
-        folder_table.insert(
-            0,
-            FolderEntry {
-                folder_crc: 0,
-                files_offset: 0xa00,
-                files_span: 16,
-            },
-        );
+        if self.extra_folder_heuristic {
+            folder_table.insert(
+                0,
+                FolderEntry {
+                    folder_crc: 0,
+                    files_offset: 0xa00,
+                    files_span: 16,
+                },
+            );
+        }
 
         // unknown data in the second segment.
         let mut index_second_segment = [0; 256];
