@@ -169,7 +169,7 @@ fn skip_entry(
         DataContentType::Texture => todo!(),
         DataContentType::Unsupported => {
             file.seek(SeekFrom::Start(
-                entry_offset + u64::from(entry_header_fields.unknown_1) * 128,
+                entry_offset + u64::from(std::cmp::max(entry_header_fields.unknown_1, 1)) * 128,
             ))?;
         }
     }
