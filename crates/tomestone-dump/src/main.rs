@@ -496,6 +496,13 @@ fn app() -> App<'static> {
         .version(crate_version!())
         .author(crate_authors!())
         .about(crate_description!())
+        .arg(
+            Arg::new("ffxiv-install-dir")
+                .long("ffxiv-install-dir")
+                .required(true)
+                .takes_value(true)
+                .env("FFXIV_INSTALL_DIR"),
+        )
         .subcommand(
             App::new("raw")
                 .about("Extract a file and write it to standard output")
@@ -556,13 +563,14 @@ fn app() -> App<'static> {
 
 fn main() {
     dotenv::dotenv().ok();
-    let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-        root
-    } else {
-        eprintln!("error: set the environment variable FFXIV_INSTALL_DIR to the game's installation directory");
-        process::exit(1);
-    };
-    let game_data = match GameData::new(&root) {
+
+    let app_matches = app().get_matches();
+
+    let db = open_db();
+    let mut statements = db.prepare().unwrap();
+
+    let root = app_matches.value_of_os("ffxiv-install-dir").unwrap();
+    let game_data = match GameData::new(root) {
         Ok(game_data) => game_data,
         Err(e) => {
             eprintln!(
@@ -573,11 +581,6 @@ fn main() {
         }
     };
     let mut data_file_set = game_data.data_files();
-
-    let app_matches = app().get_matches();
-
-    let db = open_db();
-    let mut statements = db.prepare().unwrap();
 
     match app_matches.subcommand() {
         Some(("raw", matches)) => {

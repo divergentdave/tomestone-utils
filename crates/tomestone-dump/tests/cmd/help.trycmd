@@ -5,11 +5,12 @@ David Cook <divergentdave@gmail.com>
 
 
 USAGE:
-    tomestone-dump [SUBCOMMAND]
+    tomestone-dump --ffxiv-install-dir <ffxiv-install-dir> [SUBCOMMAND]
 
 OPTIONS:
-    -h, --help       Print help information
-    -V, --version    Print version information
+        --ffxiv-install-dir <ffxiv-install-dir>    [env: FFXIV_INSTALL_DIR=]
+    -h, --help                                     Print help information
+    -V, --version                                  Print version information
 
 SUBCOMMANDS:
     discover_paths    Search all files for paths of other files, and update the path database
@@ -27,7 +28,7 @@ tomestone-dump-exd
 Extract and dump EXHF/EXDF files
 
 USAGE:
-    tomestone-dump exd [OPTIONS] <path>
+    tomestone-dump --ffxiv-install-dir <ffxiv-install-dir> exd [OPTIONS] <path>
 
 ARGS:
     <path>    
@@ -43,7 +44,7 @@ tomestone-dump-grep
 Search file contents for regular expressions
 
 USAGE:
-    tomestone-dump grep [OPTIONS] <pattern> [path]
+    tomestone-dump --ffxiv-install-dir <ffxiv-install-dir> grep [OPTIONS] <pattern> [path]
 
 ARGS:
     <pattern>    
