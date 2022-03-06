@@ -741,7 +741,9 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 dat_file_record.file.write_all(&entry_header_buf)?;
 
                 // write index entry to index segment.
-                index_entry_buf[4..8].copy_from_slice(&(entry.pointer.offset() >> 7).to_le_bytes()); // TODO: what about file ID?
+                index_entry_buf[0..4]
+                    .copy_from_slice(&u32::from(entry.pointer.data_file_id()).to_le_bytes());
+                index_entry_buf[4..8].copy_from_slice(&(entry.pointer.offset() >> 7).to_le_bytes());
                 index_entry_buf[8..12].copy_from_slice(&(entry.shifted_length + 1).to_le_bytes());
                 self.index.write_all(&index_entry_buf)?;
                 seg_accum.length += 16;
