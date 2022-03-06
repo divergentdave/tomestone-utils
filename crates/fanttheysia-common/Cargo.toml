@@ -1,0 +1,5 @@
+[package]
+name = "fantthteysia-common"
+version = "0.1.0"
+authors = ["David Cook <divergentdave@gmail.com>"]
+edition = "2021"
