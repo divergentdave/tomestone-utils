@@ -1014,8 +1014,8 @@ mod tests {
         encoding::{PackIO, PackSetWriter, SetLen},
         parser::decompress_file,
         sidetables::build_side_tables,
-        Expansion, FilePointer, GameData, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2,
-        SqPackId,
+        Category, Expansion, FilePointer, GameData, IndexEntry1, IndexEntry2, IndexHash1,
+        IndexHash2,
     };
 
     #[test]
@@ -1298,27 +1298,29 @@ mod tests {
 
         for pack_id in game_data.iter_packs() {
             // TODOs
-            if !(pack_id
-                == SqPackId {
-                    category: crate::Category::Bg,
-                    expansion: crate::Expansion::Ex3,
-                    number: 5,
-                }
-                || pack_id
-                    == SqPackId {
-                        category: crate::Category::GameScript,
-                        expansion: crate::Expansion::Base,
-                        number: 0,
-                    }
-                || pack_id
-                    == SqPackId {
-                        category: crate::Category::Exd,
-                        expansion: crate::Expansion::Base,
-                        number: 0,
-                    })
-            {
+            if matches!(
+                pack_id.category,
+                Category::Common
+                    | Category::BgCommon
+                    | Category::Bg
+                    | Category::Cut
+                    | Category::Chara
+                    | Category::Ui
+                    | Category::Vfx
+            ) {
+                // Model and texture data entries aren't supported yet.
                 continue;
             }
+            if matches!(pack_id.category, Category::SqpackTest | Category::Debug) {
+                // weird files, get an EOF error
+                continue;
+            }
+
+            if matches!(pack_id.category, Category::Music) {
+                // TODO
+                continue;
+            }
+
             dbg!(pack_id);
 
             let mut original_index_file = Vec::new();
