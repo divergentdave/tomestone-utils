@@ -87,13 +87,20 @@ impl PackIO for RealPackIO {
 struct SqPackHeader([u8; 1024]);
 
 impl SqPackHeader {
-    fn new(platform_id: PlatformId, pack_type: SqPackType) -> SqPackHeader {
+    fn new(platform_id: PlatformId, pack_type: SqPackType, dat_file_number: u8) -> SqPackHeader {
         let mut header = [0u8; 1024];
-        header[..6].copy_from_slice(b"SqPack");
+        if dat_file_number == 0 {
+            header[..6].copy_from_slice(b"SqPack");
+            header[12..16].copy_from_slice(&1024u32.to_le_bytes());
+            header[16..20].copy_from_slice(&1u32.to_le_bytes());
+            header[20..24].copy_from_slice(&(pack_type as u32).to_le_bytes());
+        } else {
+            // Do not understand these differences yet.
+            header[0] = 0x80;
+            header[12..16].copy_from_slice(&0xfu32.to_le_bytes());
+            header[20] = 2;
+        }
         header[8..12].copy_from_slice(&(platform_id as u32).to_le_bytes());
-        header[12..16].copy_from_slice(&1024u32.to_le_bytes());
-        header[16..20].copy_from_slice(&1u32.to_le_bytes());
-        header[20..24].copy_from_slice(&(pack_type as u32).to_le_bytes());
         header[32..36].copy_from_slice(b"\xff\xff\xff\xff");
         SqPackHeader(header)
     }
@@ -127,7 +134,6 @@ fn index_segment_headers_skeleton() -> IndexHeader {
     let mut header = [0u8; 1024];
     header[..4].copy_from_slice(&1024u32.to_le_bytes());
     header[4..8].copy_from_slice(&1u32.to_le_bytes());
-    header[80..84].copy_from_slice(&1u32.to_le_bytes());
     let segment_accumulators: [SegmentAccumulator; 4] = [
         SegmentAccumulator {
             offset: Some(2048),
@@ -160,6 +166,7 @@ fn index_segment_headers_finalize(
     header: &mut IndexHeader,
     second_segment: &[u8],
     segments_not_present_heuristic: bool,
+    number_of_dat_files: u8,
 ) {
     let mut next_segment_offset = 2048 + header.segment_accumulators[0].length;
 
@@ -200,6 +207,8 @@ fn index_segment_headers_finalize(
                 .finalize(),
         );
     }
+
+    header.buf[80] = number_of_dat_files;
 
     header.buf[84..88]
         .copy_from_slice(&header.segment_accumulators[1].offset.unwrap().to_le_bytes());
@@ -255,7 +264,7 @@ fn index_segment_headers_finalize(
 /// 0x004-0x008: Null bytes
 /// 0x008-0x00C: 16
 /// 0x00C-0x010: File length, shifted right by 7
-/// 0x010-0x014: Data file number plus one (1 through 8)
+/// 0x010-0x014: Data file number plus one (1 through 8) (incorrect!)
 /// 0x014-0x018: Null bytes
 /// 0x018-0x01C: Data file size limit
 /// 0x01C-0x020: Null bytes
@@ -268,11 +277,12 @@ struct DataHeader {
     buf: [u8; 1024],
 }
 
-fn data_header_skeleton(dat_file_number: u8, file_size_limit: u32) -> DataHeader {
+fn data_header_skeleton(_dat_file_number: u8, file_size_limit: u32) -> DataHeader {
     let mut header = [0u8; 1024];
     header[..4].copy_from_slice(&1024u32.to_le_bytes());
     header[8..12].copy_from_slice(&16u32.to_le_bytes());
-    header[16] = dat_file_number + 1;
+    // TODO: it seems this is path dependent, and needs to be stored in the sidetables
+    header[16] = 1; //dat_file_number + 1;
     header[24..28].copy_from_slice(&file_size_limit.to_le_bytes());
     DataHeader { buf: header }
 }
@@ -386,12 +396,12 @@ impl<IO: PackIO> PackSetWriter<IO> {
             _ => 2000000000,
         };
         let mut index = io.open_index_file()?;
-        let index_sqpack_header = SqPackHeader::new(platform_id, SqPackType::Index);
+        let index_sqpack_header = SqPackHeader::new(platform_id, SqPackType::Index, 0);
         index.write_all(&index_sqpack_header.0)?;
         let index_segment_headers = index_segment_headers_skeleton();
         index.write_all(&index_segment_headers.buf)?;
         let mut index2 = io.open_index2_file()?;
-        let index2_sqpack_header = SqPackHeader::new(platform_id, SqPackType::Index);
+        let index2_sqpack_header = SqPackHeader::new(platform_id, SqPackType::Index, 0);
         index2.write_all(&index2_sqpack_header.0)?;
         let index2_segment_headers = index_segment_headers_skeleton();
         index2.write_all(&index2_segment_headers.buf)?;
@@ -434,7 +444,8 @@ impl<IO: PackIO> PackSetWriter<IO> {
             file.set_len((*reserved_length).into())?
         }
 
-        let sqpack_header = SqPackHeader::new(self.platform_id, SqPackType::Data);
+        let sqpack_header =
+            SqPackHeader::new(self.platform_id, SqPackType::Data, self.dat_file_number);
         file.write_all(&sqpack_header.0)?;
         let data_header = data_header_skeleton(self.dat_file_number, self.file_size_limit);
         file.write_all(&data_header.buf)?;
@@ -472,15 +483,19 @@ impl<IO: PackIO> PackSetWriter<IO> {
     ) -> Result<FilePointer, io::Error> {
         // Check for a preferred location from the side tables, and check if it's free.
         if let Some(side_table_entry) = self.side_table.file_entries.get(&hash2) {
-            let data_file_id = side_table_entry.entry_pointer.data_file_id;
-            let desired_range = side_table_entry.entry_pointer.offset
-                ..side_table_entry.entry_pointer.offset + total_size_padded;
+            let entry_pointer = side_table_entry.entry_pointer;
+            let data_file_id = entry_pointer.data_file_id;
+            while usize::from(data_file_id) >= self.dats.len() {
+                self.dat_file_number += 1;
+                self.create_new_dat_file()?;
+            }
+            let desired_range = entry_pointer.offset..entry_pointer.offset + total_size_padded;
             if self.dats[usize::from(data_file_id)]
                 .free_list
                 .reserve(desired_range)
                 .is_ok()
             {
-                return Ok(side_table_entry.entry_pointer);
+                return Ok(entry_pointer);
             }
         }
 
@@ -771,6 +786,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             &mut self.index_segment_headers,
             &index_second_segment,
             self.segments_not_present_heuristic,
+            self.dat_file_number + 1,
         );
         self.index.write_all(&self.index_segment_headers.buf)?;
 
@@ -803,6 +819,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             &mut self.index2_segment_headers,
             &index2_second_segment,
             self.segments_not_present_heuristic,
+            self.dat_file_number + 1,
         );
         self.index2.write_all(&self.index2_segment_headers.buf)?;
 

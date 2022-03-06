@@ -1365,10 +1365,10 @@ mod tests {
 
             let side_table = build_side_tables(&game_data, &mut data_file_set, pack_id);
 
-            let mut original_dat_file_count: usize = 0;
+            let mut original_max_dat_file_id: usize = 0;
             let all_files = entries.into_iter().map(|(hash, pointer)| {
-                if usize::from(pointer.data_file_id()) > original_dat_file_count {
-                    original_dat_file_count = pointer.data_file_id().into();
+                if usize::from(pointer.data_file_id()) > original_max_dat_file_id {
+                    original_max_dat_file_id = pointer.data_file_id().into();
                 }
                 let data = decompress_file(
                     data_file_set.open(pack_id, pointer.data_file_id()).unwrap(),
@@ -1387,9 +1387,7 @@ mod tests {
                 let hash1 = hashes.0.unwrap();
                 writer.add_file_by_hashes(hash1, hash2, &data).unwrap();
             }
-            if original_dat_file_count == 0 {
-                original_dat_file_count = 1;
-            }
+            let original_dat_file_count = original_max_dat_file_id + 1;
             let mocked_io = writer.finalize().unwrap();
 
             let index_matches =
