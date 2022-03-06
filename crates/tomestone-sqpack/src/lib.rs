@@ -1316,11 +1316,6 @@ mod tests {
                 continue;
             }
 
-            if matches!(pack_id.category, Category::Music) {
-                // TODO
-                continue;
-            }
-
             dbg!(pack_id);
 
             let mut original_index_file = Vec::new();

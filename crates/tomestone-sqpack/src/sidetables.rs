@@ -17,8 +17,12 @@ use nom::{
 };
 
 use crate::{
-    parser::{drive_streaming_parser_smaller, type_2_block_table, DataContentType},
-    DataFileSet, Error, FilePointer, GameData, IndexHash2, SqPackId, ZeroEntry,
+    parser::{
+        drive_streaming_parser, drive_streaming_parser_smaller, index_segment_headers,
+        sqpack_header_outer, type_2_block_table, DataContentType, GrowableBufReader,
+    },
+    DataFileSet, Error, FilePointer, GameData, IndexEntry1, IndexEntry2, IndexHash2, SqPackId,
+    ZeroEntry,
 };
 
 /// This structure provides extra information, beyond the list of compressed files in each SqPack
@@ -46,6 +50,18 @@ pub struct SideTables {
     /// stored here, if they aren't all null bytes. (Index files appear to have all null bytes in
     /// these fields.)
     pub sqpack_data_datetimes: BTreeMap<u8, (u32, u32)>,
+    /// When an index segment is empty, indicates whether the segment's offset should point to
+    /// where the segment would appear (true), or if its offset should be encoded as zero (false).
+    /// This has no effect if the index segment is not empty.
+    ///
+    /// The working hypothesis is that these offset fields are path-dependent across multiple
+    /// updates to the files, so if a segment is non-empty in one revision, then the offset will
+    /// be filled in to point to the segment, and if the segment is later emptied out, then the
+    /// offset field won't be set back to zero.
+    pub index_empty_segment_offset_present: [bool; 4],
+    /// This functions the same as `index_empty_segment_offset_present`, but applies to `.index2`
+    /// files.
+    pub index2_empty_segment_offset_present: [bool; 4],
 }
 
 #[derive(Clone)]
@@ -308,10 +324,37 @@ pub fn build_side_tables(
         }
     }
 
+    // Check if index segment offset fields are nonzero.
+    let file = File::open(game_data.build_index_path::<IndexEntry1>(pack_id)).unwrap();
+    let mut bufreader = GrowableBufReader::new(file);
+    let file_header = drive_streaming_parser(&mut bufreader, sqpack_header_outer).unwrap();
+    let index_header = drive_streaming_parser(&mut bufreader, index_segment_headers).unwrap();
+    let segment_headers = index_header.2;
+    let index_empty_segment_offset_present = [
+        segment_headers[0].offset != 0,
+        segment_headers[1].offset != 0,
+        segment_headers[2].offset != 0,
+        segment_headers[3].offset != 0,
+    ];
+
+    let file = File::open(game_data.build_index_path::<IndexEntry2>(pack_id)).unwrap();
+    let mut bufreader = GrowableBufReader::new(file);
+    let file_header = drive_streaming_parser(&mut bufreader, sqpack_header_outer).unwrap();
+    let index_header = drive_streaming_parser(&mut bufreader, index_segment_headers).unwrap();
+    let segment_headers = index_header.2;
+    let index2_empty_segment_offset_present = [
+        segment_headers[0].offset != 0,
+        segment_headers[1].offset != 0,
+        segment_headers[2].offset != 0,
+        segment_headers[3].offset != 0,
+    ];
+
     SideTables {
         file_entries,
         zero_entries,
         sqpack_data_datetimes,
         reserved_file_space,
+        index_empty_segment_offset_present,
+        index2_empty_segment_offset_present,
     }
 }

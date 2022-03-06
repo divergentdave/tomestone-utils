@@ -167,6 +167,7 @@ fn index_segment_headers_finalize(
     second_segment: &[u8],
     segments_not_present_heuristic: bool,
     number_of_dat_files: u8,
+    empty_segment_offset_present: [bool; 4],
 ) {
     let mut next_segment_offset = 2048 + header.segment_accumulators[0].length;
 
@@ -181,15 +182,15 @@ fn index_segment_headers_finalize(
         .update(second_segment);
 
     // tombstone entries
-    if header.segment_accumulators[2].length == 0 {
-        header.segment_accumulators[2].offset = Some(0);
-    } else {
+    if header.segment_accumulators[2].length > 0 || empty_segment_offset_present[2] {
         header.segment_accumulators[2].offset = Some(next_segment_offset);
         next_segment_offset += header.segment_accumulators[2].length;
+    } else {
+        header.segment_accumulators[2].offset = Some(0);
     }
 
     // folders
-    if header.segment_accumulators[3].length > 0 {
+    if header.segment_accumulators[3].length > 0 || empty_segment_offset_present[3] {
         header.segment_accumulators[3].offset = Some(next_segment_offset);
     } else {
         header.segment_accumulators[3].offset = Some(0);
@@ -787,6 +788,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             &index_second_segment,
             self.segments_not_present_heuristic,
             self.dat_file_number + 1,
+            self.side_table.index_empty_segment_offset_present,
         );
         self.index.write_all(&self.index_segment_headers.buf)?;
 
@@ -820,6 +822,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             &index2_second_segment,
             self.segments_not_present_heuristic,
             self.dat_file_number + 1,
+            self.side_table.index2_empty_segment_offset_present,
         );
         self.index2.write_all(&self.index2_segment_headers.buf)?;
 

@@ -175,7 +175,9 @@ fn index_segment_header(input: &[u8]) -> IResult<&[u8], IndexSegmentHeader> {
 /// 0x4e8-0x4ec: Fourth index segment size
 /// 0x4ec-0x500: Fourth index segment SHA-1 hash
 /// ```
-fn index_segment_headers(input: &[u8]) -> IResult<&[u8], (u32, u32, [IndexSegmentHeader; 4])> {
+pub(crate) fn index_segment_headers(
+    input: &[u8],
+) -> IResult<&[u8], (u32, u32, [IndexSegmentHeader; 4])> {
     integrity_checked_header(
         input,
         map(le_u32, |size| size.try_into().unwrap()),
