@@ -236,20 +236,45 @@ impl IndexEntry for IndexEntry2 {
     }
 }
 
+/// Identifies the location and size of an entry in a data file with type zero. These are likely
+/// placeholders for files that were previously deleted. Hypothetically, their purpose is to
+/// reduce the size of binary patches when files are added and removed from SqPack files, and the
+/// list of these entries in `.index` files, sorted by their size, provides an efficient way to
+/// look up and reuse these spaces.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ZeroEntry {
+    pub shifted_length: u32,
+    pub pointer: FilePointer,
+}
+
+impl ZeroEntry {
+    pub fn new(pointer: FilePointer, shifted_length: u32) -> ZeroEntry {
+        ZeroEntry {
+            pointer,
+            shifted_length,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Index<E: IndexEntry> {
     index_table: Vec<E>,
     collision_table: Vec<CollisionEntry<E::Hash>>,
+    /// Note: it is expected this will be populated for `.index` files, and empty for `.index2`
+    /// files.
+    tombstone_table: Vec<ZeroEntry>,
 }
 
 impl<E: IndexEntry> Index<E> {
     pub(crate) fn new(
         index_table: Vec<E>,
         collision_table: Vec<CollisionEntry<E::Hash>>,
+        tombstone_table: Vec<ZeroEntry>,
     ) -> Index<E> {
         Index {
             index_table,
             collision_table,
+            tombstone_table,
         }
     }
 

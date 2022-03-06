@@ -18,23 +18,8 @@ use nom::{
 
 use crate::{
     parser::{drive_streaming_parser_smaller, type_2_block_table, DataContentType},
-    DataFileSet, Error, FilePointer, GameData, IndexHash2, SqPackId,
+    DataFileSet, Error, FilePointer, GameData, IndexHash2, SqPackId, ZeroEntry,
 };
-
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-pub struct ZeroEntry {
-    pub shifted_length: u32,
-    pub pointer: FilePointer,
-}
-
-impl ZeroEntry {
-    pub fn new(pointer: FilePointer, shifted_length: u32) -> ZeroEntry {
-        ZeroEntry {
-            pointer,
-            shifted_length,
-        }
-    }
-}
 
 /// This structure provides extra information, beyond the list of compressed files in each SqPack
 /// set, that is needed to perform a byte-exact round-trip of index and data files. Certain
@@ -230,10 +215,17 @@ pub fn build_side_tables(
         }
     }
 
+    let index_1 = game_data.get_index_1(&pack_id).unwrap().unwrap();
+    let zero_entries = index_1
+        .tombstone_table
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    file_pointers.append(&mut zero_entries.iter().map(|e| e.pointer).collect());
+
     let mut sqpack_data_datetimes = BTreeMap::new();
     let max_dat_number = data_file_set.max_dat_number(pack_id);
     let mut reserved_file_space = vec![0; (max_dat_number + 1).into()];
-    let mut zero_entries = BTreeSet::new();
     for dat_file_number in 0..=max_dat_number {
         let mut file = data_file_set.open(pack_id, dat_file_number).unwrap();
 
@@ -275,15 +267,26 @@ pub fn build_side_tables(
         let entry_offset = SQPACK_HEADER_LENGTH + data_header_length;
         file.seek(SeekFrom::Start(u64::from(entry_offset))).unwrap();
 
+        let mut last_entry_offset = None;
         'outer: loop {
             let entry_offset = file.stream_position().unwrap();
+
+            let pointer = FilePointer::new(dat_file_number, entry_offset.try_into().unwrap());
+            if !file_pointers.contains(&pointer) {
+                panic!(
+                    "entry scan is desynced from index, at 0x{:02x}",
+                    entry_offset
+                );
+            }
+            if let Some(last_entry_offset) = last_entry_offset {
+                if entry_offset <= last_entry_offset {
+                    panic!("not making progress scanning through entries");
+                }
+            }
+            last_entry_offset = Some(entry_offset);
+
             let entry_header_fields =
                 drive_streaming_parser_smaller(&mut file, data_entry_header_raw).unwrap();
-
-            if let DataContentType::Unsupported = entry_header_fields.data_content_type {
-                let pointer = FilePointer::new(dat_file_number, entry_offset.try_into().unwrap());
-                zero_entries.insert(ZeroEntry::new(pointer, entry_header_fields.unknown_1));
-            }
 
             skip_entry(file, entry_offset, &entry_header_fields).unwrap();
 

@@ -22,7 +22,7 @@ use tomestone_common::null_padding;
 use crate::{
     compression::decompress_sqpack_block, CollisionEntry, DataBlocks, Error, FilePointer, Index,
     IndexEntry, IndexEntry1, IndexEntry2, IndexHash1, IndexHash2, IndexPointer, IndexSegmentHeader,
-    PlatformId, SqPackType, SHA1_OUTPUT_SIZE,
+    PlatformId, SqPackType, ZeroEntry, SHA1_OUTPUT_SIZE,
 };
 
 fn sqpack_magic(input: &[u8]) -> IResult<&[u8], ()> {
@@ -465,6 +465,16 @@ fn collision_entry_2(input: &[u8]) -> IResult<&[u8], CollisionEntry<IndexHash2>>
     )(input)
 }
 
+fn tombstone_entry_parser(input: &[u8]) -> IResult<&[u8], ZeroEntry> {
+    map(
+        tuple((le_u8, null_padding(3), le_u32, le_u32, null_padding(4))),
+        |(data_file_id, _, shifted_offset, shifted_length, _)| ZeroEntry {
+            shifted_length: shifted_length - 1,
+            pointer: FilePointer::new(data_file_id, shifted_offset << 7),
+        },
+    )(input)
+}
+
 /// `GrowableBufReader` adds buffering to a reader, and allows callers to dynamically request a
 /// larger buffer on the fly. EOF handling is decoupled from consuming the buffer, so callers can
 /// see when the buffer cannot be grown anymore, without having to mark it all as consumed first.
@@ -657,6 +667,7 @@ fn load_index_reader<
     let index_header = drive_streaming_parser(bufreader, index_segment_headers)?;
     let first_segment_header = &index_header.2[0];
     let second_segment_header = &index_header.2[1];
+    let third_segment_header = &index_header.2[2];
 
     bufreader.seek(SeekFrom::Start(first_segment_header.offset.into()))?;
     let entry_count = first_segment_header.size / I::SIZE;
@@ -674,7 +685,19 @@ fn load_index_reader<
         collision_entries.push(entry);
     }
 
-    Ok(Index::new(index_entries, collision_entries))
+    bufreader.seek(SeekFrom::Start(third_segment_header.offset.into()))?;
+    let entry_count = third_segment_header.size / 16;
+    let mut tombstone_entries = Vec::with_capacity(entry_count.try_into().unwrap());
+    for _ in 0..entry_count {
+        let entry = drive_streaming_parser(bufreader, tombstone_entry_parser)?;
+        tombstone_entries.push(entry);
+    }
+
+    Ok(Index::new(
+        index_entries,
+        collision_entries,
+        tombstone_entries,
+    ))
 }
 
 pub fn load_index_1(path: PathBuf) -> Result<Index<IndexEntry1>, Error> {
