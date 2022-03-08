@@ -46,7 +46,7 @@ impl PathDb {
             .ok_or(DbError::NoDirectories)?;
         let dir = project_dirs.data_dir();
         if !dir.is_dir() {
-            fs::create_dir(dir)?;
+            fs::create_dir_all(dir)?;
         }
         let conn = Connection::open(dir.join(FILENAME))?;
         conn.execute(
