@@ -922,7 +922,7 @@ impl DataFileSet {
         })
     }
 
-    fn fetch_data(
+    pub fn fetch_data(
         &mut self,
         pack_id: SqPackId,
         file_pointer: FilePointer,

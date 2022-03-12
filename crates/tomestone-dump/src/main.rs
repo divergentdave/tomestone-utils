@@ -15,7 +15,8 @@ use regex::{
 use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::{
     pathdb::{PathDb, PreparedStatements},
-    Category, DataFileSet, Expansion, GameData, IndexHash1, IndexHash2,
+    Category, DataFileSet, Expansion, FilePointer, GameData, Index, IndexEntry2, IndexHash1,
+    IndexHash2,
 };
 use tomestone_string_interp::Text;
 
@@ -134,6 +135,27 @@ fn lookup<'a>(
     }
 }
 
+fn write_name_cross_reference_indexes<W: Write>(
+    writer: &mut W,
+    folder_matches: &[String],
+    filename_matches: &[String],
+    pointer: FilePointer,
+    index_2: &Index<IndexEntry2>,
+) -> bool {
+    for folder_match in folder_matches {
+        for filename_match in filename_matches.iter() {
+            let path = format!("{}/{}", folder_match, filename_match);
+            if let Some(index_2_pointer) = index_2.lookup(&path) {
+                if pointer == index_2_pointer {
+                    writeln!(writer, "{}", &path).unwrap();
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Given a folder CRC and file name CRC, print out as much of the path as is known in the CRC
 /// database. This may be the full path, or the folder name and the file name CRC, or two CRCs,
 /// etc. In the event of a CRC collision, all possible matches will be printed.
@@ -141,6 +163,8 @@ fn write_file_name_1<W: Write>(
     writer: &mut W,
     statements: &mut PreparedStatements<'_>,
     hash: IndexHash1,
+    pointer: FilePointer,
+    index_2: Option<&Index<IndexEntry2>>,
 ) -> Result<(), tomestone_sqpack::Error> {
     let (folder_matches, filename_matches) = statements.index_1_lookup(hash)?;
     match (folder_matches.len(), filename_matches.len()) {
@@ -148,15 +172,61 @@ fn write_file_name_1<W: Write>(
             writer,
             "<{:08x}>/<{:08x}>",
             hash.folder_crc, hash.filename_crc
-        ),
-        (1, 1) => write!(writer, "{}/{}", folder_matches[0], filename_matches[0]),
-        (0, 1) => write!(writer, "<{:08x}>/{}", hash.folder_crc, filename_matches[0]),
-        (1, 0) => write!(writer, "{}/<{:08x}>", folder_matches[0], hash.filename_crc),
-        (1, _) => write!(writer, "{}/{:?}", folder_matches[0], filename_matches),
-        (_, 1) => write!(writer, "{:?}/{}", folder_matches, filename_matches[0]),
-        (_, _) => write!(writer, "{:?}/{:?}", folder_matches, filename_matches),
+        )
+        .unwrap(),
+        (1, 1) => write!(writer, "{}/{}", folder_matches[0], filename_matches[0]).unwrap(),
+        (0, 1) => write!(writer, "<{:08x}>/{}", hash.folder_crc, filename_matches[0]).unwrap(),
+        (1, 0) => write!(writer, "{}/<{:08x}>", folder_matches[0], hash.filename_crc).unwrap(),
+        (1, _) => {
+            let done = index_2
+                .map(|index_2| {
+                    write_name_cross_reference_indexes(
+                        writer,
+                        &folder_matches,
+                        &filename_matches,
+                        pointer,
+                        index_2,
+                    )
+                })
+                .unwrap_or(false);
+            if !done {
+                write!(writer, "{}/{:?}", folder_matches[0], filename_matches).unwrap();
+            }
+        }
+        (_, 1) => {
+            let done = index_2
+                .map(|index_2| {
+                    write_name_cross_reference_indexes(
+                        writer,
+                        &folder_matches,
+                        &filename_matches,
+                        pointer,
+                        index_2,
+                    )
+                })
+                .unwrap_or(false);
+            if !done {
+                write!(writer, "{:?}/{}", folder_matches, filename_matches[0]).unwrap();
+            }
+        }
+        (_, _) => {
+            let done = index_2
+                .map(|index_2| {
+                    write_name_cross_reference_indexes(
+                        writer,
+                        &folder_matches,
+                        &filename_matches,
+                        pointer,
+                        index_2,
+                    )
+                })
+                .unwrap_or(false);
+            if !done {
+                write!(writer, "{:?}/{:?}", folder_matches, filename_matches).unwrap();
+            }
+        }
     }
-    .unwrap();
+
     Ok(())
 }
 
@@ -189,16 +259,26 @@ fn list_files(
     let stdout = stdout();
     let mut locked = stdout.lock();
     for id in game_data.iter_packs_category_expansion(category, expansion) {
-        if let Some(Ok(index)) = game_data.get_index_1(&id) {
-            for (hash, _pointer) in index.iter() {
-                write_file_name_1(&mut locked, statements, hash)?;
-                locked.write_all(b"\n").unwrap();
+        match (game_data.get_index_1(&id), game_data.get_index_2(&id)) {
+            (None, None) => unreachable!(),
+            (None, Some(index_2_res)) => {
+                for (hash, _pointer) in index_2_res?.iter() {
+                    write_file_name_2(&mut locked, statements, hash)?;
+                    locked.write_all(b"\n").unwrap();
+                }
             }
-        } else {
-            let index = game_data.get_index_2(&id).unwrap()?;
-            for (hash, _pointer) in index.iter() {
-                write_file_name_2(&mut locked, statements, hash)?;
-                locked.write_all(b"\n").unwrap();
+            (Some(index_1_res), None) => {
+                for (hash, pointer) in index_1_res?.iter() {
+                    write_file_name_1(&mut locked, statements, hash, pointer, None)?;
+                    locked.write_all(b"\n").unwrap();
+                }
+            }
+            (Some(index_1_res), Some(index_2_res)) => {
+                let index_2 = index_2_res?;
+                for (hash, pointer) in index_1_res?.iter() {
+                    write_file_name_1(&mut locked, statements, hash, pointer, Some(index_2))?;
+                    locked.write_all(b"\n").unwrap();
+                }
             }
         }
     }
@@ -328,23 +408,40 @@ fn do_grep(
     let stdout = stdout();
     let mut locked = stdout.lock();
     for pack_id in game_data.iter_packs_category_expansion(category, expansion) {
-        if let Some(Ok(index)) = game_data.get_index_1(&pack_id) {
-            for res in data_file_set.iter_files(pack_id, index)? {
-                let (hash, file) = res?;
-                if re.is_match(&file) {
-                    locked.write_all(b"File ").unwrap();
-                    write_file_name_1(&mut locked, statements, hash)?;
-                    locked.write_all(b" matches\n").unwrap();
+        match (
+            game_data.get_index_1(&pack_id),
+            game_data.get_index_2(&pack_id),
+        ) {
+            (None, None) => unreachable!(),
+            (None, Some(index_2_res)) => {
+                for (hash, pointer) in index_2_res?.iter() {
+                    let file = data_file_set.fetch_data(pack_id, pointer)?;
+                    if re.is_match(&file) {
+                        locked.write_all(b"File ").unwrap();
+                        write_file_name_2(&mut locked, statements, hash)?;
+                        locked.write_all(b" matches\n").unwrap();
+                    }
                 }
             }
-        } else {
-            let index = game_data.get_index_2(&pack_id).unwrap()?;
-            for res in data_file_set.iter_files(pack_id, index)? {
-                let (hash, file) = res?;
-                if re.is_match(&file) {
-                    locked.write_all(b"File ").unwrap();
-                    write_file_name_2(&mut locked, statements, hash)?;
-                    locked.write_all(b" matches\n").unwrap();
+            (Some(index_1_res), None) => {
+                for (hash, pointer) in index_1_res?.iter() {
+                    let file = data_file_set.fetch_data(pack_id, pointer)?;
+                    if re.is_match(&file) {
+                        locked.write_all(b"File ").unwrap();
+                        write_file_name_1(&mut locked, statements, hash, pointer, None)?;
+                        locked.write_all(b" matches\n").unwrap();
+                    }
+                }
+            }
+            (Some(index_1_res), Some(index_2_res)) => {
+                let index_2 = index_2_res?;
+                for (hash, pointer) in index_1_res?.iter() {
+                    let file = data_file_set.fetch_data(pack_id, pointer)?;
+                    if re.is_match(&file) {
+                        locked.write_all(b"File ").unwrap();
+                        write_file_name_1(&mut locked, statements, hash, pointer, Some(index_2))?;
+                        locked.write_all(b" matches\n").unwrap();
+                    }
                 }
             }
         }
