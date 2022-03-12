@@ -1,5 +1,8 @@
 [package]
-name = "fantthteysia-common"
+name = "fanttheysia-common"
 version = "0.1.0"
 authors = ["David Cook <divergentdave@gmail.com>"]
 edition = "2021"
+
+[dependencies]
+tomestone-string-interp = { path = "../tomestone-string-interp" }

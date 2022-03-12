@@ -1,21 +1,36 @@
 use std::{collections::HashSet, process};
 
-use fanttheysia_cli::GenderConditionalTextVisitor;
+use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
+
+use fanttheysia_common::GenderConditionalTextVisitor;
 use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::GameData;
 use tomestone_string_interp::{Text, TreeNode};
 
-fn main() {
-    // just CLI-based diagnostics and exploration at this point
+fn app() -> App<'static> {
+    App::new(crate_name!())
+        .version(crate_version!())
+        .author(crate_authors!())
+        .about(crate_description!())
+        .arg(
+            Arg::new("ffxiv-install-dir")
+                .long("ffxiv-install-dir")
+                .required(true)
+                .takes_value(true)
+                .env("FFXIV_INSTALL_DIR"),
+        )
+        .subcommand(
+            App::new("report").about("Print a report of all gender conditional text expressions"),
+        )
+}
 
+fn main() {
     dotenv::dotenv().ok();
-    let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
-        root
-    } else {
-        eprintln!("error: set the environment variable FFXIV_INSTALL_DIR to the game's installation directory");
-        process::exit(1);
-    };
-    let game_data = match GameData::new(&root) {
+
+    let app_matches = app().get_matches();
+
+    let root = app_matches.value_of_os("ffxiv-install-dir").unwrap();
+    let game_data = match GameData::new(root) {
         Ok(game_data) => game_data,
         Err(e) => {
             eprintln!(
@@ -26,6 +41,14 @@ fn main() {
         }
     };
     let mut data_file_set = game_data.data_files();
+
+    match app_matches.subcommand() {
+        Some(("report", _)) => {}
+        _ => {
+            eprintln!("{}", app().render_usage());
+            process::exit(1);
+        }
+    }
 
     let root_list = if let Ok(root_list) = RootList::open(&game_data, &mut data_file_set) {
         root_list

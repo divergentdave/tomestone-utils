@@ -5,7 +5,9 @@ authors = ["David Cook <divergentdave@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+clap = { version = "3.0.0", features = ["cargo", "env"] }
 dotenv = "0.15.0"
+fanttheysia-common = { path = "../fanttheysia-common" }
 tomestone-exdf = { path = "../tomestone-exdf" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }
 tomestone-string-interp = { path = "../tomestone-string-interp" }

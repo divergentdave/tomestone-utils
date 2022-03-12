@@ -308,15 +308,20 @@ checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 name = "fanttheysia-cli"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "dotenv",
+ "fanttheysia-common",
  "tomestone-exdf",
  "tomestone-sqpack",
  "tomestone-string-interp",
 ]
 
 [[package]]
-name = "fantthteysia-common"
+name = "fanttheysia-common"
 version = "0.1.0"
+dependencies = [
+ "tomestone-string-interp",
+]
 
 [[package]]
 name = "fastrand"
