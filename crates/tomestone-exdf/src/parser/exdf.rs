@@ -151,13 +151,13 @@ mod tests {
         const EXD_PATH: &str = "exd/fcauthority_0_en.exd";
 
         let exh_data = game_data
-            .lookup_path_data(&mut data_file_set, &EXH_PATH)
+            .lookup_path_data(&mut data_file_set, EXH_PATH)
             .unwrap()
             .unwrap();
         let _exhf = parse_exhf(&exh_data).unwrap().1;
 
         let exd_data = game_data
-            .lookup_path_data(&mut data_file_set, &EXD_PATH)
+            .lookup_path_data(&mut data_file_set, EXD_PATH)
             .unwrap()
             .unwrap();
         exdf_header(&exd_data).unwrap();
@@ -171,7 +171,7 @@ mod tests {
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(Category::Exd, *expansion) {
                 let index = game_data.get_index_2(&pack_id).unwrap().unwrap();
-                for res in data_file_set.iter_files(pack_id, &index).unwrap() {
+                for res in data_file_set.iter_files(pack_id, index).unwrap() {
                     let file = res.unwrap().1;
                     if file.len() > 32 && &file[..4] == b"EXDF" {
                         let exdf = Exdf::new(file).unwrap();
@@ -196,7 +196,7 @@ mod tests {
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(Category::Exd, *expansion) {
                 let index = game_data.get_index_2(&pack_id).unwrap().unwrap();
-                for res in data_file_set.iter_files(pack_id, &index).unwrap() {
+                for res in data_file_set.iter_files(pack_id, index).unwrap() {
                     let file = res.unwrap().1;
                     if file.len() > 32 && &file[..4] == b"EXDF" {
                         let header = exdf_header(&file).unwrap().1;

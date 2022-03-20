@@ -653,9 +653,7 @@ mod proptests {
         }
     }
 
-    fn shrink_expr_list(
-        expressions: &Vec<Expression>,
-    ) -> Box<dyn Iterator<Item = Vec<Expression>>> {
+    fn shrink_expr_list(expressions: &[Expression]) -> Box<dyn Iterator<Item = Vec<Expression>>> {
         #[derive(Clone)]
         struct ExpressionShrinkWrapper(Expression);
 
@@ -682,21 +680,17 @@ mod proptests {
     }
 
     fn shrink_expr_list_preserve_length(
-        expressions: &Vec<Expression>,
+        expressions: &[Expression],
     ) -> Box<dyn Iterator<Item = Vec<Expression>>> {
-        let expressions = expressions.clone();
-        Box::new(
-            (0..expressions.len())
-                .map(move |i| {
-                    let expressions = expressions.clone();
-                    shrink_expr(&expressions[i]).map(move |shrunk| {
-                        let mut expressions = expressions.clone();
-                        expressions[i] = shrunk;
-                        expressions
-                    })
-                })
-                .flatten(),
-        )
+        let expressions = expressions.to_owned();
+        Box::new((0..expressions.len()).flat_map(move |i| {
+            let expressions = expressions.clone();
+            shrink_expr(&expressions[i]).map(move |shrunk| {
+                let mut expressions = expressions.clone();
+                expressions[i] = shrunk;
+                expressions
+            })
+        }))
     }
 
     fn arbitrary_segment(g: &mut Gen, depth: usize) -> Segment {

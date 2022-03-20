@@ -1144,7 +1144,7 @@ mod tests {
                 return TestResult::failed();
             }
         }
-        return TestResult::passed();
+        TestResult::passed()
     }
 
     #[test]
