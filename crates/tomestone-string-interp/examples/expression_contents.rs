@@ -6,10 +6,10 @@ use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
 #[derive(Default, Debug)]
 struct ExpressionContentsVisitor {
     top_level_param_counters: BTreeMap<u8, u64>,
-    integer_param_counters: BTreeMap<Expression, u64>,
-    player_param_counters: BTreeMap<Expression, u64>,
-    string_param_counters: BTreeMap<Expression, u64>,
-    object_param_counters: BTreeMap<Expression, u64>,
+    integer_param_counters: BTreeMap<u32, u64>,
+    player_param_counters: BTreeMap<u32, u64>,
+    string_param_counters: BTreeMap<u32, u64>,
+    object_param_counters: BTreeMap<u32, u64>,
 }
 
 impl ExpressionContentsVisitor {
@@ -28,28 +28,28 @@ impl Visitor for ExpressionContentsVisitor {
             Expression::TopLevelParameter(number) => {
                 *self.top_level_param_counters.entry(*number).or_default() += 1
             }
-            Expression::IntegerParameter(expr) => {
+            Expression::IntegerParameter(parameter_index) => {
                 *self
                     .integer_param_counters
-                    .entry((**expr).clone())
+                    .entry(*parameter_index)
                     .or_default() += 1
             }
-            Expression::PlayerParameter(expr) => {
+            Expression::PlayerParameter(parameter_index) => {
                 *self
                     .player_param_counters
-                    .entry((**expr).clone())
+                    .entry(*parameter_index)
                     .or_default() += 1
             }
-            Expression::StringParameter(expr) => {
+            Expression::StringParameter(parameter_index) => {
                 *self
                     .string_param_counters
-                    .entry((**expr).clone())
+                    .entry(*parameter_index)
                     .or_default() += 1
             }
-            Expression::ObjectParameter(expr) => {
+            Expression::ObjectParameter(parameter_index) => {
                 *self
                     .object_param_counters
-                    .entry((**expr).clone())
+                    .entry(*parameter_index)
                     .or_default() += 1
             }
             _ => {}

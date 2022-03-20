@@ -86,18 +86,10 @@ fn expression(input: &[u8]) -> IResult<&[u8], Expression, Error> {
         TODO_COMPARISON_3 => map(pair(expression, expression), |(left, right)| {
             Expression::TodoComparison3(Box::new((left, right)))
         })(input),
-        INTEGER_PARAM => map(expression, |expr| {
-            Expression::IntegerParameter(Box::new(expr))
-        })(input),
-        PLAYER_PARAM => map(expression, |expr| {
-            Expression::PlayerParameter(Box::new(expr))
-        })(input),
-        STRING_PARAM => map(expression, |expr| {
-            Expression::StringParameter(Box::new(expr))
-        })(input),
-        OBJECT_PARAM => map(expression, |expr| {
-            Expression::ObjectParameter(Box::new(expr))
-        })(input),
+        INTEGER_PARAM => map(integer, Expression::IntegerParameter)(input),
+        PLAYER_PARAM => map(integer, Expression::PlayerParameter)(input),
+        STRING_PARAM => map(integer, Expression::StringParameter)(input),
+        OBJECT_PARAM => map(integer, Expression::ObjectParameter)(input),
         TODO_EC => Ok((input, Expression::TodoEC)),
         BYTE => map(be_u8, |byte| Expression::Integer(byte as u32))(input),
         BYTE_SHIFTED_8 => map(be_u8, |byte| Expression::Integer((byte as u32) << 8))(input),

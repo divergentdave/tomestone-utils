@@ -230,10 +230,10 @@ pub trait Visitor {
                 boite.1.accept(self);
             }
             Expression::TopLevelParameter(_) => {}
-            Expression::IntegerParameter(boite) => boite.accept(self),
-            Expression::PlayerParameter(boite) => boite.accept(self),
-            Expression::StringParameter(boite) => boite.accept(self),
-            Expression::ObjectParameter(boite) => boite.accept(self),
+            Expression::IntegerParameter(_) => {}
+            Expression::PlayerParameter(_) => {}
+            Expression::StringParameter(_) => {}
+            Expression::ObjectParameter(_) => {}
             Expression::TodoEC => {}
             Expression::Integer(_) => {}
             Expression::Text(boite) => boite.accept(self),
@@ -250,10 +250,10 @@ pub enum Expression {
     Equal(Box<(Expression, Expression)>),
     TodoComparison3(Box<(Expression, Expression)>),
     TopLevelParameter(u8),
-    IntegerParameter(Box<Expression>),
-    PlayerParameter(Box<Expression>),
-    StringParameter(Box<Expression>),
-    ObjectParameter(Box<Expression>),
+    IntegerParameter(u32),
+    PlayerParameter(u32),
+    StringParameter(u32),
+    ObjectParameter(u32),
     TodoEC,
     Integer(u32),
     Text(Box<Text>),
@@ -553,10 +553,10 @@ mod proptests {
                 arbitrary_expr(g, depth + 1),
             ))),
             6 => Expression::TopLevelParameter(u8::arbitrary(g) & 0xf),
-            7 => Expression::IntegerParameter(Box::new(arbitrary_expr(g, depth + 1))),
-            8 => Expression::PlayerParameter(Box::new(arbitrary_expr(g, depth + 1))),
-            9 => Expression::StringParameter(Box::new(arbitrary_expr(g, depth + 1))),
-            10 => Expression::ObjectParameter(Box::new(arbitrary_expr(g, depth + 1))),
+            7 => Expression::IntegerParameter(u32::arbitrary(g)),
+            8 => Expression::PlayerParameter(u32::arbitrary(g)),
+            9 => Expression::StringParameter(u32::arbitrary(g)),
+            10 => Expression::ObjectParameter(u32::arbitrary(g)),
             11 => Expression::TodoEC,
             12 => Expression::Integer(u32::arbitrary(g)),
             13 => Expression::Text(Box::new(arbitrary_text(g, depth + 1))),
@@ -635,26 +635,18 @@ mod proptests {
             Expression::TopLevelParameter(parameter_index) => {
                 Box::new(parameter_index.shrink().map(Expression::TopLevelParameter))
             }
-            Expression::IntegerParameter(boite) => Box::new(
-                shrink_expr(boite)
-                    .map(Box::new)
-                    .map(Expression::IntegerParameter),
-            ),
-            Expression::PlayerParameter(boite) => Box::new(
-                shrink_expr(boite)
-                    .map(Box::new)
-                    .map(Expression::PlayerParameter),
-            ),
-            Expression::StringParameter(boite) => Box::new(
-                shrink_expr(boite)
-                    .map(Box::new)
-                    .map(Expression::StringParameter),
-            ),
-            Expression::ObjectParameter(boite) => Box::new(
-                shrink_expr(boite)
-                    .map(Box::new)
-                    .map(Expression::ObjectParameter),
-            ),
+            Expression::IntegerParameter(parameter_index) => {
+                Box::new(parameter_index.shrink().map(Expression::IntegerParameter))
+            }
+            Expression::PlayerParameter(parameter_index) => {
+                Box::new(parameter_index.shrink().map(Expression::PlayerParameter))
+            }
+            Expression::StringParameter(parameter_index) => {
+                Box::new(parameter_index.shrink().map(Expression::StringParameter))
+            }
+            Expression::ObjectParameter(parameter_index) => {
+                Box::new(parameter_index.shrink().map(Expression::ObjectParameter))
+            }
             Expression::TodoEC => Box::new(empty()),
             Expression::Integer(value) => Box::new(value.shrink().map(Expression::Integer)),
             Expression::Text(boite) => Box::new(boite.shrink().map(Expression::Text)),

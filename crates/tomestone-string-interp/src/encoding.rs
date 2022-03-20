@@ -74,21 +74,21 @@ fn encode_expression(buf: &mut Vec<u8>, expr: &Expression) -> Result<(), EncodeE
             encode_expression(buf, &boite.1)?;
         }
         Expression::TopLevelParameter(index) => buf.push(0xD0 | (*index & 0x0F)),
-        Expression::IntegerParameter(boite) => {
+        Expression::IntegerParameter(parameter_index) => {
             buf.push(INTEGER_PARAM);
-            encode_expression(buf, boite)?;
+            encode_integer(buf, *parameter_index)?;
         }
-        Expression::PlayerParameter(boite) => {
+        Expression::PlayerParameter(parameter_index) => {
             buf.push(PLAYER_PARAM);
-            encode_expression(buf, boite)?;
+            encode_integer(buf, *parameter_index)?;
         }
-        Expression::StringParameter(boite) => {
+        Expression::StringParameter(parameter_index) => {
             buf.push(STRING_PARAM);
-            encode_expression(buf, boite)?;
+            encode_integer(buf, *parameter_index)?;
         }
-        Expression::ObjectParameter(boite) => {
+        Expression::ObjectParameter(parameter_index) => {
             buf.push(OBJECT_PARAM);
-            encode_expression(buf, boite)?;
+            encode_integer(buf, *parameter_index)?;
         }
         Expression::TodoEC => buf.push(TODO_EC),
         Expression::Integer(value) => match value.to_be_bytes() {

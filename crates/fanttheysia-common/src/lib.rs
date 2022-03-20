@@ -8,7 +8,7 @@ use tomestone_string_interp::{Expression, Segment, TreeNode, Visitor};
 /// use tomestone_string_interp::{Expression, TreeNode};
 ///
 /// let expression = Expression::Equal(Box::new((
-///     Expression::PlayerParameter(Box::new(Expression::Integer(4))),
+///     Expression::PlayerParameter(4),
 ///     Expression::Integer(1),
 /// )));
 /// let mut visitor = GenderExpressionVisitor::new();
@@ -36,8 +36,8 @@ impl Default for GenderExpressionVisitor {
 
 impl Visitor for GenderExpressionVisitor {
     fn visit_expression(&mut self, expr: &Expression) {
-        if let Expression::PlayerParameter(child_expr) = expr {
-            if **child_expr == Expression::Integer(4) {
+        if let Expression::PlayerParameter(parameter_index) = expr {
+            if *parameter_index == 4 {
                 self.flag = true;
                 return;
             }
@@ -64,7 +64,7 @@ pub struct IfSegment {
 /// use tomestone_string_interp::{Expression, Segment, Text, TreeNode};
 ///
 /// let text = Text::new(vec![Segment::Literal("Good morning, ".to_string()), Segment::If {
-///     condition: Expression::PlayerParameter(Box::new(Expression::Integer(4))),
+///     condition: Expression::PlayerParameter(4),
 ///     true_value: Expression::Text(Box::new(Text::new(vec![Segment::Literal("madam".to_string())]))),
 ///     false_value: Expression::Text(Box::new(Text::new(vec![Segment::Literal("sir".to_string())]))),
 /// }]);
