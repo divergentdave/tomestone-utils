@@ -1293,4 +1293,11 @@ mod proptests {
             Expression::Integer(0x544600)
         )));
     }
+
+    #[test]
+    fn regression_04() {
+        assert!(property_encode_round_trip(Segment::Value(
+            Expression::PlayerParameter(65793)
+        )));
+    }
 }

@@ -8,33 +8,42 @@ pub enum EncodeError {
 }
 
 fn encode_integer(buf: &mut Vec<u8>, value: u32) -> Result<(), EncodeError> {
-    match value {
-        0..=0xEE => buf.push(((value + 1) & 0xFF) as u8),
-        0xEF..=0xFF => buf.extend_from_slice(&[0xF0, (value & 0xFF) as u8]),
-        0x100..=0xFF00 if value & 0xFF == 0 => {
-            buf.extend_from_slice(&[0xF1, ((value >> 8) & 0xFF) as u8])
+    use crate::types::expr::*;
+
+    match value.to_be_bytes() {
+        [0, 0, 0, b] if b <= 0xEE => buf.push(b + 1),
+        [0, 0, 0, b] if b != 0 => buf.extend_from_slice(&[BYTE, b]),
+        [0, 0, b, 0] if b != 0 => buf.extend_from_slice(&[BYTE_SHIFTED_8, b]),
+        [0, b, 0, 0] if b != 0 => buf.extend_from_slice(&[BYTE_SHIFTED_16, b]),
+        [b, 0, 0, 0] if b != 0 => buf.extend_from_slice(&[BYTE_SHIFTED_24, b]),
+        [0, 0, b1, b0] if b1 != 0 && b0 != 0 => buf.extend_from_slice(&[INT16, b1, b0]),
+        [0, b2, b1, 0] if b2 != 0 && b1 != 0 => buf.extend_from_slice(&[INT16_SHIFTED_8, b2, b1]),
+        [b3, b2, 0, 0] if b3 != 0 && b2 != 0 => buf.extend_from_slice(&[INT16_SHIFTED_16, b3, b2]),
+        [0, b2, 0, b0] if b2 != 0 && b0 != 0 => {
+            buf.extend_from_slice(&[INT16_FIRST_AND_THIRD_BYTES, b2, b0])
         }
-        0x100..=0xFFFF if value & 0xFF != 0 => {
-            buf.extend_from_slice(&[0xF2, ((value >> 8) & 0xFF) as u8, (value & 0xFF) as u8])
+        [b3, 0, 0, b0] if b3 != 0 && b0 != 0 => {
+            buf.extend_from_slice(&[INT16_FIRST_AND_LAST_BYTES, b3, b0])
         }
-        0x10000..=0xFFFFFF if value & 0xFF != 0 && value & 0xFF00 != 0 => buf.extend_from_slice(&[
-            0xFA,
-            ((value >> 16) & 0xFF) as u8,
-            ((value >> 8) & 0xFF) as u8,
-            (value & 0xFF) as u8,
-        ]),
-        0x1000000..=0xFFFFFFFF
-            if value & 0xFF != 0 && value & 0xFF00 != 0 && value & 0xFF0000 != 0 =>
-        {
-            buf.extend_from_slice(&[
-                0xFE,
-                ((value >> 24) & 0xFF) as u8,
-                ((value >> 16) & 0xFF) as u8,
-                ((value >> 8) & 0xFF) as u8,
-                (value & 0xFF) as u8,
-            ])
+        [b3, 0, b1, 0] if b3 != 0 && b1 != 0 => {
+            buf.extend_from_slice(&[INT16_SECOND_AND_FOURTH_BYTES, b3, b1])
         }
-        _ => return Err(EncodeError::UnrepresentableInteger),
+        [0, b2, b1, b0] if b2 != 0 && b1 != 0 && b0 != 0 => {
+            buf.extend_from_slice(&[INT24, b2, b1, b0])
+        }
+        [b3, 0, b1, b0] if b3 != 0 && b1 != 0 && b0 != 0 => {
+            buf.extend_from_slice(&[INT24_FIRST_SECOND_AND_FOURTH_BYTES, b3, b1, b0])
+        }
+        [b3, b2, 0, b0] if b3 != 0 && b2 != 0 && b0 != 0 => {
+            buf.extend_from_slice(&[INT24_FIRST_THIRD_AND_FOURTH_BYTES, b3, b2, b0])
+        }
+        [b3, b2, b1, 0] if b3 != 0 && b2 != 0 && b1 != 0 => {
+            buf.extend_from_slice(&[INT24_SHIFTED_8, b3, b2, b1])
+        }
+        [b3, b2, b1, b0] if b3 != 0 && b2 != 0 && b1 != 0 => {
+            buf.extend_from_slice(&[INT32, b3, b2, b1, b0])
+        }
+        _ => return Err(EncodeError::UnrepresentableInteger), // is this unreachable now?
     }
     Ok(())
 }
