@@ -241,7 +241,7 @@ pub trait Visitor {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Expression {
     GreaterThanOrEqual(Box<(Expression, Expression)>),
     TodoComparison1(Box<(Expression, Expression)>),
@@ -265,7 +265,7 @@ impl TreeNode for Expression {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Segment {
     Literal(String),
     TodoResetTime(Vec<NonZeroU8>),
@@ -463,7 +463,7 @@ impl fmt::Debug for Segment {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Text {
     segments: Vec<Segment>,
 }
