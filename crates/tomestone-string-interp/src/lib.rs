@@ -4,6 +4,7 @@ use nom::Finish;
 
 mod encoding;
 mod parser;
+mod serialization;
 mod types;
 
 #[derive(Debug)]
@@ -230,7 +231,7 @@ pub trait Visitor {
                 boite.1.accept(self);
             }
             Expression::TopLevelParameter(_) => {}
-            Expression::IntegerParameter(_) => {}
+            Expression::InputParameter(_) => {}
             Expression::PlayerParameter(_) => {}
             Expression::StringParameter(_) => {}
             Expression::ObjectParameter(_) => {}
@@ -250,7 +251,7 @@ pub enum Expression {
     Equal(Box<(Expression, Expression)>),
     TodoComparison3(Box<(Expression, Expression)>),
     TopLevelParameter(u8),
-    IntegerParameter(u32),
+    InputParameter(u32),
     PlayerParameter(u32),
     StringParameter(u32),
     ObjectParameter(u32),
@@ -553,7 +554,7 @@ mod proptests {
                 arbitrary_expr(g, depth + 1),
             ))),
             6 => Expression::TopLevelParameter(u8::arbitrary(g) & 0xf),
-            7 => Expression::IntegerParameter(u32::arbitrary(g)),
+            7 => Expression::InputParameter(u32::arbitrary(g)),
             8 => Expression::PlayerParameter(u32::arbitrary(g)),
             9 => Expression::StringParameter(u32::arbitrary(g)),
             10 => Expression::ObjectParameter(u32::arbitrary(g)),
@@ -635,8 +636,8 @@ mod proptests {
             Expression::TopLevelParameter(parameter_index) => {
                 Box::new(parameter_index.shrink().map(Expression::TopLevelParameter))
             }
-            Expression::IntegerParameter(parameter_index) => {
-                Box::new(parameter_index.shrink().map(Expression::IntegerParameter))
+            Expression::InputParameter(parameter_index) => {
+                Box::new(parameter_index.shrink().map(Expression::InputParameter))
             }
             Expression::PlayerParameter(parameter_index) => {
                 Box::new(parameter_index.shrink().map(Expression::PlayerParameter))

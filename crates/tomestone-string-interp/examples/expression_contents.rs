@@ -6,7 +6,7 @@ use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
 #[derive(Default, Debug)]
 struct ExpressionContentsVisitor {
     top_level_param_counters: BTreeMap<u8, u64>,
-    integer_param_counters: BTreeMap<u32, u64>,
+    input_param_counters: BTreeMap<u32, u64>,
     player_param_counters: BTreeMap<u32, u64>,
     string_param_counters: BTreeMap<u32, u64>,
     object_param_counters: BTreeMap<u32, u64>,
@@ -28,9 +28,9 @@ impl Visitor for ExpressionContentsVisitor {
             Expression::TopLevelParameter(number) => {
                 *self.top_level_param_counters.entry(*number).or_default() += 1
             }
-            Expression::IntegerParameter(parameter_index) => {
+            Expression::InputParameter(parameter_index) => {
                 *self
-                    .integer_param_counters
+                    .input_param_counters
                     .entry(*parameter_index)
                     .or_default() += 1
             }

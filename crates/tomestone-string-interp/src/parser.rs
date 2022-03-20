@@ -86,7 +86,7 @@ fn expression(input: &[u8]) -> IResult<&[u8], Expression, Error> {
         TODO_COMPARISON_3 => map(pair(expression, expression), |(left, right)| {
             Expression::TodoComparison3(Box::new((left, right)))
         })(input),
-        INTEGER_PARAM => map(integer, Expression::IntegerParameter)(input),
+        INPUT_PARAM => map(integer, Expression::InputParameter)(input),
         PLAYER_PARAM => map(integer, Expression::PlayerParameter)(input),
         STRING_PARAM => map(integer, Expression::StringParameter)(input),
         OBJECT_PARAM => map(integer, Expression::ObjectParameter)(input),

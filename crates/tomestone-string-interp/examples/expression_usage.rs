@@ -13,7 +13,7 @@ struct ExpressionUsageCounterVisitor {
     equal: usize,
     comparison_3: usize,
     top_level_parameter: usize,
-    integer_parameter: usize,
+    input_parameter: usize,
     player_parameter: usize,
     string_parameter: usize,
     object_parameter: usize,
@@ -46,7 +46,7 @@ impl Visitor for ExpressionUsageCounterVisitor {
             tomestone_string_interp::Expression::TopLevelParameter(_) => {
                 self.top_level_parameter += 1
             }
-            tomestone_string_interp::Expression::IntegerParameter(_) => self.integer_parameter += 1,
+            tomestone_string_interp::Expression::InputParameter(_) => self.input_parameter += 1,
             tomestone_string_interp::Expression::PlayerParameter(_) => self.player_parameter += 1,
             tomestone_string_interp::Expression::StringParameter(_) => self.string_parameter += 1,
             tomestone_string_interp::Expression::ObjectParameter(_) => self.object_parameter += 1,

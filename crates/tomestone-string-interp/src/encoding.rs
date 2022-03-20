@@ -74,8 +74,8 @@ fn encode_expression(buf: &mut Vec<u8>, expr: &Expression) -> Result<(), EncodeE
             encode_expression(buf, &boite.1)?;
         }
         Expression::TopLevelParameter(index) => buf.push(0xD0 | (*index & 0x0F)),
-        Expression::IntegerParameter(parameter_index) => {
-            buf.push(INTEGER_PARAM);
+        Expression::InputParameter(parameter_index) => {
+            buf.push(INPUT_PARAM);
             encode_integer(buf, *parameter_index)?;
         }
         Expression::PlayerParameter(parameter_index) => {

@@ -5,7 +5,7 @@ pub const TODO_COMPARISON_2: u8 = 0xe3;
 pub const EQ: u8 = 0xe4;
 pub const TODO_COMPARISON_3: u8 = 0xe5;
 
-pub const INTEGER_PARAM: u8 = 0xe8;
+pub const INPUT_PARAM: u8 = 0xe8;
 pub const PLAYER_PARAM: u8 = 0xe9;
 pub const STRING_PARAM: u8 = 0xea;
 pub const OBJECT_PARAM: u8 = 0xeb;
