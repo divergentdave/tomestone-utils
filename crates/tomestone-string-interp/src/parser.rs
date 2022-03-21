@@ -237,7 +237,7 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
                 Ok(Segment::Todo1C(copy_c_string_data(data)?))
             },
         ))(input),
-        INDENT => contents(segment_no_data(Segment::Indent))(input),
+        NON_BREAKING_SPACE => contents(segment_no_data(Segment::NonBreakingSpace))(input),
         COMMAND_ICON => contents(map(expression, Segment::CommandIcon))(input),
         DASH => contents(segment_no_data(Segment::Dash))(input),
         VALUE => contents(map(expression, Segment::Value))(input),

@@ -6,10 +6,13 @@ edition = "2021"
 
 [dependencies]
 nom = "6.0.1"
+serde = "1.0.136"
 
 [dev-dependencies]
 chrono = "0.4"
 dotenv = "0.15.0"
+serde_test = "1.0.117"
+serde_yaml = "0.8.13"
 tomestone-common = { path = "../tomestone-common" }
 tomestone-exdf = { path = "../tomestone-exdf" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }

@@ -124,7 +124,7 @@ pub trait Visitor {
             Segment::Emphasis(_) => {}
             Segment::Todo1B(_) => {}
             Segment::Todo1C(_) => {}
-            Segment::Indent => {}
+            Segment::NonBreakingSpace => {}
             Segment::CommandIcon(expr) => expr.accept(self),
             Segment::Dash => {}
             Segment::Value(expr) => expr.accept(self),
@@ -302,7 +302,7 @@ pub enum Segment {
     Emphasis(u32),
     Todo1B(Vec<NonZeroU8>),
     Todo1C(Vec<NonZeroU8>),
-    Indent,
+    NonBreakingSpace,
     CommandIcon(Expression),
     Dash,
     Value(Expression),
@@ -403,7 +403,7 @@ impl fmt::Debug for Segment {
             Segment::Emphasis(arg) => f.debug_tuple("Emphasis").field(arg).finish(),
             Segment::Todo1B(arg) => f.debug_tuple("Todo1B").field(arg).finish(),
             Segment::Todo1C(arg) => f.debug_tuple("Todo1C").field(arg).finish(),
-            Segment::Indent => write!(f, "Indent"),
+            Segment::NonBreakingSpace => write!(f, "NonBreakingSpace"),
             Segment::CommandIcon(arg) => f.debug_tuple("CommandIcon").field(arg).finish(),
             Segment::Dash => write!(f, "Dash"),
             Segment::Value(arg) => f.debug_tuple("Value").field(arg).finish(),
@@ -518,13 +518,13 @@ mod tests {
 mod proptests {
     use std::{iter::empty, num::NonZeroU8};
 
-    use quickcheck::{Arbitrary, Gen, QuickCheck};
+    use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
 
     use super::{Expression, Segment, Text};
 
     fn arbitrary_expr(g: &mut Gen, depth: usize) -> Expression {
         let choices = if depth >= 1 {
-            &[6, 11, 12][..]
+            &[6, 7, 8, 9, 10, 11, 12][..]
         } else {
             &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13][..]
         };
@@ -753,7 +753,7 @@ mod proptests {
             15 => Segment::Emphasis(u8::arbitrary(g) as u32),
             16 => Segment::Todo1B(Vec::<NonZeroU8>::arbitrary(g)),
             17 => Segment::Todo1C(Vec::<NonZeroU8>::arbitrary(g)),
-            18 => Segment::Indent,
+            18 => Segment::NonBreakingSpace,
             19 => Segment::CommandIcon(arbitrary_expr(g, depth)),
             20 => Segment::Dash,
             21 => Segment::Value(arbitrary_expr(g, depth)),
@@ -1038,7 +1038,7 @@ mod proptests {
                 Segment::Emphasis(value) => Box::new(value.shrink().map(Segment::Emphasis)),
                 Segment::Todo1B(_) => Box::new(empty()),
                 Segment::Todo1C(_) => Box::new(empty()),
-                Segment::Indent => Box::new(empty()),
+                Segment::NonBreakingSpace => Box::new(empty()),
                 Segment::CommandIcon(arg) => Box::new(shrink_expr(arg).map(Segment::CommandIcon)),
                 Segment::Dash => Box::new(empty()),
                 Segment::Value(arg) => Box::new(shrink_expr(arg).map(Segment::Value)),
@@ -1240,7 +1240,7 @@ mod proptests {
         QuickCheck::new().quickcheck(property_encode_nul_free as fn(Segment) -> bool);
     }
 
-    fn property_encode_round_trip(tag: Segment) -> bool {
+    fn property_encode_round_trip(tag: Segment) -> TestResult {
         let text = Text {
             segments: vec![tag],
         };
@@ -1248,13 +1248,13 @@ mod proptests {
             match Text::parse(&data) {
                 Ok(parsed) => {
                     if parsed == text {
-                        true
+                        TestResult::passed()
                     } else {
                         eprintln!(
                             "round trip failed, {:?} => {:02x?} => {:?}",
                             text, data, parsed
                         );
-                        false
+                        TestResult::failed()
                     }
                 }
                 Err(e) => {
@@ -1262,24 +1262,24 @@ mod proptests {
                         "round trip failed, {:?} => {:02x?} => parse error {:?}",
                         text, data, e
                     );
-                    false
+                    TestResult::failed()
                 }
             }
         } else {
-            true
+            TestResult::discard()
         }
     }
 
     #[test]
     fn encode_round_trip() {
-        QuickCheck::new().quickcheck(property_encode_round_trip as fn(Segment) -> bool);
+        QuickCheck::new().quickcheck(property_encode_round_trip as fn(Segment) -> TestResult);
     }
 
     #[test]
     fn regression_01() {
-        assert!(property_encode_round_trip(Segment::Dash));
-        assert!(property_encode_round_trip(Segment::Indent));
-        assert!(property_encode_round_trip(Segment::NewLine));
+        assert!(!property_encode_round_trip(Segment::Dash).is_failure());
+        assert!(!property_encode_round_trip(Segment::NonBreakingSpace).is_failure());
+        assert!(!property_encode_round_trip(Segment::NewLine).is_failure());
     }
 
     #[test]
@@ -1289,15 +1289,16 @@ mod proptests {
 
     #[test]
     fn regression_03() {
-        assert!(property_encode_round_trip(Segment::Value(
-            Expression::Integer(0x544600)
-        )));
+        assert!(
+            !property_encode_round_trip(Segment::Value(Expression::Integer(0x544600))).is_failure()
+        );
     }
 
     #[test]
     fn regression_04() {
-        assert!(property_encode_round_trip(Segment::Value(
-            Expression::PlayerParameter(65793)
-        )));
+        assert!(
+            !property_encode_round_trip(Segment::Value(Expression::PlayerParameter(65793)))
+                .is_failure()
+        );
     }
 }

@@ -301,8 +301,8 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.extend(data.iter().map(|byte| byte.get()));
             buf.push(3);
         }
-        Segment::Indent => {
-            buf.extend_from_slice(&[2, INDENT, 1, 3]);
+        Segment::NonBreakingSpace => {
+            buf.extend_from_slice(&[2, NON_BREAKING_SPACE, 1, 3]);
         }
         Segment::CommandIcon(expr) => {
             buf.extend_from_slice(&[2, COMMAND_ICON]);
