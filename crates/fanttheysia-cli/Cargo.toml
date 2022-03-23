@@ -8,6 +8,7 @@ edition = "2021"
 clap = { version = "3.0.0", features = ["cargo", "env"] }
 dotenv = "0.15.0"
 fanttheysia-common = { path = "../fanttheysia-common" }
+serde_yaml = "0.8.13"
 tomestone-exdf = { path = "../tomestone-exdf" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }
 tomestone-string-interp = { path = "../tomestone-string-interp" }

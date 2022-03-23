@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use tomestone_string_interp::{Expression, Segment, TreeNode, Visitor};
 
 /// Visitor to determine whether an expression tree uses the gender player parameter.
@@ -48,7 +50,7 @@ impl Visitor for GenderExpressionVisitor {
 
 /// This struct is a copy of the `Expression::IfSegment` variant, so they can be collected,
 /// compared, and transformed.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct IfSegment {
     pub condition: Expression,
     pub true_value: Expression,

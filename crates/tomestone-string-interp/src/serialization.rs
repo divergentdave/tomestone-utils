@@ -1010,9 +1010,39 @@ mod tests {
         );
 
         assert_ser_tokens_error(
+            &Segment::If {
+                condition: Expression::Integer(0),
+                true_value: Expression::Integer(0),
+                false_value: Expression::Integer(0),
+            },
+            &[],
+            "serialization of segments with tag 0x08 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::Switch {
+                discriminant: Expression::Integer(0),
+                cases: vec![Expression::Integer(0), Expression::Integer(0)],
+            },
+            &[],
+            "serialization of segments with tag 0x09 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
             &Segment::Todo0A(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x0a is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::IfEquals {
+                left: Expression::Integer(0),
+                right: Expression::Integer(0),
+                true_value: Expression::Integer(0),
+                false_value: Expression::Integer(0),
+            },
+            &[],
+            "serialization of segments with tag 0x0c is not yet supported",
         );
 
         assert_ser_tokens_error(
@@ -1033,27 +1063,29 @@ mod tests {
             }],
         );
 
+        assert_ser_tokens_error(
+            &Segment::GuiIcon(Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x12 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::ColorChange(Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x13 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::Todo14(Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x14 is not yet supported",
+        );
+
         assert_tokens(
             &Segment::SoftHyphen,
             &[Token::UnitVariant {
                 name: "segment",
                 variant: "soft_hyphen",
-            }],
-        );
-
-        assert_tokens(
-            &Segment::NonBreakingSpace,
-            &[Token::UnitVariant {
-                name: "segment",
-                variant: "non_breaking_space",
-            }],
-        );
-
-        assert_tokens(
-            &Segment::Dash,
-            &[Token::UnitVariant {
-                name: "segment",
-                variant: "dash",
             }],
         );
 
@@ -1087,6 +1119,46 @@ mod tests {
             "serialization of segments with tag 0x1c is not yet supported",
         );
 
+        assert_tokens(
+            &Segment::NonBreakingSpace,
+            &[Token::UnitVariant {
+                name: "segment",
+                variant: "non_breaking_space",
+            }],
+        );
+
+        assert_ser_tokens_error(
+            &Segment::CommandIcon(Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x1e is not yet supported",
+        );
+
+        assert_tokens(
+            &Segment::Dash,
+            &[Token::UnitVariant {
+                name: "segment",
+                variant: "dash",
+            }],
+        );
+
+        assert_ser_tokens_error(
+            &Segment::Value(Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x20 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::TodoFormat(Expression::Integer(0), vec![]),
+            &[],
+            "serialization of segments with tag 0x22 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::TwoDigitValue(Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x24 is not yet supported",
+        );
+
         assert_ser_tokens_error(
             &Segment::Todo26(
                 Expression::Integer(0),
@@ -1098,9 +1170,43 @@ mod tests {
         );
 
         assert_ser_tokens_error(
+            &Segment::Sheet(vec![Expression::Integer(0)]),
+            &[],
+            "serialization of segments with tag 0x28 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::TodoHighlight(Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x29 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::Link(vec![Expression::Integer(0)]),
+            &[],
+            "serialization of segments with tag 0x2b is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::Split {
+                input: Expression::Integer(0),
+                separator: Expression::Integer(0),
+                index: Expression::Integer(0),
+            },
+            &[],
+            "serialization of segments with tag 0x2c is not yet supported",
+        );
+
+        assert_ser_tokens_error(
             &Segment::Todo2D(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x2d is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::AutoTranslate(Expression::Integer(0), Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x2e is not yet supported",
         );
 
         assert_ser_tokens_error(
@@ -1110,9 +1216,45 @@ mod tests {
         );
 
         assert_ser_tokens_error(
+            &Segment::SheetJa(vec![Expression::Integer(0)]),
+            &[],
+            "serialization of segments with tag 0x30 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::SheetEn(vec![Expression::Integer(0)]),
+            &[],
+            "serialization of segments with tag 0x31 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::SheetDe(vec![Expression::Integer(0)]),
+            &[],
+            "serialization of segments with tag 0x32 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::SheetFr(vec![Expression::Integer(0)]),
+            &[],
+            "serialization of segments with tag 0x33 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
             &Segment::Todo40(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x40 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::Foreground(Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x48 is not yet supported",
+        );
+
+        assert_ser_tokens_error(
+            &Segment::Glow(Expression::Integer(0)),
+            &[],
+            "serialization of segments with tag 0x49 is not yet supported",
         );
 
         assert_tokens(
@@ -1156,6 +1298,15 @@ mod tests {
                 Token::SeqEnd,
                 Token::StructVariantEnd,
             ],
+        );
+
+        assert_ser_tokens_error(
+            &Segment::ZeroPaddedValue {
+                value: Expression::Integer(0),
+                digits: Expression::Integer(0),
+            },
+            &[],
+            "serialization of segments with tag 0x50 is not yet supported",
         );
 
         assert_ser_tokens_error(

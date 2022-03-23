@@ -1,10 +1,10 @@
-use std::{collections::HashSet, process};
+use std::{collections::HashSet, io::Write, process};
 
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 
 use fanttheysia_common::GenderConditionalTextVisitor;
 use tomestone_exdf::{Dataset, Language, RootList, Value};
-use tomestone_sqpack::GameData;
+use tomestone_sqpack::{DataFileSet, GameData};
 use tomestone_string_interp::{Text, TreeNode};
 
 fn app() -> App<'static> {
@@ -22,46 +22,18 @@ fn app() -> App<'static> {
         .subcommand(
             App::new("report").about("Print a report of all gender conditional text expressions"),
         )
+        .subcommand(App::new("template").about("Print a YAML text replacement rules file template"))
 }
 
-fn main() {
-    dotenv::dotenv().ok();
-
-    let app_matches = app().get_matches();
-
-    let root = app_matches.value_of_os("ffxiv-install-dir").unwrap();
-    let game_data = match GameData::new(root) {
-        Ok(game_data) => game_data,
-        Err(e) => {
-            eprintln!(
-            "error: couldn't read the directory {:?} (from environment variable FFXIV_INSTALL_DIR), {}",
-            root, e
-        );
-            process::exit(1);
-        }
-    };
-    let mut data_file_set = game_data.data_files();
-
-    match app_matches.subcommand() {
-        Some(("report", _)) => {}
-        _ => {
-            eprintln!("{}", app().render_usage());
-            process::exit(1);
-        }
-    }
-
-    let root_list = if let Ok(root_list) = RootList::open(&game_data, &mut data_file_set) {
-        root_list
-    } else {
-        eprintln!("error: couldn't read root list of data files");
-        process::exit(1);
-    };
-
-    let mut if_tag_set = HashSet::new();
+fn foreach_exd_text_value<F: FnMut(&str, u32, &Text)>(
+    game_data: &GameData,
+    data_file_set: &mut DataFileSet,
+    root_list: &RootList,
+    language: Language,
+    mut f: F,
+) {
     for name in root_list.iter() {
-        let dataset = if let Ok(dataset) =
-            Dataset::load(&game_data, &mut data_file_set, name, Language::English)
-        {
+        let dataset = if let Ok(dataset) = Dataset::load(game_data, data_file_set, name, language) {
             dataset
         } else {
             eprintln!("error: couldn't load data file {}", name);
@@ -76,14 +48,7 @@ fn main() {
                         if let Value::String(data) = value {
                             match Text::parse(data) {
                                 Ok(text) => {
-                                    let mut visitor = GenderConditionalTextVisitor::new();
-                                    text.accept(&mut visitor);
-                                    if !visitor.ifs.is_empty() {
-                                        println!("{} row {}: {:?}", name, row.number, text);
-                                    }
-                                    for if_tag in visitor.ifs.into_iter() {
-                                        if_tag_set.insert(if_tag);
-                                    }
+                                    f(name, row.number, &text);
                                 }
                                 Err(e) => {
                                     eprintln!(
@@ -99,6 +64,26 @@ fn main() {
             }
         }
     }
+}
+
+fn print_report(game_data: &GameData, data_file_set: &mut DataFileSet, root_list: &RootList) {
+    let mut if_tag_set = HashSet::new();
+    foreach_exd_text_value(
+        game_data,
+        data_file_set,
+        root_list,
+        Language::English,
+        |name, row_number, text| {
+            let mut visitor = GenderConditionalTextVisitor::new();
+            text.accept(&mut visitor);
+            if !visitor.ifs.is_empty() {
+                println!("{} row {}: {:?}", name, row_number, text);
+            }
+            for if_tag in visitor.ifs.into_iter() {
+                if_tag_set.insert(if_tag);
+            }
+        },
+    );
 
     println!();
 
@@ -114,14 +99,13 @@ fn main() {
     );
     println!();
 
-    let title_dataset = if let Ok(dataset) =
-        Dataset::load(&game_data, &mut data_file_set, "Title", Language::English)
-    {
-        dataset
-    } else {
-        eprintln!("error: couldn't load data file Title");
-        process::exit(1);
-    };
+    let title_dataset =
+        if let Ok(dataset) = Dataset::load(game_data, data_file_set, "Title", Language::English) {
+            dataset
+        } else {
+            eprintln!("error: couldn't load data file Title");
+            process::exit(1);
+        };
 
     let mut achievement_title_diffs = 0;
     for page in title_dataset.page_iter() {
@@ -151,8 +135,8 @@ fn main() {
         ("GCRankUldahFemaleText", "GCRankUldahMaleText"),
     ] {
         let female_dataset = if let Ok(dataset) = Dataset::load(
-            &game_data,
-            &mut data_file_set,
+            game_data,
+            data_file_set,
             female_dataset_name,
             Language::English,
         ) {
@@ -162,8 +146,8 @@ fn main() {
             process::exit(1);
         };
         let male_dataset = if let Ok(dataset) = Dataset::load(
-            &game_data,
-            &mut data_file_set,
+            game_data,
+            data_file_set,
             male_dataset_name,
             Language::English,
         ) {
@@ -206,4 +190,63 @@ fn main() {
         "Total of {} differing Grand Company rank names",
         gc_rank_diffs
     );
+}
+
+fn print_template(game_data: &GameData, data_file_set: &mut DataFileSet, root_list: &RootList) {
+    let mut if_tag_set = HashSet::new();
+    foreach_exd_text_value(
+        game_data,
+        data_file_set,
+        root_list,
+        Language::English,
+        |_name, _row_number, text| {
+            let mut visitor = GenderConditionalTextVisitor::new();
+            text.accept(&mut visitor);
+            for if_tag in visitor.ifs.into_iter() {
+                if_tag_set.insert(if_tag);
+            }
+        },
+    );
+    let stdout = std::io::stdout();
+    let mut locked = stdout.lock();
+    for if_tag in if_tag_set.iter() {
+        if let Err(e) = serde_yaml::to_writer(&mut locked, &if_tag) {
+            writeln!(&mut locked, "{}", e).unwrap()
+        }
+    }
+}
+
+fn main() {
+    dotenv::dotenv().ok();
+
+    let app_matches = app().get_matches();
+
+    let root = app_matches.value_of_os("ffxiv-install-dir").unwrap();
+    let game_data = match GameData::new(root) {
+        Ok(game_data) => game_data,
+        Err(e) => {
+            eprintln!(
+            "error: couldn't read the directory {:?} (from environment variable FFXIV_INSTALL_DIR), {}",
+            root, e
+        );
+            process::exit(1);
+        }
+    };
+    let mut data_file_set = game_data.data_files();
+
+    let root_list = if let Ok(root_list) = RootList::open(&game_data, &mut data_file_set) {
+        root_list
+    } else {
+        eprintln!("error: couldn't read root list of data files");
+        process::exit(1);
+    };
+
+    match app_matches.subcommand() {
+        Some(("report", _)) => print_report(&game_data, &mut data_file_set, &root_list),
+        Some(("template", _)) => print_template(&game_data, &mut data_file_set, &root_list),
+        _ => {
+            eprintln!("{}", app().render_usage());
+            process::exit(1);
+        }
+    }
 }

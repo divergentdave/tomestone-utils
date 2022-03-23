@@ -311,6 +311,7 @@ dependencies = [
  "clap",
  "dotenv",
  "fanttheysia-common",
+ "serde_yaml",
  "tomestone-exdf",
  "tomestone-sqpack",
  "tomestone-string-interp",
@@ -320,6 +321,7 @@ dependencies = [
 name = "fanttheysia-common"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "serde_yaml",
  "tomestone-string-interp",
 ]
