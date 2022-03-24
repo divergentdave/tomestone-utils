@@ -76,6 +76,7 @@ static SEGMENT_VARIANTS: &[&str] = &[
     "placeholder_0x60",   // 42
     "placeholder_0x61",   // 43
 ];
+static IF_SEGMENT_FIELDS: &[&str] = &["condition", "true_value", "false_value"];
 static RUBY_SEGMENT_FIELDS: &[&str] = &["annotated", "annotation"];
 
 impl Serialize for Expression {
@@ -398,12 +399,17 @@ impl Serialize for Segment {
                 timestamp,
             ),
             Segment::If {
-                condition: _condition,
-                true_value: _true_value,
-                false_value: _false_value,
-            } => Err(S::Error::custom(
-                "serialization of segments with tag 0x08 is not yet supported",
-            )),
+                condition,
+                true_value,
+                false_value,
+            } => {
+                let mut variant =
+                    serializer.serialize_struct_variant(SEGMENT_NAME, 3, SEGMENT_VARIANTS[3], 3)?;
+                variant.serialize_field("condition", condition)?;
+                variant.serialize_field("true_value", true_value)?;
+                variant.serialize_field("false_value", false_value)?;
+                variant.end()
+            }
             Segment::Switch {
                 discriminant: _discriminant,
                 cases: _cases,
@@ -554,6 +560,95 @@ impl Serialize for Segment {
     }
 }
 
+/// Marker to differentiate between the fields of `Segment::If` when deserializing.
+enum IfSegmentField {
+    Condition,
+    TrueValue,
+    FalseValue,
+}
+
+struct IfSegmentFieldVisitor;
+
+impl<'de> Visitor<'de> for IfSegmentFieldVisitor {
+    type Value = IfSegmentField;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("`condition`, `true_value`, or `false_value`")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<IfSegmentField, E>
+    where
+        E: DeError,
+    {
+        match value {
+            "condition" => Ok(IfSegmentField::Condition),
+            "true_value" => Ok(IfSegmentField::TrueValue),
+            "false_value" => Ok(IfSegmentField::FalseValue),
+            _ => Err(E::unknown_field(value, IF_SEGMENT_FIELDS)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for IfSegmentField {
+    fn deserialize<D>(deserializer: D) -> Result<IfSegmentField, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_identifier(IfSegmentFieldVisitor)
+    }
+}
+
+struct IfSegmentVisitor;
+
+impl<'de> Visitor<'de> for IfSegmentVisitor {
+    type Value = Segment;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a struct with fields `condition`, `true_value`, and `false_value`")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Segment, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut condition = None;
+        let mut true_value = None;
+        let mut false_value = None;
+        while let Some(key) = access.next_key()? {
+            match key {
+                IfSegmentField::Condition => {
+                    if condition.is_some() {
+                        return Err(M::Error::duplicate_field("condition"));
+                    }
+                    condition = Some(access.next_value()?);
+                }
+                IfSegmentField::TrueValue => {
+                    if true_value.is_some() {
+                        return Err(M::Error::duplicate_field("true_value"));
+                    }
+                    true_value = Some(access.next_value()?);
+                }
+                IfSegmentField::FalseValue => {
+                    if false_value.is_some() {
+                        return Err(M::Error::duplicate_field("false_value"));
+                    }
+                    false_value = Some(access.next_value()?);
+                }
+            }
+        }
+        match (condition, true_value, false_value) {
+            (None, _, _) => Err(M::Error::missing_field("condition")),
+            (Some(_), None, _) => Err(M::Error::missing_field("true_value")),
+            (Some(_), Some(_), None) => Err(M::Error::missing_field("false_value")),
+            (Some(condition), Some(true_value), Some(false_value)) => Ok(Segment::If {
+                condition,
+                true_value,
+                false_value,
+            }),
+        }
+    }
+}
+
 /// Marker to differentiate between the fields of `Segment::Ruby` when deserializing.
 enum RubySegmentField {
     Annotated,
@@ -596,7 +691,7 @@ impl<'de> Visitor<'de> for RubySegmentVisitor {
     type Value = Segment;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a struct with fields \"annotated\" and \"annotation\"")
+        formatter.write_str("a struct with fields `annotated` and `annotation`")
     }
 
     fn visit_map<M>(self, mut access: M) -> Result<Segment, M::Error>
@@ -636,6 +731,7 @@ impl<'de> Visitor<'de> for RubySegmentVisitor {
 enum SegmentVariant {
     Literal,
     Time,
+    If,
     NewLine,
     SoftHyphen,
     NonBreakingSpace,
@@ -661,12 +757,25 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
         match s {
             "literal" => Ok(SegmentVariant::Literal),
             "time" => Ok(SegmentVariant::Time),
+            "if" => Ok(SegmentVariant::If),
             "new_line" => Ok(SegmentVariant::NewLine),
             "soft_hyphen" => Ok(SegmentVariant::SoftHyphen),
             "non_breaking_space" => Ok(SegmentVariant::NonBreakingSpace),
             "dash" => Ok(SegmentVariant::Dash),
             "ruby" => Ok(SegmentVariant::Ruby),
-            _ => Err(E::unknown_variant(s, SEGMENT_VARIANTS)),
+            _ => Err(E::unknown_variant(
+                s,
+                &[
+                    "literal",
+                    "time",
+                    "if",
+                    "new_line",
+                    "soft_hyphen",
+                    "non_breaking_space",
+                    "dash",
+                    "ruby",
+                ],
+            )),
         }
     }
 }
@@ -697,6 +806,9 @@ impl<'de> Visitor<'de> for SegmentVisitor {
         match variant {
             SegmentVariant::Literal => Ok(Segment::Literal(variant_access.newtype_variant()?)),
             SegmentVariant::Time => Ok(Segment::Time(variant_access.newtype_variant()?)),
+            SegmentVariant::If => {
+                variant_access.struct_variant(IF_SEGMENT_FIELDS, IfSegmentVisitor)
+            }
             SegmentVariant::NewLine => {
                 variant_access.unit_variant()?;
                 Ok(Segment::NewLine)
@@ -1009,14 +1121,54 @@ mod tests {
             ],
         );
 
-        assert_ser_tokens_error(
+        assert_tokens(
             &Segment::If {
-                condition: Expression::Integer(0),
-                true_value: Expression::Integer(0),
-                false_value: Expression::Integer(0),
+                condition: Expression::Integer(1),
+                true_value: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                    "true".to_string(),
+                )]))),
+                false_value: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                    "false".to_string(),
+                )]))),
             },
-            &[],
-            "serialization of segments with tag 0x08 is not yet supported",
+            &[
+                Token::StructVariant {
+                    name: "segment",
+                    variant: "if",
+                    len: 3,
+                },
+                Token::Str("condition"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(1),
+                Token::Str("true_value"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str("true"),
+                Token::SeqEnd,
+                Token::Str("false_value"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str("false"),
+                Token::SeqEnd,
+                Token::StructVariantEnd,
+            ],
         );
 
         assert_ser_tokens_error(
