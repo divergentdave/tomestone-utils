@@ -442,7 +442,7 @@ impl Serialize for Segment {
             Segment::Todo17 => Err(S::Error::custom(
                 "serialization of segments with tag 0x17 is not yet supported",
             )),
-            Segment::Emphasis2(_) => Err(S::Error::custom(
+            Segment::Todo19(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x19 is not yet supported",
             )),
             Segment::Emphasis(_) => Err(S::Error::custom(
@@ -1096,13 +1096,13 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Segment::Emphasis2(0),
+            &Segment::Todo19(false),
             &[],
             "serialization of segments with tag 0x19 is not yet supported",
         );
 
         assert_ser_tokens_error(
-            &Segment::Emphasis(0),
+            &Segment::Emphasis(false),
             &[],
             "serialization of segments with tag 0x1a is not yet supported",
         );

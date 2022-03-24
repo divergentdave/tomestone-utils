@@ -273,10 +273,10 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
         Segment::Todo17 => {
             buf.extend_from_slice(&[2, TODO_17, 1, 3]);
         }
-        Segment::Emphasis2(value) => {
-            buf.extend_from_slice(&[2, EMPHASIS_2]);
+        Segment::Todo19(value) => {
+            buf.extend_from_slice(&[2, TODO_19]);
             let mut tag_data = vec![];
-            encode_integer(&mut tag_data, *value)?;
+            encode_integer(&mut tag_data, *value as u32)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;
             buf.append(&mut tag_data);
             buf.push(3);
@@ -284,7 +284,7 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
         Segment::Emphasis(value) => {
             buf.extend_from_slice(&[2, EMPHASIS]);
             let mut tag_data = vec![];
-            encode_integer(&mut tag_data, *value)?;
+            encode_integer(&mut tag_data, *value as u32)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;
             buf.append(&mut tag_data);
             buf.push(3);

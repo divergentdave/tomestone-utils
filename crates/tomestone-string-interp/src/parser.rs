@@ -54,6 +54,14 @@ fn integer_usize(input: &[u8]) -> IResult<&[u8], usize, Error> {
     map_res(integer, TryInto::try_into)(input)
 }
 
+fn boolean(input: &[u8]) -> IResult<&[u8], bool, Error> {
+    map_res(integer, |n| match n {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(()),
+    })(input)
+}
+
 fn expression_tagged_text(input: &[u8]) -> IResult<&[u8], Expression, Error> {
     length_value(
         integer_usize,
@@ -223,8 +231,8 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
         TODO_14 => contents(map(expression, Segment::Todo14))(input),
         SOFT_HYPHEN => contents(segment_no_data(Segment::SoftHyphen))(input),
         TODO_17 => contents(segment_no_data(Segment::Todo17))(input),
-        EMPHASIS_2 => contents(map(integer, Segment::Emphasis2))(input),
-        EMPHASIS => contents(map(integer, Segment::Emphasis))(input),
+        TODO_19 => contents(map(boolean, Segment::Todo19))(input),
+        EMPHASIS => contents(map(boolean, Segment::Emphasis))(input),
         TODO_1B => contents(map_res(
             take_while(|_| true),
             |data: &[u8]| -> Result<Segment, Error> {

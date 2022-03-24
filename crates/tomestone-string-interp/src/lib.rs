@@ -120,7 +120,7 @@ pub trait Visitor {
             Segment::Todo14(expr) => expr.accept(self),
             Segment::SoftHyphen => {}
             Segment::Todo17 => {}
-            Segment::Emphasis2(_) => {}
+            Segment::Todo19(_) => {}
             Segment::Emphasis(_) => {}
             Segment::Todo1B(_) => {}
             Segment::Todo1C(_) => {}
@@ -268,9 +268,13 @@ impl TreeNode for Expression {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Segment {
+    /// Plain Unicode text.
     Literal(String),
     TodoResetTime(Vec<NonZeroU8>),
     Time(Expression),
+    /// A basic conditional expression. If the condition expression (first argument) evaluates to
+    /// 1, then it will return the value of the true branch (second argument), and if it evaluates
+    /// to 0, then it will return the value of the false branch (third argument).
     If {
         condition: Expression,
         true_value: Expression,
@@ -298,8 +302,11 @@ pub enum Segment {
     Todo14(Expression),
     SoftHyphen,
     Todo17,
-    Emphasis2(u32),
-    Emphasis(u32),
+    /// This tag is rarely used, and it seems to have no visible effect.
+    Todo19(bool),
+    /// Delimits italic text. When the argument is 1, the following text will be italic, until the
+    /// next `Emphasis` tag with argument 0.
+    Emphasis(bool),
     Todo1B(Vec<NonZeroU8>),
     Todo1C(Vec<NonZeroU8>),
     NonBreakingSpace,
@@ -399,7 +406,7 @@ impl fmt::Debug for Segment {
             Segment::Todo14(arg) => f.debug_tuple("Todo14").field(arg).finish(),
             Segment::SoftHyphen => f.debug_tuple("SoftHyphen").finish(),
             Segment::Todo17 => f.debug_tuple("Todo17").finish(),
-            Segment::Emphasis2(arg) => f.debug_tuple("Emphasis2").field(arg).finish(),
+            Segment::Todo19(arg) => f.debug_tuple("Todo19").field(arg).finish(),
             Segment::Emphasis(arg) => f.debug_tuple("Emphasis").field(arg).finish(),
             Segment::Todo1B(arg) => f.debug_tuple("Todo1B").field(arg).finish(),
             Segment::Todo1C(arg) => f.debug_tuple("Todo1C").field(arg).finish(),
@@ -749,8 +756,8 @@ mod proptests {
             11 => Segment::Todo14(arbitrary_expr(g, depth)),
             12 => Segment::SoftHyphen,
             13 => Segment::Todo17,
-            14 => Segment::Emphasis2(u8::arbitrary(g) as u32),
-            15 => Segment::Emphasis(u8::arbitrary(g) as u32),
+            14 => Segment::Todo19(bool::arbitrary(g)),
+            15 => Segment::Emphasis(bool::arbitrary(g)),
             16 => Segment::Todo1B(Vec::<NonZeroU8>::arbitrary(g)),
             17 => Segment::Todo1C(Vec::<NonZeroU8>::arbitrary(g)),
             18 => Segment::NonBreakingSpace,
@@ -1034,7 +1041,7 @@ mod proptests {
                 Segment::Todo14(arg) => Box::new(shrink_expr(arg).map(Segment::Todo14)),
                 Segment::SoftHyphen => Box::new(empty()),
                 Segment::Todo17 => Box::new(empty()),
-                Segment::Emphasis2(value) => Box::new(value.shrink().map(Segment::Emphasis2)),
+                Segment::Todo19(value) => Box::new(value.shrink().map(Segment::Todo19)),
                 Segment::Emphasis(value) => Box::new(value.shrink().map(Segment::Emphasis)),
                 Segment::Todo1B(_) => Box::new(empty()),
                 Segment::Todo1C(_) => Box::new(empty()),

@@ -6,6 +6,8 @@ use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
 #[derive(Default, Debug)]
 struct TagContentsVisitor {
     time_counters: BTreeMap<Expression, u64>,
+    emphasis_values: BTreeMap<bool, u64>,
+    tag19_numbers: BTreeMap<bool, u64>,
 }
 
 impl TagContentsVisitor {
@@ -18,6 +20,8 @@ impl Visitor for TagContentsVisitor {
     fn visit_tag(&mut self, tag: &Segment) {
         match tag {
             Segment::Time(expr) => *self.time_counters.entry(expr.clone()).or_default() += 1,
+            Segment::Emphasis(flag) => *self.emphasis_values.entry(*flag).or_default() += 1,
+            Segment::Todo19(flag) => *self.tag19_numbers.entry(*flag).or_default() += 1,
             _ => {}
         }
         self.recurse_tag(tag);
