@@ -281,7 +281,7 @@ where
         impl<T, const N: usize> Drop for DropGuard<T, N> {
             fn drop(&mut self) {
                 if let (Some(valid_idx), Some(array)) = (self.valid_idx, &mut self.array) {
-                    for elem in &mut array.as_mut()[..valid_idx] {
+                    for elem in &mut array.as_mut()[..=valid_idx] {
                         unsafe {
                             std::ptr::drop_in_place(elem.as_mut_ptr());
                         }
