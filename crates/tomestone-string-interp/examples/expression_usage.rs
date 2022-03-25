@@ -7,11 +7,11 @@ use tomestone_string_interp::{Text, TreeNode, Visitor};
 #[derive(Default, Debug)]
 struct ExpressionUsageCounterVisitor {
     greater_than_or_equal: usize,
-    comparison_1: usize,
+    greater_than: usize,
     less_than_or_equal: usize,
-    comparison_2: usize,
+    less_than: usize,
     equal: usize,
-    comparison_3: usize,
+    not_equal: usize,
     top_level_parameter: usize,
     input_parameter: usize,
     player_parameter: usize,
@@ -38,11 +38,11 @@ impl Visitor for ExpressionUsageCounterVisitor {
             tomestone_string_interp::Expression::GreaterThanOrEqual(_) => {
                 self.greater_than_or_equal += 1
             }
-            tomestone_string_interp::Expression::TodoComparison1(_) => self.comparison_1 += 1,
+            tomestone_string_interp::Expression::GreaterThan(_) => self.greater_than += 1,
             tomestone_string_interp::Expression::LessThanOrEqual(_) => self.less_than_or_equal += 1,
-            tomestone_string_interp::Expression::TodoComparison2(_) => self.comparison_2 += 1,
+            tomestone_string_interp::Expression::LessThan(_) => self.less_than += 1,
             tomestone_string_interp::Expression::Equal(_) => self.equal += 1,
-            tomestone_string_interp::Expression::TodoComparison3(_) => self.comparison_3 += 1,
+            tomestone_string_interp::Expression::NotEqual(_) => self.not_equal += 1,
             tomestone_string_interp::Expression::TopLevelParameter(_) => {
                 self.top_level_parameter += 1
             }

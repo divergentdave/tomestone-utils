@@ -10,6 +10,9 @@ struct ExpressionContentsVisitor {
     player_param_counters: BTreeMap<u32, u64>,
     string_param_counters: BTreeMap<u32, u64>,
     object_param_counters: BTreeMap<u32, u64>,
+    greater_than_contents: BTreeMap<(Expression, Expression), u64>,
+    less_than_contents: BTreeMap<(Expression, Expression), u64>,
+    not_equal_contents: BTreeMap<(Expression, Expression), u64>,
 }
 
 impl ExpressionContentsVisitor {
@@ -50,6 +53,24 @@ impl Visitor for ExpressionContentsVisitor {
                 *self
                     .object_param_counters
                     .entry(*parameter_index)
+                    .or_default() += 1
+            }
+            Expression::GreaterThan(boite) => {
+                *self
+                    .greater_than_contents
+                    .entry((boite.0.clone(), boite.1.clone()))
+                    .or_default() += 1
+            }
+            Expression::LessThan(boite) => {
+                *self
+                    .less_than_contents
+                    .entry((boite.0.clone(), boite.1.clone()))
+                    .or_default() += 1
+            }
+            Expression::NotEqual(boite) => {
+                *self
+                    .not_equal_contents
+                    .entry((boite.0.clone(), boite.1.clone()))
                     .or_default() += 1
             }
             _ => {}

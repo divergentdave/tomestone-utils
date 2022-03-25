@@ -108,7 +108,7 @@ impl Serialize for Expression {
                 variant.serialize_field(&boite.1)?;
                 variant.end()
             }
-            Expression::TodoComparison1(_) => Err(S::Error::custom(
+            Expression::GreaterThan(_) => Err(S::Error::custom(
                 "serialization of expressions with tag 0xe1 is not yet supported",
             )),
             Expression::LessThanOrEqual(boite) => {
@@ -122,7 +122,7 @@ impl Serialize for Expression {
                 variant.serialize_field(&boite.1)?;
                 variant.end()
             }
-            Expression::TodoComparison2(_) => Err(S::Error::custom(
+            Expression::LessThan(_) => Err(S::Error::custom(
                 "serialization of expressions with tag 0xe3 is not yet supported",
             )),
             Expression::Equal(boite) => {
@@ -136,7 +136,7 @@ impl Serialize for Expression {
                 variant.serialize_field(&boite.1)?;
                 variant.end()
             }
-            Expression::TodoComparison3(_) => Err(S::Error::custom(
+            Expression::NotEqual(_) => Err(S::Error::custom(
                 "serialization of expressions with tag 0xe5 is not yet supported",
             )),
             Expression::InputParameter(value) => serializer.serialize_newtype_variant(
@@ -944,10 +944,7 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Expression::TodoComparison1(Box::new((
-                Expression::Integer(0),
-                Expression::Integer(1),
-            ))),
+            &Expression::GreaterThan(Box::new((Expression::Integer(0), Expression::Integer(1)))),
             &[],
             "serialization of expressions with tag 0xe1 is not yet supported",
         );
@@ -978,10 +975,7 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Expression::TodoComparison2(Box::new((
-                Expression::Integer(0),
-                Expression::Integer(1),
-            ))),
+            &Expression::LessThan(Box::new((Expression::Integer(0), Expression::Integer(1)))),
             &[],
             "serialization of expressions with tag 0xe3 is not yet supported",
         );
@@ -1009,10 +1003,7 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Expression::TodoComparison3(Box::new((
-                Expression::Integer(0),
-                Expression::Integer(1),
-            ))),
+            &Expression::NotEqual(Box::new((Expression::Integer(0), Expression::Integer(1)))),
             &[],
             "serialization of expressions with tag 0xe5 is not yet supported",
         );

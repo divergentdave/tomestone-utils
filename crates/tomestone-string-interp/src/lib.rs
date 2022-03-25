@@ -210,7 +210,7 @@ pub trait Visitor {
                 boite.0.accept(self);
                 boite.1.accept(self);
             }
-            Expression::TodoComparison1(boite) => {
+            Expression::GreaterThan(boite) => {
                 boite.0.accept(self);
                 boite.1.accept(self);
             }
@@ -218,7 +218,7 @@ pub trait Visitor {
                 boite.0.accept(self);
                 boite.1.accept(self);
             }
-            Expression::TodoComparison2(boite) => {
+            Expression::LessThan(boite) => {
                 boite.0.accept(self);
                 boite.1.accept(self);
             }
@@ -226,7 +226,7 @@ pub trait Visitor {
                 boite.0.accept(self);
                 boite.1.accept(self);
             }
-            Expression::TodoComparison3(boite) => {
+            Expression::NotEqual(boite) => {
                 boite.0.accept(self);
                 boite.1.accept(self);
             }
@@ -245,11 +245,11 @@ pub trait Visitor {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Expression {
     GreaterThanOrEqual(Box<(Expression, Expression)>),
-    TodoComparison1(Box<(Expression, Expression)>),
+    GreaterThan(Box<(Expression, Expression)>),
     LessThanOrEqual(Box<(Expression, Expression)>),
-    TodoComparison2(Box<(Expression, Expression)>),
+    LessThan(Box<(Expression, Expression)>),
     Equal(Box<(Expression, Expression)>),
-    TodoComparison3(Box<(Expression, Expression)>),
+    NotEqual(Box<(Expression, Expression)>),
     TopLevelParameter(u8),
     InputParameter(u32),
     PlayerParameter(u32),
@@ -540,7 +540,7 @@ mod proptests {
                 arbitrary_expr(g, depth + 1),
                 arbitrary_expr(g, depth + 1),
             ))),
-            1 => Expression::TodoComparison1(Box::new((
+            1 => Expression::GreaterThan(Box::new((
                 arbitrary_expr(g, depth + 1),
                 arbitrary_expr(g, depth + 1),
             ))),
@@ -548,7 +548,7 @@ mod proptests {
                 arbitrary_expr(g, depth + 1),
                 arbitrary_expr(g, depth + 1),
             ))),
-            3 => Expression::TodoComparison2(Box::new((
+            3 => Expression::LessThan(Box::new((
                 arbitrary_expr(g, depth + 1),
                 arbitrary_expr(g, depth + 1),
             ))),
@@ -556,7 +556,7 @@ mod proptests {
                 arbitrary_expr(g, depth + 1),
                 arbitrary_expr(g, depth + 1),
             ))),
-            5 => Expression::TodoComparison3(Box::new((
+            5 => Expression::NotEqual(Box::new((
                 arbitrary_expr(g, depth + 1),
                 arbitrary_expr(g, depth + 1),
             ))),
@@ -585,15 +585,15 @@ mod proptests {
                         move |right| Expression::GreaterThanOrEqual(Box::new((left.clone(), right)))
                     })),
             ),
-            Expression::TodoComparison1(boite) => Box::new(
+            Expression::GreaterThan(boite) => Box::new(
                 shrink_expr(&boite.0)
                     .map({
                         let right = boite.1.clone();
-                        move |left| Expression::TodoComparison1(Box::new((left, right.clone())))
+                        move |left| Expression::GreaterThan(Box::new((left, right.clone())))
                     })
                     .chain(shrink_expr(&boite.1).map({
                         let left = boite.0.clone();
-                        move |right| Expression::TodoComparison1(Box::new((left.clone(), right)))
+                        move |right| Expression::GreaterThan(Box::new((left.clone(), right)))
                     })),
             ),
             Expression::LessThanOrEqual(boite) => Box::new(
@@ -607,15 +607,15 @@ mod proptests {
                         move |right| Expression::LessThanOrEqual(Box::new((left.clone(), right)))
                     })),
             ),
-            Expression::TodoComparison2(boite) => Box::new(
+            Expression::LessThan(boite) => Box::new(
                 shrink_expr(&boite.0)
                     .map({
                         let right = boite.1.clone();
-                        move |left| Expression::TodoComparison2(Box::new((left, right.clone())))
+                        move |left| Expression::LessThan(Box::new((left, right.clone())))
                     })
                     .chain(shrink_expr(&boite.1).map({
                         let left = boite.0.clone();
-                        move |right| Expression::TodoComparison2(Box::new((left.clone(), right)))
+                        move |right| Expression::LessThan(Box::new((left.clone(), right)))
                     })),
             ),
             Expression::Equal(boite) => Box::new(
@@ -629,15 +629,15 @@ mod proptests {
                         move |right| Expression::Equal(Box::new((left.clone(), right)))
                     })),
             ),
-            Expression::TodoComparison3(boite) => Box::new(
+            Expression::NotEqual(boite) => Box::new(
                 shrink_expr(&boite.0)
                     .map({
                         let right = boite.1.clone();
-                        move |left| Expression::TodoComparison3(Box::new((left, right.clone())))
+                        move |left| Expression::NotEqual(Box::new((left, right.clone())))
                     })
                     .chain(shrink_expr(&boite.1).map({
                         let left = boite.0.clone();
-                        move |right| Expression::TodoComparison3(Box::new((left.clone(), right)))
+                        move |right| Expression::NotEqual(Box::new((left.clone(), right)))
                     })),
             ),
             Expression::TopLevelParameter(parameter_index) => {

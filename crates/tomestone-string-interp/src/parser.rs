@@ -79,20 +79,20 @@ fn expression(input: &[u8]) -> IResult<&[u8], Expression, Error> {
         GEQ => map(pair(expression, expression), |(left, right)| {
             Expression::GreaterThanOrEqual(Box::new((left, right)))
         })(input),
-        TODO_COMPARISON_1 => map(pair(expression, expression), |(left, right)| {
-            Expression::TodoComparison1(Box::new((left, right)))
+        GT => map(pair(expression, expression), |(left, right)| {
+            Expression::GreaterThan(Box::new((left, right)))
         })(input),
         LEQ => map(pair(expression, expression), |(left, right)| {
             Expression::LessThanOrEqual(Box::new((left, right)))
         })(input),
-        TODO_COMPARISON_2 => map(pair(expression, expression), |(left, right)| {
-            Expression::TodoComparison2(Box::new((left, right)))
+        LT => map(pair(expression, expression), |(left, right)| {
+            Expression::LessThan(Box::new((left, right)))
         })(input),
         EQ => map(pair(expression, expression), |(left, right)| {
             Expression::Equal(Box::new((left, right)))
         })(input),
-        TODO_COMPARISON_3 => map(pair(expression, expression), |(left, right)| {
-            Expression::TodoComparison3(Box::new((left, right)))
+        NEQ => map(pair(expression, expression), |(left, right)| {
+            Expression::NotEqual(Box::new((left, right)))
         })(input),
         INPUT_PARAM => map(integer, Expression::InputParameter)(input),
         PLAYER_PARAM => map(integer, Expression::PlayerParameter)(input),

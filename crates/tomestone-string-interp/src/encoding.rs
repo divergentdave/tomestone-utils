@@ -57,8 +57,8 @@ fn encode_expression(buf: &mut Vec<u8>, expr: &Expression) -> Result<(), EncodeE
             encode_expression(buf, &boite.0)?;
             encode_expression(buf, &boite.1)?;
         }
-        Expression::TodoComparison1(boite) => {
-            buf.push(TODO_COMPARISON_1);
+        Expression::GreaterThan(boite) => {
+            buf.push(GT);
             encode_expression(buf, &boite.0)?;
             encode_expression(buf, &boite.1)?;
         }
@@ -67,8 +67,8 @@ fn encode_expression(buf: &mut Vec<u8>, expr: &Expression) -> Result<(), EncodeE
             encode_expression(buf, &boite.0)?;
             encode_expression(buf, &boite.1)?;
         }
-        Expression::TodoComparison2(boite) => {
-            buf.push(TODO_COMPARISON_2);
+        Expression::LessThan(boite) => {
+            buf.push(LT);
             encode_expression(buf, &boite.0)?;
             encode_expression(buf, &boite.1)?;
         }
@@ -77,8 +77,8 @@ fn encode_expression(buf: &mut Vec<u8>, expr: &Expression) -> Result<(), EncodeE
             encode_expression(buf, &boite.0)?;
             encode_expression(buf, &boite.1)?;
         }
-        Expression::TodoComparison3(boite) => {
-            buf.push(TODO_COMPARISON_3);
+        Expression::NotEqual(boite) => {
+            buf.push(NEQ);
             encode_expression(buf, &boite.0)?;
             encode_expression(buf, &boite.1)?;
         }
