@@ -1,7 +1,7 @@
 use std::{fmt, fs, io};
 
 use directories::ProjectDirs;
-use rusqlite::{params, Connection, Statement, NO_PARAMS};
+use rusqlite::{params, Connection, Statement};
 
 use crate::{IndexHash, IndexHash1, IndexHash2};
 
@@ -54,34 +54,34 @@ impl PathDb {
                 crc INTEGER NOT NULL,
                 path TEXT NOT NULL PRIMARY KEY
             )",
-            NO_PARAMS,
+            [],
         )?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS index_1_filename (
                 crc INTEGER NOT NULL,
                 path TEXT NOT NULL PRIMARY KEY
             )",
-            NO_PARAMS,
+            [],
         )?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS index_2_path (
                 crc INTEGER NOT NULL,
                 path TEXT NOT NULL PRIMARY KEY
             )",
-            NO_PARAMS,
+            [],
         )?;
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS index_1_folder_crc ON index_1_folder (crc)",
-            NO_PARAMS,
+            [],
         )?;
         conn.execute(
             "CREATE INDEX IF NOT EXISTS index_1_filename_crc ON index_1_filename (crc)",
-            NO_PARAMS,
+            [],
         )?;
         conn.execute(
             "CREATE INDEX IF NOT EXISTS index_2_path_crc ON index_2_path (crc)",
-            NO_PARAMS,
+            [],
         )?;
 
         Ok(PathDb { conn })
@@ -133,10 +133,10 @@ impl<'a> PreparedStatements<'a> {
     ) -> Result<(Vec<String>, Vec<String>), DbError> {
         Ok((
             self.index_1_folder_lookup_stmt
-                .query_map(&[hash.folder_crc], |row| row.get::<_, String>(0))?
+                .query_map([hash.folder_crc], |row| row.get::<_, String>(0))?
                 .collect::<Result<Vec<String>, rusqlite::Error>>()?,
             self.index_1_filename_lookup_stmt
-                .query_map(&[hash.filename_crc], |row| row.get::<_, String>(0))?
+                .query_map([hash.filename_crc], |row| row.get::<_, String>(0))?
                 .collect::<Result<Vec<String>, rusqlite::Error>>()?,
         ))
     }
@@ -169,7 +169,7 @@ impl<'a> PreparedStatements<'a> {
     pub fn index_2_lookup(&mut self, hash: IndexHash2) -> Result<Vec<String>, DbError> {
         Ok(self
             .index_2_lookup_stmt
-            .query_map(&[hash.path_crc], |row| row.get::<_, String>(0))?
+            .query_map([hash.path_crc], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<String>, rusqlite::Error>>()?)
     }
 }
