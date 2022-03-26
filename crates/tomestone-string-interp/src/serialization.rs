@@ -46,7 +46,7 @@ static SEGMENT_VARIANTS: &[&str] = &[
     "soft_hyphen",        // 12
     "placeholder_0x17",   // 13
     "placeholder_0x19",   // 14
-    "placeholder_0x1a",   // 15
+    "emphasis",           // 15
     "placeholder_0x1b",   // 16
     "placeholder_0x1c",   // 17
     "non_breaking_space", // 18
@@ -77,6 +77,7 @@ static SEGMENT_VARIANTS: &[&str] = &[
     "placeholder_0x61",   // 43
 ];
 static IF_SEGMENT_FIELDS: &[&str] = &["condition", "true_value", "false_value"];
+static SPLIT_SEGMENT_FIELDS: &[&str] = &["input", "separator", "index"];
 static RUBY_SEGMENT_FIELDS: &[&str] = &["annotated", "annotation"];
 
 impl Serialize for Expression {
@@ -496,9 +497,9 @@ impl Serialize for Segment {
             Segment::Todo19(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x19 is not yet supported",
             )),
-            Segment::Emphasis(_) => Err(S::Error::custom(
-                "serialization of segments with tag 0x1a is not yet supported",
-            )),
+            Segment::Emphasis(flag) => {
+                serializer.serialize_newtype_variant(SEGMENT_NAME, 15, SEGMENT_VARIANTS[15], flag)
+            }
             Segment::Todo1B(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x1b is not yet supported",
             )),
@@ -536,12 +537,21 @@ impl Serialize for Segment {
                 "serialization of segments with tag 0x2b is not yet supported",
             )),
             Segment::Split {
-                input: _input,
-                separator: _separator,
-                index: _index,
-            } => Err(S::Error::custom(
-                "serialization of segments with tag 0x2c is not yet supported",
-            )),
+                input,
+                separator,
+                index,
+            } => {
+                let mut variant = serializer.serialize_struct_variant(
+                    SEGMENT_NAME,
+                    28,
+                    SEGMENT_VARIANTS[28],
+                    3,
+                )?;
+                variant.serialize_field("input", input)?;
+                variant.serialize_field("separator", separator)?;
+                variant.serialize_field("index", index)?;
+                variant.end()
+            }
             Segment::Todo2D(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2d is not yet supported",
             )),
@@ -694,6 +704,95 @@ impl<'de> Visitor<'de> for IfSegmentVisitor {
     }
 }
 
+/// Marker to differentiate between the fields of `Segment::Split` when deserializing.
+enum SplitSegmentField {
+    Input,
+    Separator,
+    Index,
+}
+
+struct SplitSegmentFieldVisitor;
+
+impl<'de> Visitor<'de> for SplitSegmentFieldVisitor {
+    type Value = SplitSegmentField;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("`input`, `separator`, or `index`")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<SplitSegmentField, E>
+    where
+        E: DeError,
+    {
+        match value {
+            "input" => Ok(SplitSegmentField::Input),
+            "separator" => Ok(SplitSegmentField::Separator),
+            "index" => Ok(SplitSegmentField::Index),
+            _ => Err(E::unknown_field(value, SPLIT_SEGMENT_FIELDS)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SplitSegmentField {
+    fn deserialize<D>(deserializer: D) -> Result<SplitSegmentField, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_identifier(SplitSegmentFieldVisitor)
+    }
+}
+
+struct SplitSegmentVisitor;
+
+impl<'de> Visitor<'de> for SplitSegmentVisitor {
+    type Value = Segment;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a struct with fields `input`, `separator`, and `index`")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Segment, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut input = None;
+        let mut separator = None;
+        let mut index = None;
+        while let Some(key) = access.next_key()? {
+            match key {
+                SplitSegmentField::Input => {
+                    if input.is_some() {
+                        return Err(M::Error::duplicate_field("input"));
+                    }
+                    input = Some(access.next_value()?);
+                }
+                SplitSegmentField::Separator => {
+                    if separator.is_some() {
+                        return Err(M::Error::duplicate_field("separator"));
+                    }
+                    separator = Some(access.next_value()?);
+                }
+                SplitSegmentField::Index => {
+                    if index.is_some() {
+                        return Err(M::Error::duplicate_field("index"));
+                    }
+                    index = Some(access.next_value()?);
+                }
+            }
+        }
+        match (input, separator, index) {
+            (None, _, _) => Err(M::Error::missing_field("input")),
+            (Some(_), None, _) => Err(M::Error::missing_field("separator")),
+            (Some(_), Some(_), None) => Err(M::Error::missing_field("index")),
+            (Some(input), Some(separator), Some(index)) => Ok(Segment::Split {
+                input,
+                separator,
+                index,
+            }),
+        }
+    }
+}
+
 /// Marker to differentiate between the fields of `Segment::Ruby` when deserializing.
 enum RubySegmentField {
     Annotated,
@@ -779,8 +878,10 @@ enum SegmentVariant {
     If,
     NewLine,
     SoftHyphen,
+    Emphasis,
     NonBreakingSpace,
     Dash,
+    Split,
     Ruby,
 }
 
@@ -791,7 +892,8 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str(
-            "`literal`, `time`, `new_line`, `soft_hyphen`, `non_breaking_space`, `dash`, or `ruby`",
+            "`literal`, `time`, `if`, `new_line`, `soft_hyphen`, `emphasis`, \
+            `non_breaking_space`, `dash`, `split`, or `ruby`",
         )
     }
 
@@ -805,8 +907,10 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
             "if" => Ok(SegmentVariant::If),
             "new_line" => Ok(SegmentVariant::NewLine),
             "soft_hyphen" => Ok(SegmentVariant::SoftHyphen),
+            "emphasis" => Ok(SegmentVariant::Emphasis),
             "non_breaking_space" => Ok(SegmentVariant::NonBreakingSpace),
             "dash" => Ok(SegmentVariant::Dash),
+            "split" => Ok(SegmentVariant::Split),
             "ruby" => Ok(SegmentVariant::Ruby),
             _ => Err(E::unknown_variant(
                 s,
@@ -816,8 +920,10 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
                     "if",
                     "new_line",
                     "soft_hyphen",
+                    "emphasis",
                     "non_breaking_space",
                     "dash",
+                    "split",
                     "ruby",
                 ],
             )),
@@ -862,6 +968,7 @@ impl<'de> Visitor<'de> for SegmentVisitor {
                 variant_access.unit_variant()?;
                 Ok(Segment::SoftHyphen)
             }
+            SegmentVariant::Emphasis => Ok(Segment::Emphasis(variant_access.newtype_variant()?)),
             SegmentVariant::NonBreakingSpace => {
                 variant_access.unit_variant()?;
                 Ok(Segment::NonBreakingSpace)
@@ -869,6 +976,9 @@ impl<'de> Visitor<'de> for SegmentVisitor {
             SegmentVariant::Dash => {
                 variant_access.unit_variant()?;
                 Ok(Segment::Dash)
+            }
+            SegmentVariant::Split => {
+                variant_access.struct_variant(SPLIT_SEGMENT_FIELDS, SplitSegmentVisitor)
             }
             SegmentVariant::Ruby => {
                 variant_access.struct_variant(RUBY_SEGMENT_FIELDS, RubySegmentVisitor)
@@ -1337,10 +1447,15 @@ mod tests {
             "serialization of segments with tag 0x19 is not yet supported",
         );
 
-        assert_ser_tokens_error(
+        assert_tokens(
             &Segment::Emphasis(false),
-            &[],
-            "serialization of segments with tag 0x1a is not yet supported",
+            &[
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "emphasis",
+                },
+                Token::Bool(false),
+            ],
         );
 
         assert_ser_tokens_error(
@@ -1423,14 +1538,54 @@ mod tests {
             "serialization of segments with tag 0x2b is not yet supported",
         );
 
-        assert_ser_tokens_error(
+        assert_tokens(
             &Segment::Split {
-                input: Expression::Integer(0),
-                separator: Expression::Integer(0),
-                index: Expression::Integer(0),
+                input: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                    "First Last".to_string(),
+                )]))),
+                separator: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                    " ".to_string(),
+                )]))),
+                index: Expression::Integer(1),
             },
-            &[],
-            "serialization of segments with tag 0x2c is not yet supported",
+            &[
+                Token::StructVariant {
+                    name: "segment",
+                    variant: "split",
+                    len: 3,
+                },
+                Token::Str("input"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str("First Last"),
+                Token::SeqEnd,
+                Token::Str("separator"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str(" "),
+                Token::SeqEnd,
+                Token::Str("index"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(1),
+                Token::StructVariantEnd,
+            ],
         );
 
         assert_ser_tokens_error(
