@@ -17,11 +17,11 @@ static EXPRESSION_VARIANTS: &[&str] = &[
     "int",              // 0
     "param",            // 1
     "geq",              // 2
-    "placeholder_0xe1", // 3
+    "gt",               // 3
     "leq",              // 4
-    "placeholder_0xe3", // 5
+    "lt",               // 5
     "eq",               // 6
-    "placeholder_0xe5", // 7
+    "neq",              // 7
     "input_param",      // 8
     "player_param",     // 9
     "string_param",     // 10
@@ -108,9 +108,17 @@ impl Serialize for Expression {
                 variant.serialize_field(&boite.1)?;
                 variant.end()
             }
-            Expression::GreaterThan(_) => Err(S::Error::custom(
-                "serialization of expressions with tag 0xe1 is not yet supported",
-            )),
+            Expression::GreaterThan(boite) => {
+                let mut variant = serializer.serialize_tuple_variant(
+                    EXPRESSION_NAME,
+                    3,
+                    EXPRESSION_VARIANTS[3],
+                    2,
+                )?;
+                variant.serialize_field(&boite.0)?;
+                variant.serialize_field(&boite.1)?;
+                variant.end()
+            }
             Expression::LessThanOrEqual(boite) => {
                 let mut variant = serializer.serialize_tuple_variant(
                     EXPRESSION_NAME,
@@ -122,9 +130,17 @@ impl Serialize for Expression {
                 variant.serialize_field(&boite.1)?;
                 variant.end()
             }
-            Expression::LessThan(_) => Err(S::Error::custom(
-                "serialization of expressions with tag 0xe3 is not yet supported",
-            )),
+            Expression::LessThan(boite) => {
+                let mut variant = serializer.serialize_tuple_variant(
+                    EXPRESSION_NAME,
+                    5,
+                    EXPRESSION_VARIANTS[5],
+                    2,
+                )?;
+                variant.serialize_field(&boite.0)?;
+                variant.serialize_field(&boite.1)?;
+                variant.end()
+            }
             Expression::Equal(boite) => {
                 let mut variant = serializer.serialize_tuple_variant(
                     EXPRESSION_NAME,
@@ -136,9 +152,17 @@ impl Serialize for Expression {
                 variant.serialize_field(&boite.1)?;
                 variant.end()
             }
-            Expression::NotEqual(_) => Err(S::Error::custom(
-                "serialization of expressions with tag 0xe5 is not yet supported",
-            )),
+            Expression::NotEqual(boite) => {
+                let mut variant = serializer.serialize_tuple_variant(
+                    EXPRESSION_NAME,
+                    7,
+                    EXPRESSION_VARIANTS[7],
+                    2,
+                )?;
+                variant.serialize_field(&boite.0)?;
+                variant.serialize_field(&boite.1)?;
+                variant.end()
+            }
             Expression::InputParameter(value) => serializer.serialize_newtype_variant(
                 EXPRESSION_NAME,
                 8,
@@ -181,8 +205,11 @@ enum ExpressionVariant {
     Integer,
     TopLevelParameter,
     GreaterThanOrEqual,
+    GreaterThan,
     LessThanOrEqual,
+    LessThan,
     Equal,
+    NotEqual,
     InputParameter,
     PlayerParameter,
     StringParameter,
@@ -197,8 +224,8 @@ impl<'de> Visitor<'de> for ExpressionVariantVisitor {
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str(
-            "`int`, `param`, `geq`, `leq`, `eq`, `input_param`, `player_param`, `string_param`, \
-            `object_param`, or `text`",
+            "`int`, `param`, `geq`, `gt`, `leq`, `lt`, `eq`, `neq`, `input_param`, \
+            `player_param`, `string_param`, `object_param`, or `text`",
         )
     }
 
@@ -210,8 +237,11 @@ impl<'de> Visitor<'de> for ExpressionVariantVisitor {
             "int" => Ok(ExpressionVariant::Integer),
             "param" => Ok(ExpressionVariant::TopLevelParameter),
             "geq" => Ok(ExpressionVariant::GreaterThanOrEqual),
+            "gt" => Ok(ExpressionVariant::GreaterThan),
             "leq" => Ok(ExpressionVariant::LessThanOrEqual),
+            "lt" => Ok(ExpressionVariant::LessThan),
             "eq" => Ok(ExpressionVariant::Equal),
+            "neq" => Ok(ExpressionVariant::NotEqual),
             "input_param" => Ok(ExpressionVariant::InputParameter),
             "player_param" => Ok(ExpressionVariant::PlayerParameter),
             "string_param" => Ok(ExpressionVariant::StringParameter),
@@ -341,12 +371,27 @@ impl<'de> Visitor<'de> for ExpressionVisitor {
                     .tuple_variant(2, ArrayVisitor::<[Expression; 2]>::new())
                     .map(|[left, right]| (left, right))?,
             ))),
+            ExpressionVariant::GreaterThan => Ok(Expression::GreaterThan(Box::new(
+                variant_access
+                    .tuple_variant(2, ArrayVisitor::<[Expression; 2]>::new())
+                    .map(|[left, right]| (left, right))?,
+            ))),
             ExpressionVariant::LessThanOrEqual => Ok(Expression::LessThanOrEqual(Box::new(
                 variant_access
                     .tuple_variant(2, ArrayVisitor::<[Expression; 2]>::new())
                     .map(|[left, right]| (left, right))?,
             ))),
+            ExpressionVariant::LessThan => Ok(Expression::LessThan(Box::new(
+                variant_access
+                    .tuple_variant(2, ArrayVisitor::<[Expression; 2]>::new())
+                    .map(|[left, right]| (left, right))?,
+            ))),
             ExpressionVariant::Equal => Ok(Expression::Equal(Box::new(
+                variant_access
+                    .tuple_variant(2, ArrayVisitor::<[Expression; 2]>::new())
+                    .map(|[left, right]| (left, right))?,
+            ))),
+            ExpressionVariant::NotEqual => Ok(Expression::NotEqual(Box::new(
                 variant_access
                     .tuple_variant(2, ArrayVisitor::<[Expression; 2]>::new())
                     .map(|[left, right]| (left, right))?,
@@ -943,10 +988,26 @@ mod tests {
             ],
         );
 
-        assert_ser_tokens_error(
+        assert_tokens(
             &Expression::GreaterThan(Box::new((Expression::Integer(0), Expression::Integer(1)))),
-            &[],
-            "serialization of expressions with tag 0xe1 is not yet supported",
+            &[
+                Token::TupleVariant {
+                    name: "expr",
+                    variant: "gt",
+                    len: 2,
+                },
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(0),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(1),
+                Token::TupleVariantEnd,
+            ],
         );
 
         assert_tokens(
@@ -974,10 +1035,26 @@ mod tests {
             ],
         );
 
-        assert_ser_tokens_error(
+        assert_tokens(
             &Expression::LessThan(Box::new((Expression::Integer(0), Expression::Integer(1)))),
-            &[],
-            "serialization of expressions with tag 0xe3 is not yet supported",
+            &[
+                Token::TupleVariant {
+                    name: "expr",
+                    variant: "lt",
+                    len: 2,
+                },
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(0),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(1),
+                Token::TupleVariantEnd,
+            ],
         );
 
         assert_tokens(
@@ -1002,10 +1079,26 @@ mod tests {
             ],
         );
 
-        assert_ser_tokens_error(
+        assert_tokens(
             &Expression::NotEqual(Box::new((Expression::Integer(0), Expression::Integer(1)))),
-            &[],
-            "serialization of expressions with tag 0xe5 is not yet supported",
+            &[
+                Token::TupleVariant {
+                    name: "expr",
+                    variant: "neq",
+                    len: 2,
+                },
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(0),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(1),
+                Token::TupleVariantEnd,
+            ],
         );
 
         assert_tokens(

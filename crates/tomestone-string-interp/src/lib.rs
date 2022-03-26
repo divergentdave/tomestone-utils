@@ -255,7 +255,7 @@ pub enum Expression {
     PlayerParameter(u32),
     StringParameter(u32),
     ObjectParameter(u32),
-    TodoEC,
+    TodoEC, // This is possibly a "last color" argument for color altering tags.
     Integer(u32),
     Text(Box<Text>),
 }
