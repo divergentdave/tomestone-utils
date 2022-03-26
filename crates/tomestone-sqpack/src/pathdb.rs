@@ -1,7 +1,9 @@
 use std::{fmt, fs, io};
 
 use directories::ProjectDirs;
-use rusqlite::{params, Connection, Statement};
+use r2d2::PooledConnection;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::{params, Statement};
 
 use crate::{IndexHash, IndexHash1, IndexHash2};
 
@@ -10,6 +12,7 @@ const FILENAME: &str = "paths.db";
 #[derive(Debug)]
 pub enum DbError {
     Sqlite(rusqlite::Error),
+    Pool(r2d2::Error),
     Io(io::Error),
     NoDirectories,
 }
@@ -18,6 +21,7 @@ impl fmt::Display for DbError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DbError::Sqlite(e) => e.fmt(f),
+            DbError::Pool(e) => e.fmt(f),
             DbError::Io(e) => e.fmt(f),
             DbError::NoDirectories => write!(f, "Home directory path could not be found"),
         }
@@ -30,6 +34,12 @@ impl From<rusqlite::Error> for DbError {
     }
 }
 
+impl From<r2d2::Error> for DbError {
+    fn from(e: r2d2::Error) -> Self {
+        DbError::Pool(e)
+    }
+}
+
 impl From<io::Error> for DbError {
     fn from(e: io::Error) -> Self {
         DbError::Io(e)
@@ -37,7 +47,7 @@ impl From<io::Error> for DbError {
 }
 
 pub struct PathDb {
-    conn: Connection,
+    pool: r2d2::Pool<SqliteConnectionManager>,
 }
 
 impl PathDb {
@@ -48,7 +58,9 @@ impl PathDb {
         if !dir.is_dir() {
             fs::create_dir_all(dir)?;
         }
-        let conn = Connection::open(dir.join(FILENAME))?;
+        let manager = SqliteConnectionManager::file(dir.join(FILENAME));
+        let pool = r2d2::Pool::new(manager)?;
+        let conn = pool.get()?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS index_1_folder (
                 crc INTEGER NOT NULL,
@@ -84,28 +96,28 @@ impl PathDb {
             [],
         )?;
 
-        Ok(PathDb { conn })
+        Ok(PathDb { pool })
     }
 
-    pub fn prepare(&self) -> Result<PreparedStatements<'_>, DbError> {
-        let index_1_folder_lookup_stmt = self
-            .conn
-            .prepare("SELECT path FROM index_1_folder WHERE crc = ?")?;
-        let index_1_folder_insert_stmt = self
-            .conn
-            .prepare("INSERT OR IGNORE INTO index_1_folder (crc, path) VALUES (?, ?)")?;
-        let index_1_filename_lookup_stmt = self
-            .conn
-            .prepare("SELECT path FROM index_1_filename WHERE crc = ?")?;
-        let index_1_filename_insert_stmt = self
-            .conn
+    pub fn get_connection(&self) -> Result<PooledConnection<SqliteConnectionManager>, r2d2::Error> {
+        self.pool.get()
+    }
+
+    pub fn prepare(
+        connection: &PooledConnection<SqliteConnectionManager>,
+    ) -> Result<PreparedStatements<'_>, DbError> {
+        let index_1_folder_lookup_stmt =
+            connection.prepare("SELECT path FROM index_1_folder WHERE crc = ?")?;
+        let index_1_folder_insert_stmt =
+            connection.prepare("INSERT OR IGNORE INTO index_1_folder (crc, path) VALUES (?, ?)")?;
+        let index_1_filename_lookup_stmt =
+            connection.prepare("SELECT path FROM index_1_filename WHERE crc = ?")?;
+        let index_1_filename_insert_stmt = connection
             .prepare("INSERT OR IGNORE INTO index_1_filename (crc, path) VALUES (?, ?)")?;
-        let index_2_lookup_stmt = self
-            .conn
-            .prepare("SELECT path FROM index_2_path WHERE crc = ?")?;
-        let index_2_insert_stmt = self
-            .conn
-            .prepare("INSERT OR IGNORE INTO index_2_path (crc, path) VALUES (?, ?)")?;
+        let index_2_lookup_stmt =
+            connection.prepare("SELECT path FROM index_2_path WHERE crc = ?")?;
+        let index_2_insert_stmt =
+            connection.prepare("INSERT OR IGNORE INTO index_2_path (crc, path) VALUES (?, ?)")?;
         Ok(PreparedStatements {
             index_1_folder_lookup_stmt,
             index_1_folder_insert_stmt,

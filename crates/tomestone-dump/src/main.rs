@@ -466,9 +466,6 @@ fn discover_paths(
     data_file_set: &mut DataFileSet,
 ) -> Result<(), tomestone_exdf::Error> {
     let db = PathDb::open().map_err::<tomestone_sqpack::Error, _>(From::from)?;
-    let mut statements = db
-        .prepare()
-        .map_err::<tomestone_sqpack::Error, _>(From::from)?;
 
     let mut indices = BTreeMap::new();
     for category in &[
@@ -488,6 +485,11 @@ fn discover_paths(
         }
     }
 
+    let connection = db
+        .get_connection()
+        .map_err(tomestone_sqpack::pathdb::DbError::from)
+        .map_err(tomestone_sqpack::Error::from)?;
+    let mut statements = PathDb::prepare(&connection).map_err(tomestone_sqpack::Error::from)?;
     for (pack_id, index) in indices.iter() {
         for res in data_file_set.iter_files(*pack_id, index)? {
             let (_hash, file) = res?;
@@ -664,7 +666,8 @@ fn main() {
     let app_matches = app().get_matches();
 
     let db = open_db();
-    let mut statements = db.prepare().unwrap();
+    let connection = db.get_connection().unwrap();
+    let mut statements = PathDb::prepare(&connection).unwrap();
 
     let root = app_matches.value_of_os("ffxiv-install-dir").unwrap();
     let game_data = match GameData::new(root) {
