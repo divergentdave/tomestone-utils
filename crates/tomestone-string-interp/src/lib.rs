@@ -1159,7 +1159,7 @@ mod proptests {
                             let mut rest = Vec::with_capacity(parameters.len());
                             rest.extend(parameters.iter().cloned());
                             if let Some(column_index) = column_index {
-                                rest.push(column_index.clone());
+                                rest.push(column_index);
                             }
                             Box::new(shrink_expr_list(&rest).map(move |mut rest| {
                                 let column_index = rest.pop();
