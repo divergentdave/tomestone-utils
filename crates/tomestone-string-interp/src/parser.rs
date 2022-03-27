@@ -1,10 +1,11 @@
 use std::{convert::TryInto, num::NonZeroU8};
 
 use nom::{
+    branch::alt,
     bytes::complete::{tag, take_while},
-    combinator::{all_consuming, map, map_res},
+    combinator::{all_consuming, eof, map, map_res},
     error::{ErrorKind, ParseError},
-    multi::{length_value, many1, many_m_n},
+    multi::{length_value, many0, many1, many_m_n},
     number::complete::{be_u16, be_u24, be_u32, be_u8},
     sequence::{pair, tuple},
     IResult,
@@ -255,7 +256,25 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
             tuple((expression, expression, expression)),
             |(arg1, arg2, arg3)| Segment::Todo26(arg1, arg2, arg3),
         ))(input),
-        SHEET => contents(map(many_m_n(2, usize::MAX, expression), Segment::Sheet))(input),
+        SHEET => contents(map(
+            tuple((
+                expression,
+                expression,
+                alt((
+                    map(
+                        pair(expression, many0(expression)),
+                        |(column_index, parameters)| (Some(column_index), parameters),
+                    ),
+                    map(eof, |_| (None, vec![])),
+                )),
+            )),
+            |(name, row_index, (column_index, parameters))| Segment::Sheet {
+                name,
+                row_index,
+                column_index,
+                parameters,
+            },
+        ))(input),
         TODO_HIGHLIGHT => contents(map(expression, Segment::TodoHighlight))(input),
         LINK => contents(map(many_m_n(1, usize::MAX, expression), Segment::Link))(input),
         SPLIT => contents(segment_split)(input),

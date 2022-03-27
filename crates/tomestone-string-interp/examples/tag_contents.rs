@@ -5,9 +5,12 @@ use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
 
 #[derive(Default, Debug)]
 struct TagContentsVisitor {
-    time_counters: BTreeMap<Expression, u64>,
-    emphasis_values: BTreeMap<bool, u64>,
-    tag19_numbers: BTreeMap<bool, u64>,
+    sheet_arg_count_counters: BTreeMap<usize, u64>,
+    sheet_name_counters: BTreeMap<Expression, u64>,
+    sheet_row_index_counters: BTreeMap<Expression, u64>,
+    sheet_nesting: u8,
+    nested_sheet_counter: u64,
+    sheet_arg_count_by_name_counters: BTreeMap<Expression, BTreeMap<usize, u64>>,
 }
 
 impl TagContentsVisitor {
@@ -19,12 +22,36 @@ impl TagContentsVisitor {
 impl Visitor for TagContentsVisitor {
     fn visit_tag(&mut self, tag: &Segment) {
         match tag {
-            Segment::Time(expr) => *self.time_counters.entry(expr.clone()).or_default() += 1,
-            Segment::Emphasis(flag) => *self.emphasis_values.entry(*flag).or_default() += 1,
-            Segment::Todo19(flag) => *self.tag19_numbers.entry(*flag).or_default() += 1,
+            Segment::Sheet {
+                name,
+                row_index,
+                column_index,
+                parameters,
+            } => {
+                let arg_count = column_index.is_some() as usize + parameters.len();
+                *self.sheet_arg_count_counters.entry(arg_count).or_default() += 1;
+                *self.sheet_name_counters.entry(name.clone()).or_default() += 1;
+                *self
+                    .sheet_row_index_counters
+                    .entry(row_index.clone())
+                    .or_default() += 1;
+                self.sheet_nesting += 1;
+                if self.sheet_nesting >= 2 {
+                    self.nested_sheet_counter += 1;
+                }
+                *self
+                    .sheet_arg_count_by_name_counters
+                    .entry(name.clone())
+                    .or_default()
+                    .entry(arg_count)
+                    .or_default() += 1;
+            }
             _ => {}
         }
         self.recurse_tag(tag);
+        if let Segment::Sheet { .. } = tag {
+            self.sheet_nesting -= 1;
+        }
     }
 
     fn visit_expression(&mut self, expr: &Expression) {
@@ -78,6 +105,9 @@ fn main() {
                 process::exit(1);
             };
 
+            let gc = Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                "GrandCompany".to_string(),
+            )])));
             for page in dataset.page_iter() {
                 for res in page {
                     let row = if let Ok(row) = res {
@@ -91,7 +121,15 @@ fn main() {
                             if let Value::String(data) = value {
                                 match Text::parse(data) {
                                     Ok(text) => {
+                                        let before = *visitor
+                                            .sheet_name_counters
+                                            .entry(gc.clone())
+                                            .or_default();
                                         text.accept(&mut visitor);
+                                        if *visitor.sheet_name_counters.get(&gc).unwrap() != before
+                                        {
+                                            println!("{:?}", text);
+                                        }
                                     }
                                     Err(e) => {
                                         eprintln!(

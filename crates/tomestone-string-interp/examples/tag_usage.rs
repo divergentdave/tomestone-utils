@@ -86,7 +86,7 @@ impl Visitor for TagUsageCounterVisitor {
             Segment::TodoFormat(_, _) => self.format += 1,
             Segment::TwoDigitValue(_) => self.two_digit_value += 1,
             Segment::Todo26(_, _, _) => self.tag_26 += 1,
-            Segment::Sheet(_) => self.sheet += 1,
+            Segment::Sheet { .. } => self.sheet += 1,
             Segment::TodoHighlight(_) => self.highlight += 1,
             Segment::Link(_) => self.link += 1,
             Segment::Split { .. } => self.split += 1,

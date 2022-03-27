@@ -77,6 +77,7 @@ static SEGMENT_VARIANTS: &[&str] = &[
     "placeholder_0x61",   // 43
 ];
 static IF_SEGMENT_FIELDS: &[&str] = &["condition", "true_value", "false_value"];
+static SHEET_SEGMENT_FIELDS: &[&str] = &["name", "row_index", "column_index", "parameters"];
 static SPLIT_SEGMENT_FIELDS: &[&str] = &["input", "separator", "index"];
 static RUBY_SEGMENT_FIELDS: &[&str] = &["annotated", "annotation"];
 
@@ -527,9 +528,24 @@ impl Serialize for Segment {
             Segment::Todo26(_, _, _) => Err(S::Error::custom(
                 "serialization of segments with tag 0x26 is not yet supported",
             )),
-            Segment::Sheet(_) => Err(S::Error::custom(
-                "serialization of segments with tag 0x28 is not yet supported",
-            )),
+            Segment::Sheet {
+                name,
+                row_index,
+                column_index,
+                parameters,
+            } => {
+                let mut variant = serializer.serialize_struct_variant(
+                    SEGMENT_NAME,
+                    25,
+                    SEGMENT_VARIANTS[25],
+                    4,
+                )?;
+                variant.serialize_field("name", name)?;
+                variant.serialize_field("row_index", row_index)?;
+                variant.serialize_field("column_index", column_index)?;
+                variant.serialize_field("parameters", parameters)?;
+                variant.end()
+            }
             Segment::TodoHighlight(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x29 is not yet supported",
             )),
@@ -700,6 +716,109 @@ impl<'de> Visitor<'de> for IfSegmentVisitor {
                 true_value,
                 false_value,
             }),
+        }
+    }
+}
+
+/// Marker to differentiate between the fields of `Segment::Sheet` when deserializing.
+enum SheetSegmentField {
+    Name,
+    RowIndex,
+    ColumnIndex,
+    Parameters,
+}
+
+struct SheetSegmentFieldVisitor;
+
+impl<'de> Visitor<'de> for SheetSegmentFieldVisitor {
+    type Value = SheetSegmentField;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("`name`, `row_index`, `column_index`, or `parameters`")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<SheetSegmentField, E>
+    where
+        E: DeError,
+    {
+        match value {
+            "name" => Ok(SheetSegmentField::Name),
+            "row_index" => Ok(SheetSegmentField::RowIndex),
+            "column_index" => Ok(SheetSegmentField::ColumnIndex),
+            "parameters" => Ok(SheetSegmentField::Parameters),
+            _ => Err(E::unknown_field(value, SPLIT_SEGMENT_FIELDS)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SheetSegmentField {
+    fn deserialize<D>(deserializer: D) -> Result<SheetSegmentField, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_identifier(SheetSegmentFieldVisitor)
+    }
+}
+
+struct SheetSegmentVisitor;
+
+impl<'de> Visitor<'de> for SheetSegmentVisitor {
+    type Value = Segment;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter
+            .write_str("a struct with fields `name`, `row_index`, `column_index`, and `parameters`")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Segment, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut name = None;
+        let mut row_index = None;
+        let mut column_index = None;
+        let mut parameters = None;
+        while let Some(key) = access.next_key()? {
+            match key {
+                SheetSegmentField::Name => {
+                    if name.is_some() {
+                        return Err(M::Error::duplicate_field("name"));
+                    }
+                    name = Some(access.next_value()?);
+                }
+                SheetSegmentField::RowIndex => {
+                    if row_index.is_some() {
+                        return Err(M::Error::duplicate_field("row_index"));
+                    }
+                    row_index = Some(access.next_value()?);
+                }
+                SheetSegmentField::ColumnIndex => {
+                    if column_index.is_some() {
+                        return Err(M::Error::duplicate_field("column_index"));
+                    }
+                    column_index = Some(access.next_value()?);
+                }
+                SheetSegmentField::Parameters => {
+                    if parameters.is_some() {
+                        return Err(M::Error::duplicate_field("parameters"));
+                    }
+                    parameters = Some(access.next_value()?);
+                }
+            }
+        }
+        match (name, row_index, column_index, parameters) {
+            (None, _, _, _) => Err(M::Error::missing_field("name")),
+            (Some(_), None, _, _) => Err(M::Error::missing_field("row_index")),
+            (Some(_), Some(_), None, _) => Err(M::Error::missing_field("column_index")),
+            (Some(_), Some(_), Some(_), None) => Err(M::Error::missing_field("parameters")),
+            (Some(name), Some(row_index), Some(column_index), Some(parameters)) => {
+                Ok(Segment::Sheet {
+                    name,
+                    row_index,
+                    column_index,
+                    parameters,
+                })
+            }
         }
     }
 }
@@ -881,6 +1000,7 @@ enum SegmentVariant {
     Emphasis,
     NonBreakingSpace,
     Dash,
+    Sheet,
     Split,
     Ruby,
 }
@@ -893,7 +1013,7 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str(
             "`literal`, `time`, `if`, `new_line`, `soft_hyphen`, `emphasis`, \
-            `non_breaking_space`, `dash`, `split`, or `ruby`",
+            `non_breaking_space`, `dash`, `sheet`, `split`, or `ruby`",
         )
     }
 
@@ -910,6 +1030,7 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
             "emphasis" => Ok(SegmentVariant::Emphasis),
             "non_breaking_space" => Ok(SegmentVariant::NonBreakingSpace),
             "dash" => Ok(SegmentVariant::Dash),
+            "sheet" => Ok(SegmentVariant::Sheet),
             "split" => Ok(SegmentVariant::Split),
             "ruby" => Ok(SegmentVariant::Ruby),
             _ => Err(E::unknown_variant(
@@ -923,6 +1044,7 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
                     "emphasis",
                     "non_breaking_space",
                     "dash",
+                    "sheet",
                     "split",
                     "ruby",
                 ],
@@ -976,6 +1098,9 @@ impl<'de> Visitor<'de> for SegmentVisitor {
             SegmentVariant::Dash => {
                 variant_access.unit_variant()?;
                 Ok(Segment::Dash)
+            }
+            SegmentVariant::Sheet => {
+                variant_access.struct_variant(SHEET_SEGMENT_FIELDS, SheetSegmentVisitor)
             }
             SegmentVariant::Split => {
                 variant_access.struct_variant(SPLIT_SEGMENT_FIELDS, SplitSegmentVisitor)
@@ -1520,10 +1645,97 @@ mod tests {
             "serialization of segments with tag 0x26 is not yet supported",
         );
 
-        assert_ser_tokens_error(
-            &Segment::Sheet(vec![Expression::Integer(0)]),
-            &[],
-            "serialization of segments with tag 0x28 is not yet supported",
+        assert_tokens(
+            &Segment::Sheet {
+                name: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                    "SheetName".to_string(),
+                )]))),
+                row_index: Expression::Integer(1),
+                column_index: Some(Expression::Integer(2)),
+                parameters: vec![Expression::Integer(5)],
+            },
+            &[
+                Token::StructVariant {
+                    name: "segment",
+                    variant: "sheet",
+                    len: 4,
+                },
+                Token::Str("name"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str("SheetName"),
+                Token::SeqEnd,
+                Token::Str("row_index"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(1),
+                Token::Str("column_index"),
+                Token::Some,
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(2),
+                Token::Str("parameters"),
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(5),
+                Token::SeqEnd,
+                Token::StructVariantEnd,
+            ],
+        );
+        assert_tokens(
+            &Segment::Sheet {
+                name: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                    "SheetName".to_string(),
+                )]))),
+                row_index: Expression::Integer(1),
+                column_index: None,
+                parameters: vec![],
+            },
+            &[
+                Token::StructVariant {
+                    name: "segment",
+                    variant: "sheet",
+                    len: 4,
+                },
+                Token::Str("name"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str("SheetName"),
+                Token::SeqEnd,
+                Token::Str("row_index"),
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "int",
+                },
+                Token::U32(1),
+                Token::Str("column_index"),
+                Token::None,
+                Token::Str("parameters"),
+                Token::Seq { len: Some(0) },
+                Token::SeqEnd,
+                Token::StructVariantEnd,
+            ],
         );
 
         assert_ser_tokens_error(

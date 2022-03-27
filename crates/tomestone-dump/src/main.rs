@@ -816,7 +816,7 @@ fn main() {
                     process::exit(1);
                 }
             };
-            println!("{:?}", &dataset.exhf);
+            println!("{:#?}", &dataset.exhf);
             for page_iter in dataset.page_iter() {
                 for res in page_iter {
                     let row = match res {

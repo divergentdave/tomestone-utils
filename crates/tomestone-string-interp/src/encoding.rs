@@ -350,11 +350,21 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.append(&mut tag_data);
             buf.push(3);
         }
-        Segment::Sheet(args) => {
+        Segment::Sheet {
+            name,
+            row_index,
+            column_index,
+            parameters,
+        } => {
             buf.extend_from_slice(&[2, SHEET]);
             let mut tag_data = vec![];
-            for arg in args.iter() {
-                encode_expression(&mut tag_data, arg)?;
+            encode_expression(&mut tag_data, name)?;
+            encode_expression(&mut tag_data, row_index)?;
+            if let Some(column_index) = column_index {
+                encode_expression(&mut tag_data, column_index)?;
+            }
+            for param in parameters.iter() {
+                encode_expression(&mut tag_data, param)?;
             }
             encode_integer(buf, tag_data.len().try_into().unwrap())?;
             buf.append(&mut tag_data);

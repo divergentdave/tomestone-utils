@@ -135,9 +135,19 @@ pub trait Visitor {
                 arg2.accept(self);
                 arg3.accept(self);
             }
-            Segment::Sheet(args) => {
-                for arg in args.iter() {
-                    arg.accept(self);
+            Segment::Sheet {
+                name,
+                row_index,
+                column_index,
+                parameters,
+            } => {
+                name.accept(self);
+                row_index.accept(self);
+                if let Some(column_index) = column_index {
+                    column_index.accept(self);
+                }
+                for param in parameters.iter() {
+                    param.accept(self);
                 }
             }
             Segment::TodoHighlight(expr) => expr.accept(self),
@@ -316,9 +326,20 @@ pub enum Segment {
     TodoFormat(Expression, Vec<NonZeroU8>),
     TwoDigitValue(Expression),
     Todo26(Expression, Expression, Expression),
-    Sheet(Vec<Expression>),
+    /// Looks up a value from one of the tables. The resulting value may be either a number or a
+    /// string. The first argument is the name of the table, the second argument is the index of a
+    /// row, and the third argument is the index of a column. Any remaining arguments are passed as
+    /// input parameters to interpolate tagged text, assuming a string value was selected.
+    Sheet {
+        name: Expression,
+        row_index: Expression,
+        column_index: Option<Expression>,
+        parameters: Vec<Expression>,
+    },
     TodoHighlight(Expression),
     Link(Vec<Expression>),
+    /// Split a string at each occurrence of a separator, and return one of the resulting
+    /// substrings.
     Split {
         input: Expression,
         separator: Expression,
@@ -424,7 +445,18 @@ impl fmt::Debug for Segment {
                 .field(arg2)
                 .field(arg3)
                 .finish(),
-            Segment::Sheet(args) => f.debug_tuple("Sheet").field(args).finish(),
+            Segment::Sheet {
+                name,
+                row_index,
+                column_index,
+                parameters,
+            } => f
+                .debug_struct("Sheet")
+                .field("name", name)
+                .field("row_index", row_index)
+                .field("column_index", column_index)
+                .field("parameters", parameters)
+                .finish(),
             Segment::TodoHighlight(arg) => f.debug_tuple("TodoHighlight").field(arg).finish(),
             Segment::Link(arg) => f.debug_tuple("Link").field(arg).finish(),
             Segment::Split {
@@ -776,10 +808,13 @@ mod proptests {
                     .into_iter()
                     .map(|()| arbitrary_expr(g, depth))
                     .collect();
-                while args.len() < 2 {
-                    args.push(arbitrary_expr(g, depth));
+                let column_index = args.pop();
+                Segment::Sheet {
+                    name: arbitrary_expr(g, depth),
+                    row_index: arbitrary_expr(g, depth),
+                    column_index,
+                    parameters: args,
                 }
-                Segment::Sheet(args)
             }
             26 => Segment::TodoHighlight(arbitrary_expr(g, depth)),
             27 => {
@@ -880,7 +915,7 @@ mod proptests {
                     true_value,
                     false_value,
                 } => Box::new(
-                    vec![
+                    [
                         {
                             let true_value = true_value.clone();
                             let false_value = false_value.clone();
@@ -941,7 +976,7 @@ mod proptests {
                     true_value,
                     false_value,
                 } => Box::new(
-                    vec![
+                    [
                         {
                             let right = right.clone();
                             let true_value = true_value.clone();
@@ -999,7 +1034,7 @@ mod proptests {
                     self_value,
                     other_value,
                 } => Box::new(
-                    vec![
+                    [
                         {
                             let self_value = self_value.clone();
                             let other_value = other_value.clone();
@@ -1058,7 +1093,7 @@ mod proptests {
                 }
                 Segment::Todo26(arg1, arg2, arg3) => {
                     Box::new(
-                        vec![
+                        [
                             {
                                 let arg2 = arg2.clone();
                                 let arg3 = arg3.clone();
@@ -1088,9 +1123,58 @@ mod proptests {
                         .flatten(),
                     )
                 }
-                Segment::Sheet(args) => {
-                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::Sheet))
-                }
+                Segment::Sheet {
+                    name,
+                    row_index,
+                    column_index,
+                    parameters,
+                } => Box::new(
+                    [
+                        {
+                            let row_index = row_index.clone();
+                            let column_index = column_index.clone();
+                            let parameters = parameters.clone();
+                            Box::new(shrink_expr(name).map(move |name| Segment::Sheet {
+                                name,
+                                row_index: row_index.clone(),
+                                column_index: column_index.clone(),
+                                parameters: parameters.clone(),
+                            })) as Box<dyn Iterator<Item = Self>>
+                        },
+                        {
+                            let name = name.clone();
+                            let column_index = column_index.clone();
+                            let parameters = parameters.clone();
+                            Box::new(shrink_expr(row_index).map(move |row_index| Segment::Sheet {
+                                name: name.clone(),
+                                row_index,
+                                column_index: column_index.clone(),
+                                parameters: parameters.clone(),
+                            }))
+                        },
+                        {
+                            let name = name.clone();
+                            let row_index = row_index.clone();
+                            let column_index = column_index.clone();
+                            let mut rest = Vec::with_capacity(parameters.len());
+                            rest.extend(parameters.iter().cloned());
+                            if let Some(column_index) = column_index {
+                                rest.push(column_index.clone());
+                            }
+                            Box::new(shrink_expr_list(&rest).map(move |mut rest| {
+                                let column_index = rest.pop();
+                                Segment::Sheet {
+                                    name: name.clone(),
+                                    row_index: row_index.clone(),
+                                    column_index,
+                                    parameters: rest,
+                                }
+                            }))
+                        },
+                    ]
+                    .into_iter()
+                    .flatten(),
+                ),
                 Segment::TodoHighlight(arg) => {
                     Box::new(shrink_expr(arg).map(Segment::TodoHighlight))
                 }
@@ -1102,7 +1186,7 @@ mod proptests {
                     separator,
                     index,
                 } => Box::new(
-                    vec![
+                    [
                         {
                             let separator = separator.clone();
                             let index = index.clone();
@@ -1183,7 +1267,7 @@ mod proptests {
                         })),
                 ),
                 Segment::ZeroPaddedValue { value, digits } => Box::new(
-                    vec![
+                    [
                         {
                             let digits = digits.clone();
                             Box::new(shrink_expr(value).map(move |value| {
