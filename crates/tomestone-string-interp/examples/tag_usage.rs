@@ -173,7 +173,11 @@ fn main() {
                             if let Value::String(data) = value {
                                 match Text::parse(data) {
                                     Ok(text) => {
+                                        let before = visitor.highlight;
                                         text.accept(&mut visitor);
+                                        if visitor.highlight > before {
+                                            println!("{:?}", text);
+                                        }
                                     }
                                     Err(e) => {
                                         eprintln!(
