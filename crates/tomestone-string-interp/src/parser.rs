@@ -66,7 +66,7 @@ fn boolean(input: &[u8]) -> IResult<&[u8], bool, Error> {
 fn expression_tagged_text(input: &[u8]) -> IResult<&[u8], Expression, Error> {
     length_value(
         integer_usize,
-        all_consuming(map(tagged_text, |text| Expression::Text(Box::new(text)))),
+        all_consuming(map(tagged_text, Expression::Text)),
     )(input)
 }
 

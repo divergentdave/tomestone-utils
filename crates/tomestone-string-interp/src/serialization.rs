@@ -1387,9 +1387,9 @@ mod tests {
         );
 
         assert_tokens(
-            &Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+            &Expression::Text(Text::new(vec![Segment::Literal(
                 "Hello, world".to_string(),
-            )]))),
+            )])),
             &[
                 Token::NewtypeVariant {
                     name: "expr",
@@ -1443,12 +1443,10 @@ mod tests {
         assert_tokens(
             &Segment::If {
                 condition: Expression::Integer(1),
-                true_value: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
-                    "true".to_string(),
-                )]))),
-                false_value: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                true_value: Expression::Text(Text::new(vec![Segment::Literal("true".to_string())])),
+                false_value: Expression::Text(Text::new(vec![Segment::Literal(
                     "false".to_string(),
-                )]))),
+                )])),
             },
             &[
                 Token::StructVariant {
@@ -1647,9 +1645,7 @@ mod tests {
 
         assert_tokens(
             &Segment::Sheet {
-                name: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
-                    "SheetName".to_string(),
-                )]))),
+                name: Expression::Text(Text::new(vec![Segment::Literal("SheetName".to_string())])),
                 row_index: Expression::Integer(1),
                 column_index: Some(Expression::Integer(2)),
                 parameters: vec![Expression::Integer(5)],
@@ -1698,9 +1694,7 @@ mod tests {
         );
         assert_tokens(
             &Segment::Sheet {
-                name: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
-                    "SheetName".to_string(),
-                )]))),
+                name: Expression::Text(Text::new(vec![Segment::Literal("SheetName".to_string())])),
                 row_index: Expression::Integer(1),
                 column_index: None,
                 parameters: vec![],
@@ -1752,12 +1746,10 @@ mod tests {
 
         assert_tokens(
             &Segment::Split {
-                input: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                input: Expression::Text(Text::new(vec![Segment::Literal(
                     "First Last".to_string(),
-                )]))),
-                separator: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
-                    " ".to_string(),
-                )]))),
+                )])),
+                separator: Expression::Text(Text::new(vec![Segment::Literal(" ".to_string())])),
                 index: Expression::Integer(1),
             },
             &[
@@ -1862,12 +1854,10 @@ mod tests {
 
         assert_tokens(
             &Segment::Ruby {
-                annotated: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+                annotated: Expression::Text(Text::new(vec![Segment::Literal(
                     "main text".to_string(),
-                )]))),
-                annotation: Expression::Text(Box::new(Text::new(vec![Segment::Literal(
-                    "ruby".to_string(),
-                )]))),
+                )])),
+                annotation: Expression::Text(Text::new(vec![Segment::Literal("ruby".to_string())])),
             },
             &[
                 Token::StructVariant {

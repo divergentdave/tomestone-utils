@@ -105,9 +105,9 @@ fn main() {
                 process::exit(1);
             };
 
-            let gc = Expression::Text(Box::new(Text::new(vec![Segment::Literal(
+            let gc = Expression::Text(Text::new(vec![Segment::Literal(
                 "GrandCompany".to_string(),
-            )])));
+            )]));
             for page in dataset.page_iter() {
                 for res in page {
                     let row = if let Ok(row) = res {

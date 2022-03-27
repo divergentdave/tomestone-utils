@@ -267,7 +267,7 @@ pub enum Expression {
     ObjectParameter(u32),
     TodoEC, // This is possibly a "last color" argument for color altering tags.
     Integer(u32),
-    Text(Box<Text>),
+    Text(Text),
 }
 
 impl TreeNode for Expression {
@@ -599,7 +599,7 @@ mod proptests {
             10 => Expression::ObjectParameter(u32::arbitrary(g)),
             11 => Expression::TodoEC,
             12 => Expression::Integer(u32::arbitrary(g)),
-            13 => Expression::Text(Box::new(arbitrary_text(g, depth + 1))),
+            13 => Expression::Text(arbitrary_text(g, depth + 1)),
             _ => unreachable!(),
         }
     }
