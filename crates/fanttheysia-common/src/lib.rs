@@ -67,8 +67,8 @@ pub struct IfSegment {
 ///
 /// let text = Text::new(vec![Segment::Literal("Good morning, ".to_string()), Segment::If {
 ///     condition: Expression::PlayerParameter(4),
-///     true_value: Expression::Text(Box::new(Text::new(vec![Segment::Literal("madam".to_string())]))),
-///     false_value: Expression::Text(Box::new(Text::new(vec![Segment::Literal("sir".to_string())]))),
+///     true_value: Expression::Text(Text::new(vec![Segment::Literal("madam".to_string())])),
+///     false_value: Expression::Text(Text::new(vec![Segment::Literal("sir".to_string())])),
 /// }]);
 /// let mut visitor = GenderConditionalTextVisitor::new();
 /// text.accept(&mut visitor);
