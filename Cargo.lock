@@ -316,6 +316,7 @@ dependencies = [
  "clap",
  "dotenv",
  "fanttheysia-common",
+ "serde",
  "serde_yaml",
  "tomestone-exdf",
  "tomestone-sqpack",
