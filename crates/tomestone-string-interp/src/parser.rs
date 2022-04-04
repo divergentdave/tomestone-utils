@@ -276,10 +276,7 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
             },
         ))(input),
         TODO_STRING_VALUE_1 => contents(map(expression, Segment::TodoStringValue1))(input),
-        TODO_STRING_VALUE_2 => contents(map(
-            many_m_n(1, usize::MAX, expression),
-            Segment::TodoStringValue2,
-        ))(input),
+        TODO_STRING_VALUE_2 => contents(map(expression, Segment::TodoStringValue2))(input),
         SPLIT => contents(segment_split)(input),
         TODO_STRING_VALUE_3 => contents(map(expression, Segment::TodoStringValue3))(input),
         AUTO_TRANSLATE => contents(map(pair(expression, expression), |(arg1, arg2)| {

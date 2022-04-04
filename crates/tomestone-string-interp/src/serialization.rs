@@ -1739,7 +1739,7 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Segment::TodoStringValue2(vec![Expression::Integer(0)]),
+            &Segment::TodoStringValue2(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x2b is not yet supported",
         );

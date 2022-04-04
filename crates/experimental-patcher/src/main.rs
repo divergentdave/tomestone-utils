@@ -161,7 +161,7 @@ fn main() {
                                             let replace = vec![
                                                 Segment::TodoStringValue1(Expression::StringParameter(1)),
                                                 Segment::Literal(" (#2: \"".to_string()),
-                                                Segment::TodoStringValue2(vec![Expression::StringParameter(1)]),
+                                                Segment::TodoStringValue2(Expression::StringParameter(1)),
                                                 Segment::Literal("\", #3: \"".to_string()),
                                                 Segment::TodoStringValue3(Expression::StringParameter(1)),
                                                 Segment::Literal("\", #4: \"".to_string()),

@@ -6,8 +6,7 @@ use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
 #[derive(Default, Debug)]
 struct TagContentsVisitor {
     string_value_1_counters: BTreeMap<Expression, u64>,
-    string_value_2_argc_counters: BTreeMap<usize, u64>,
-    string_value_2_argv_counters: BTreeMap<(usize, Expression), u64>,
+    string_value_2_counters: BTreeMap<Expression, u64>,
     string_value_3_counters: BTreeMap<Expression, u64>,
     string_value_4_counters: BTreeMap<Expression, u64>,
 }
@@ -27,17 +26,11 @@ impl Visitor for TagContentsVisitor {
                     .entry(expr.clone())
                     .or_default() += 1
             }
-            Segment::TodoStringValue2(exprs) => {
+            Segment::TodoStringValue2(expr) => {
                 *self
-                    .string_value_2_argc_counters
-                    .entry(exprs.len())
+                    .string_value_2_counters
+                    .entry(expr.clone())
                     .or_default() += 1;
-                for (i, expr) in exprs.iter().enumerate() {
-                    *self
-                        .string_value_2_argv_counters
-                        .entry((i, expr.clone()))
-                        .or_default() += 1;
-                }
             }
             Segment::TodoStringValue3(expr) => {
                 *self

@@ -387,12 +387,10 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.append(&mut tag_data);
             buf.push(3);
         }
-        Segment::TodoStringValue2(args) => {
+        Segment::TodoStringValue2(expr) => {
             buf.extend_from_slice(&[2, TODO_STRING_VALUE_2]);
             let mut tag_data = vec![];
-            for arg in args.iter() {
-                encode_expression(&mut tag_data, arg)?;
-            }
+            encode_expression(&mut tag_data, expr)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;
             buf.append(&mut tag_data);
             buf.push(3);

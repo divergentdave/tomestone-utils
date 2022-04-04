@@ -154,11 +154,7 @@ pub trait Visitor {
                 }
             }
             Segment::TodoStringValue1(expr) => expr.accept(self),
-            Segment::TodoStringValue2(args) => {
-                for arg in args.iter() {
-                    arg.accept(self);
-                }
-            }
+            Segment::TodoStringValue2(expr) => expr.accept(self),
             Segment::Split {
                 input,
                 separator,
@@ -329,11 +325,7 @@ pub trait MutVisitor {
                 }
             }
             Segment::TodoStringValue1(expr) => expr.accept_mut(self),
-            Segment::TodoStringValue2(args) => {
-                for arg in args.iter_mut() {
-                    arg.accept_mut(self);
-                }
-            }
+            Segment::TodoStringValue2(expr) => expr.accept_mut(self),
             Segment::Split {
                 input,
                 separator,
@@ -504,7 +496,7 @@ pub enum Segment {
         parameters: Vec<Expression>,
     },
     TodoStringValue1(Expression),
-    TodoStringValue2(Vec<Expression>),
+    TodoStringValue2(Expression),
     /// Split a string at each occurrence of a separator, and return one of the resulting
     /// substrings.
     Split {
@@ -1049,16 +1041,7 @@ mod proptests {
                 }
             }
             26 => Segment::TodoStringValue1(arbitrary_expr(g, depth)),
-            27 => {
-                let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
-                    .into_iter()
-                    .map(|()| arbitrary_expr(g, depth))
-                    .collect();
-                if args.is_empty() {
-                    args.push(arbitrary_expr(g, depth));
-                }
-                Segment::TodoStringValue2(args)
-            }
+            27 => Segment::TodoStringValue2(arbitrary_expr(g, depth)),
             28 => Segment::Split {
                 input: arbitrary_expr(g, depth),
                 separator: arbitrary_expr(g, depth),
@@ -1410,8 +1393,8 @@ mod proptests {
                 Segment::TodoStringValue1(arg) => {
                     Box::new(shrink_expr(arg).map(Segment::TodoStringValue1))
                 }
-                Segment::TodoStringValue2(args) => {
-                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::TodoStringValue2))
+                Segment::TodoStringValue2(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue2))
                 }
                 Segment::Split {
                     input,
