@@ -27,13 +27,13 @@ struct TagUsageCounterVisitor {
     non_breaking_space: usize,
     command_icon: usize,
     dash: usize,
-    value: usize,
+    integer_value: usize,
     format: usize,
     two_digit_value: usize,
     tag_26: usize,
     sheet: usize,
-    highlight: usize,
-    link: usize,
+    tag_29: usize,
+    tag_2b: usize,
     split: usize,
     tag_2d: usize,
     auto_translate: usize,
@@ -82,17 +82,17 @@ impl Visitor for TagUsageCounterVisitor {
             Segment::NonBreakingSpace => self.non_breaking_space += 1,
             Segment::CommandIcon(_) => self.command_icon += 1,
             Segment::Dash => self.dash += 1,
-            Segment::Value(_) => self.value += 1,
+            Segment::IntegerValue(_) => self.integer_value += 1,
             Segment::TodoFormat(_, _) => self.format += 1,
             Segment::TwoDigitValue(_) => self.two_digit_value += 1,
             Segment::Todo26(_, _, _) => self.tag_26 += 1,
             Segment::Sheet { .. } => self.sheet += 1,
-            Segment::TodoHighlight(_) => self.highlight += 1,
-            Segment::Link(_) => self.link += 1,
+            Segment::TodoStringValue1(_) => self.tag_29 += 1,
+            Segment::TodoStringValue2(_) => self.tag_2b += 1,
             Segment::Split { .. } => self.split += 1,
-            Segment::Todo2D(_) => self.tag_2d += 1,
+            Segment::TodoStringValue3(_) => self.tag_2d += 1,
             Segment::AutoTranslate(_, _) => self.auto_translate += 1,
-            Segment::Todo2F(_) => self.tag_2f += 1,
+            Segment::TodoStringValue4(_) => self.tag_2f += 1,
             Segment::SheetJa(_) => self.sheet_ja += 1,
             Segment::SheetEn(_) => self.sheet_en += 1,
             Segment::SheetDe(_) => self.sheet_de += 1,
@@ -173,9 +173,9 @@ fn main() {
                             if let Value::String(data) = value {
                                 match Text::parse(data) {
                                     Ok(text) => {
-                                        let before = visitor.highlight;
+                                        let before = visitor.tag_2f;
                                         text.accept(&mut visitor);
-                                        if visitor.highlight > before {
+                                        if visitor.tag_2f > before {
                                             println!("{:?}", text);
                                         }
                                     }

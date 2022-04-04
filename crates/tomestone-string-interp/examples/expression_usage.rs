@@ -117,7 +117,11 @@ fn main() {
                             if let Value::String(data) = value {
                                 match Text::parse(data) {
                                     Ok(text) => {
+                                        let before = visitor.string_parameter;
                                         text.accept(&mut visitor);
+                                        if visitor.string_parameter > before {
+                                            println!("{:?}", text);
+                                        }
                                     }
                                     Err(e) => {
                                         eprintln!(

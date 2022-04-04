@@ -130,7 +130,7 @@ pub trait Visitor {
             Segment::NonBreakingSpace => {}
             Segment::CommandIcon(expr) => expr.accept(self),
             Segment::Dash => {}
-            Segment::Value(expr) => expr.accept(self),
+            Segment::IntegerValue(expr) => expr.accept(self),
             Segment::TodoFormat(expr, _) => expr.accept(self),
             Segment::TwoDigitValue(expr) => expr.accept(self),
             Segment::Todo26(arg1, arg2, arg3) => {
@@ -153,8 +153,8 @@ pub trait Visitor {
                     param.accept(self);
                 }
             }
-            Segment::TodoHighlight(expr) => expr.accept(self),
-            Segment::Link(args) => {
+            Segment::TodoStringValue1(expr) => expr.accept(self),
+            Segment::TodoStringValue2(args) => {
                 for arg in args.iter() {
                     arg.accept(self);
                 }
@@ -168,12 +168,12 @@ pub trait Visitor {
                 separator.accept(self);
                 index.accept(self);
             }
-            Segment::Todo2D(expr) => expr.accept(self),
+            Segment::TodoStringValue3(expr) => expr.accept(self),
             Segment::AutoTranslate(arg1, arg2) => {
                 arg1.accept(self);
                 arg2.accept(self);
             }
-            Segment::Todo2F(expr) => expr.accept(self),
+            Segment::TodoStringValue4(expr) => expr.accept(self),
             Segment::SheetJa(args) => {
                 for arg in args.iter() {
                     arg.accept(self);
@@ -305,7 +305,7 @@ pub trait MutVisitor {
             Segment::NonBreakingSpace => {}
             Segment::CommandIcon(expr) => expr.accept_mut(self),
             Segment::Dash => {}
-            Segment::Value(expr) => expr.accept_mut(self),
+            Segment::IntegerValue(expr) => expr.accept_mut(self),
             Segment::TodoFormat(expr, _) => expr.accept_mut(self),
             Segment::TwoDigitValue(expr) => expr.accept_mut(self),
             Segment::Todo26(arg1, arg2, arg3) => {
@@ -328,8 +328,8 @@ pub trait MutVisitor {
                     param.accept_mut(self);
                 }
             }
-            Segment::TodoHighlight(expr) => expr.accept_mut(self),
-            Segment::Link(args) => {
+            Segment::TodoStringValue1(expr) => expr.accept_mut(self),
+            Segment::TodoStringValue2(args) => {
                 for arg in args.iter_mut() {
                     arg.accept_mut(self);
                 }
@@ -343,12 +343,12 @@ pub trait MutVisitor {
                 separator.accept_mut(self);
                 index.accept_mut(self);
             }
-            Segment::Todo2D(expr) => expr.accept_mut(self),
+            Segment::TodoStringValue3(expr) => expr.accept_mut(self),
             Segment::AutoTranslate(arg1, arg2) => {
                 arg1.accept_mut(self);
                 arg2.accept_mut(self);
             }
-            Segment::Todo2F(expr) => expr.accept_mut(self),
+            Segment::TodoStringValue4(expr) => expr.accept_mut(self),
             Segment::SheetJa(args) => {
                 for arg in args.iter_mut() {
                     arg.accept_mut(self);
@@ -489,7 +489,7 @@ pub enum Segment {
     NonBreakingSpace,
     CommandIcon(Expression),
     Dash,
-    Value(Expression),
+    IntegerValue(Expression),
     TodoFormat(Expression, Vec<NonZeroU8>),
     TwoDigitValue(Expression),
     Todo26(Expression, Expression, Expression),
@@ -503,8 +503,8 @@ pub enum Segment {
         column_index: Option<Expression>,
         parameters: Vec<Expression>,
     },
-    TodoHighlight(Expression),
-    Link(Vec<Expression>),
+    TodoStringValue1(Expression),
+    TodoStringValue2(Vec<Expression>),
     /// Split a string at each occurrence of a separator, and return one of the resulting
     /// substrings.
     Split {
@@ -512,9 +512,9 @@ pub enum Segment {
         separator: Expression,
         index: Expression,
     },
-    Todo2D(Expression),
+    TodoStringValue3(Expression),
     AutoTranslate(Expression, Expression),
-    Todo2F(Expression),
+    TodoStringValue4(Expression),
     SheetJa(Vec<Expression>),
     SheetEn(Vec<Expression>),
     SheetDe(Vec<Expression>),
@@ -605,7 +605,7 @@ impl fmt::Debug for Segment {
             Segment::NonBreakingSpace => write!(f, "NonBreakingSpace"),
             Segment::CommandIcon(arg) => f.debug_tuple("CommandIcon").field(arg).finish(),
             Segment::Dash => write!(f, "Dash"),
-            Segment::Value(arg) => f.debug_tuple("Value").field(arg).finish(),
+            Segment::IntegerValue(arg) => f.debug_tuple("IntegerValue").field(arg).finish(),
             Segment::TodoFormat(arg1, arg2) => {
                 f.debug_tuple("TodoFormat").field(arg1).field(arg2).finish()
             }
@@ -628,8 +628,8 @@ impl fmt::Debug for Segment {
                 .field("column_index", column_index)
                 .field("parameters", parameters)
                 .finish(),
-            Segment::TodoHighlight(arg) => f.debug_tuple("TodoHighlight").field(arg).finish(),
-            Segment::Link(arg) => f.debug_tuple("Link").field(arg).finish(),
+            Segment::TodoStringValue1(arg) => f.debug_tuple("TodoStringValue1").field(arg).finish(),
+            Segment::TodoStringValue2(arg) => f.debug_tuple("TodoStringValue2").field(arg).finish(),
             Segment::Split {
                 input,
                 separator,
@@ -640,13 +640,13 @@ impl fmt::Debug for Segment {
                 .field("separator", separator)
                 .field("index", index)
                 .finish(),
-            Segment::Todo2D(arg) => f.debug_tuple("Todo2D").field(arg).finish(),
+            Segment::TodoStringValue3(arg) => f.debug_tuple("TodoStringValue3").field(arg).finish(),
             Segment::AutoTranslate(arg1, arg2) => f
                 .debug_tuple("AutoTranslate")
                 .field(arg1)
                 .field(arg2)
                 .finish(),
-            Segment::Todo2F(arg) => f.debug_tuple("Todo2F").field(arg).finish(),
+            Segment::TodoStringValue4(arg) => f.debug_tuple("TodoStringValue4").field(arg).finish(),
             Segment::SheetJa(args) => f.debug_tuple("SheetJa").field(args).finish(),
             Segment::SheetEn(args) => f.debug_tuple("SheetEn").field(args).finish(),
             Segment::SheetDe(args) => f.debug_tuple("SheetDe").field(args).finish(),
@@ -1027,7 +1027,7 @@ mod proptests {
             18 => Segment::NonBreakingSpace,
             19 => Segment::CommandIcon(arbitrary_expr(g, depth)),
             20 => Segment::Dash,
-            21 => Segment::Value(arbitrary_expr(g, depth)),
+            21 => Segment::IntegerValue(arbitrary_expr(g, depth)),
             22 => Segment::TodoFormat(arbitrary_expr(g, depth), Vec::<NonZeroU8>::arbitrary(g)),
             23 => Segment::TwoDigitValue(arbitrary_expr(g, depth)),
             24 => Segment::Todo26(
@@ -1048,7 +1048,7 @@ mod proptests {
                     parameters: args,
                 }
             }
-            26 => Segment::TodoHighlight(arbitrary_expr(g, depth)),
+            26 => Segment::TodoStringValue1(arbitrary_expr(g, depth)),
             27 => {
                 let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
                     .into_iter()
@@ -1057,16 +1057,16 @@ mod proptests {
                 if args.is_empty() {
                     args.push(arbitrary_expr(g, depth));
                 }
-                Segment::Link(args)
+                Segment::TodoStringValue2(args)
             }
             28 => Segment::Split {
                 input: arbitrary_expr(g, depth),
                 separator: arbitrary_expr(g, depth),
                 index: arbitrary_expr(g, depth),
             },
-            29 => Segment::Todo2D(arbitrary_expr(g, depth)),
+            29 => Segment::TodoStringValue3(arbitrary_expr(g, depth)),
             30 => Segment::AutoTranslate(arbitrary_expr(g, depth), arbitrary_expr(g, depth)),
-            31 => Segment::Todo2F(arbitrary_expr(g, depth)),
+            31 => Segment::TodoStringValue4(arbitrary_expr(g, depth)),
             32 => {
                 let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
                     .into_iter()
@@ -1315,7 +1315,7 @@ mod proptests {
                 Segment::NonBreakingSpace => Box::new(empty()),
                 Segment::CommandIcon(arg) => Box::new(shrink_expr(arg).map(Segment::CommandIcon)),
                 Segment::Dash => Box::new(empty()),
-                Segment::Value(arg) => Box::new(shrink_expr(arg).map(Segment::Value)),
+                Segment::IntegerValue(arg) => Box::new(shrink_expr(arg).map(Segment::IntegerValue)),
                 Segment::TodoFormat(arg, bytes) => Box::new(shrink_expr(arg).map({
                     let bytes = bytes.clone();
                     move |arg| Segment::TodoFormat(arg, bytes.clone())
@@ -1407,11 +1407,11 @@ mod proptests {
                     .into_iter()
                     .flatten(),
                 ),
-                Segment::TodoHighlight(arg) => {
-                    Box::new(shrink_expr(arg).map(Segment::TodoHighlight))
+                Segment::TodoStringValue1(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue1))
                 }
-                Segment::Link(args) => {
-                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::Link))
+                Segment::TodoStringValue2(args) => {
+                    Box::new(shrink_expr_list_preserve_length(args).map(Segment::TodoStringValue2))
                 }
                 Segment::Split {
                     input,
@@ -1450,7 +1450,9 @@ mod proptests {
                     .into_iter()
                     .flatten(),
                 ),
-                Segment::Todo2D(arg) => Box::new(shrink_expr(arg).map(Segment::Todo2D)),
+                Segment::TodoStringValue3(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue3))
+                }
                 Segment::AutoTranslate(arg1, arg2) => Box::new(
                     shrink_expr(arg1)
                         .map({
@@ -1462,7 +1464,9 @@ mod proptests {
                             move |arg2| Segment::AutoTranslate(arg1.clone(), arg2)
                         })),
                 ),
-                Segment::Todo2F(arg) => Box::new(shrink_expr(arg).map(Segment::Todo2F)),
+                Segment::TodoStringValue4(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue4))
+                }
                 Segment::SheetJa(args) => {
                     Box::new(shrink_expr_list_preserve_length(args).map(Segment::SheetJa))
                 }
@@ -1613,14 +1617,15 @@ mod proptests {
     #[test]
     fn regression_03() {
         assert!(
-            !property_encode_round_trip(Segment::Value(Expression::Integer(0x544600))).is_failure()
+            !property_encode_round_trip(Segment::IntegerValue(Expression::Integer(0x544600)))
+                .is_failure()
         );
     }
 
     #[test]
     fn regression_04() {
         assert!(
-            !property_encode_round_trip(Segment::Value(Expression::PlayerParameter(65793)))
+            !property_encode_round_trip(Segment::IntegerValue(Expression::PlayerParameter(65793)))
                 .is_failure()
         );
     }

@@ -516,7 +516,7 @@ impl Serialize for Segment {
             Segment::Dash => {
                 serializer.serialize_unit_variant(SEGMENT_NAME, 20, SEGMENT_VARIANTS[20])
             }
-            Segment::Value(_) => Err(S::Error::custom(
+            Segment::IntegerValue(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x20 is not yet supported",
             )),
             Segment::TodoFormat(_, _) => Err(S::Error::custom(
@@ -546,10 +546,10 @@ impl Serialize for Segment {
                 variant.serialize_field("parameters", parameters)?;
                 variant.end()
             }
-            Segment::TodoHighlight(_) => Err(S::Error::custom(
+            Segment::TodoStringValue1(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x29 is not yet supported",
             )),
-            Segment::Link(_) => Err(S::Error::custom(
+            Segment::TodoStringValue2(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2b is not yet supported",
             )),
             Segment::Split {
@@ -568,13 +568,13 @@ impl Serialize for Segment {
                 variant.serialize_field("index", index)?;
                 variant.end()
             }
-            Segment::Todo2D(_) => Err(S::Error::custom(
+            Segment::TodoStringValue3(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2d is not yet supported",
             )),
             Segment::AutoTranslate(_, _) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2e is not yet supported",
             )),
-            Segment::Todo2F(_) => Err(S::Error::custom(
+            Segment::TodoStringValue4(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2f is not yet supported",
             )),
             Segment::SheetJa(_) => Err(S::Error::custom(
@@ -1616,7 +1616,7 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Segment::Value(Expression::Integer(0)),
+            &Segment::IntegerValue(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x20 is not yet supported",
         );
@@ -1733,13 +1733,13 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Segment::TodoHighlight(Expression::Integer(0)),
+            &Segment::TodoStringValue1(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x29 is not yet supported",
         );
 
         assert_ser_tokens_error(
-            &Segment::Link(vec![Expression::Integer(0)]),
+            &Segment::TodoStringValue2(vec![Expression::Integer(0)]),
             &[],
             "serialization of segments with tag 0x2b is not yet supported",
         );
@@ -1793,7 +1793,7 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Segment::Todo2D(Expression::Integer(0)),
+            &Segment::TodoStringValue3(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x2d is not yet supported",
         );
@@ -1805,7 +1805,7 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Segment::Todo2F(Expression::Integer(0)),
+            &Segment::TodoStringValue4(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x2f is not yet supported",
         );

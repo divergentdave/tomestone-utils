@@ -173,11 +173,11 @@ fn main() {
                                                     process::exit(1);
                                                 }
                                             };
-                                            let find = vec![Segment::TodoHighlight(Expression::StringParameter(1))];
+                                            let find = vec![Segment::TodoStringValue1(Expression::StringParameter(1))];
                                             let replace = vec![
-                                                Segment::TodoHighlight(Expression::StringParameter(1)),
+                                                Segment::TodoStringValue1(Expression::StringParameter(1)),
                                                 Segment::Literal(" (original: ".to_string()),
-                                                Segment::Value(Expression::StringParameter(1)),
+                                                Segment::IntegerValue(Expression::StringParameter(1)),
                                                 Segment::Literal(")".to_string()),
                                             ];
                                             let mut visitor = StructuralFindAndReplace::new(find, replace);

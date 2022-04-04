@@ -324,8 +324,8 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
         Segment::Dash => {
             buf.extend_from_slice(&[2, DASH, 1, 3]);
         }
-        Segment::Value(expr) => {
-            buf.extend_from_slice(&[2, VALUE]);
+        Segment::IntegerValue(expr) => {
+            buf.extend_from_slice(&[2, INTEGER_VALUE]);
             let mut tag_data = vec![];
             encode_expression(&mut tag_data, expr)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;
@@ -379,16 +379,16 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.append(&mut tag_data);
             buf.push(3);
         }
-        Segment::TodoHighlight(expr) => {
-            buf.extend_from_slice(&[2, TODO_HIGHLIGHT]);
+        Segment::TodoStringValue1(expr) => {
+            buf.extend_from_slice(&[2, TODO_STRING_VALUE_1]);
             let mut tag_data = vec![];
             encode_expression(&mut tag_data, expr)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;
             buf.append(&mut tag_data);
             buf.push(3);
         }
-        Segment::Link(args) => {
-            buf.extend_from_slice(&[2, LINK]);
+        Segment::TodoStringValue2(args) => {
+            buf.extend_from_slice(&[2, TODO_STRING_VALUE_2]);
             let mut tag_data = vec![];
             for arg in args.iter() {
                 encode_expression(&mut tag_data, arg)?;
@@ -411,8 +411,8 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.append(&mut tag_data);
             buf.push(3);
         }
-        Segment::Todo2D(expr) => {
-            buf.extend_from_slice(&[2, TODO_2D]);
+        Segment::TodoStringValue3(expr) => {
+            buf.extend_from_slice(&[2, TODO_STRING_VALUE_3]);
             let mut tag_data = vec![];
             encode_expression(&mut tag_data, expr)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;
@@ -428,8 +428,8 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.append(&mut tag_data);
             buf.push(3);
         }
-        Segment::Todo2F(expr) => {
-            buf.extend_from_slice(&[2, TODO_2F]);
+        Segment::TodoStringValue4(expr) => {
+            buf.extend_from_slice(&[2, TODO_STRING_VALUE_4]);
             let mut tag_data = vec![];
             encode_expression(&mut tag_data, expr)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;

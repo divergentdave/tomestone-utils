@@ -249,7 +249,7 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
         NON_BREAKING_SPACE => contents(segment_no_data(Segment::NonBreakingSpace))(input),
         COMMAND_ICON => contents(map(expression, Segment::CommandIcon))(input),
         DASH => contents(segment_no_data(Segment::Dash))(input),
-        VALUE => contents(map(expression, Segment::Value))(input),
+        INTEGER_VALUE => contents(map(expression, Segment::IntegerValue))(input),
         TODO_FORMAT => contents(segment_todo_format)(input),
         TWO_DIGIT_VALUE => contents(map(expression, Segment::TwoDigitValue))(input),
         TODO_26 => contents(map(
@@ -275,14 +275,17 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
                 parameters,
             },
         ))(input),
-        TODO_HIGHLIGHT => contents(map(expression, Segment::TodoHighlight))(input),
-        LINK => contents(map(many_m_n(1, usize::MAX, expression), Segment::Link))(input),
+        TODO_STRING_VALUE_1 => contents(map(expression, Segment::TodoStringValue1))(input),
+        TODO_STRING_VALUE_2 => contents(map(
+            many_m_n(1, usize::MAX, expression),
+            Segment::TodoStringValue2,
+        ))(input),
         SPLIT => contents(segment_split)(input),
-        TODO_2D => contents(map(expression, Segment::Todo2D))(input),
+        TODO_STRING_VALUE_3 => contents(map(expression, Segment::TodoStringValue3))(input),
         AUTO_TRANSLATE => contents(map(pair(expression, expression), |(arg1, arg2)| {
             Segment::AutoTranslate(arg1, arg2)
         }))(input),
-        TODO_2F => contents(map(expression, Segment::Todo2F))(input),
+        TODO_STRING_VALUE_4 => contents(map(expression, Segment::TodoStringValue4))(input),
         SHEET_JA => contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetJa))(input),
         SHEET_EN => contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetEn))(input),
         SHEET_DE => contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetDe))(input),

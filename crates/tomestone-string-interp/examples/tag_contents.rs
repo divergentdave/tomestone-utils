@@ -11,7 +11,6 @@ struct TagContentsVisitor {
     sheet_nesting: u8,
     nested_sheet_counter: u64,
     sheet_arg_count_by_name_counters: BTreeMap<Expression, BTreeMap<usize, u64>>,
-    highlight_counters: BTreeMap<Expression, u64>,
 }
 
 impl TagContentsVisitor {
@@ -46,9 +45,6 @@ impl Visitor for TagContentsVisitor {
                     .or_default()
                     .entry(arg_count)
                     .or_default() += 1;
-            }
-            Segment::TodoHighlight(expr) => {
-                *self.highlight_counters.entry(expr.clone()).or_default() += 1
             }
             _ => {}
         }
