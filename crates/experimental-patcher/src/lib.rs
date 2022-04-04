@@ -129,20 +129,30 @@ impl StructuralFindAndReplace {
                 }
             }
         }
+
+        for segment in text {
+            self.visit_tag(segment);
+        }
     }
 }
 
 impl MutVisitor for StructuralFindAndReplace {
+    fn visit_tag(&mut self, tag: &mut Segment) {
+        self.recurse_tag(tag);
+    }
+
     fn visit_expression(&mut self, expr: &mut Expression) {
         if let Expression::Text(text) = expr {
             self.visit_tag_sequence(&mut text.segments);
+        } else {
+            self.recurse_expression(expr);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use tomestone_string_interp::Segment;
+    use tomestone_string_interp::{Expression, Segment, Text};
 
     use crate::StructuralFindAndReplace;
 
@@ -278,6 +288,17 @@ mod tests {
                 Segment::NewLine,
                 Segment::Literal(" number two".to_string()),
             ]
+        );
+
+        let mut text = vec![Segment::TodoStringValue1(Expression::Text(Text::new(
+            vec![Segment::Literal("needle".to_string())],
+        )))];
+        visitor.visit_tag_sequence(&mut text);
+        assert_eq!(
+            text,
+            vec![Segment::TodoStringValue1(Expression::Text(Text::new(
+                vec![Segment::NewLine, Segment::Dash, Segment::NewLine]
+            )))]
         );
     }
 
