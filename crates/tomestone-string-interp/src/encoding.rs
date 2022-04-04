@@ -7,6 +7,15 @@ pub enum EncodeError {
     NullByte,
 }
 
+impl std::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            EncodeError::UnrepresentableInteger => write!(f, "integer value isn't representable"),
+            EncodeError::NullByte => write!(f, "null byte in literal text string"),
+        }
+    }
+}
+
 fn encode_integer(buf: &mut Vec<u8>, value: u32) -> Result<(), EncodeError> {
     use crate::types::expr::*;
 

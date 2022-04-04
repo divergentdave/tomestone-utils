@@ -16,7 +16,7 @@ use sidetables::SideTables;
 use crate::encoding::{PackSetWriter, RealPackIO};
 
 mod compression;
-mod encoding;
+pub mod encoding;
 pub(crate) mod parser;
 pub mod pathdb;
 pub mod sidetables;
@@ -937,11 +937,11 @@ impl DataFileSet {
         &'a mut self,
         pack_id: SqPackId,
         index: &'a Index<I>,
-    ) -> Result<impl Iterator<Item = Result<(I::Hash, Vec<u8>), Error>> + 'a, Error> {
+    ) -> impl Iterator<Item = Result<(I::Hash, Vec<u8>), Error>> + 'a {
         let mut entries: Vec<_> = index.iter().collect();
         // Sort by file pointer to improve disk locality.
         entries.sort_unstable_by_key(|(_, pointer)| *pointer);
-        Ok(entries.into_iter().map(move |(hash, pointer)| {
+        entries.into_iter().map(move |(hash, pointer)| {
             Ok((
                 hash,
                 decompress_file(
@@ -949,7 +949,43 @@ impl DataFileSet {
                     pointer.offset(),
                 )?,
             ))
-        }))
+        })
+    }
+
+    pub fn iter_files_both_hashes<'a>(
+        &'a mut self,
+        pack_id: SqPackId,
+        index: &'a Index<IndexEntry1>,
+        index2: &'a Index<IndexEntry2>,
+    ) -> impl Iterator<Item = Result<(Option<IndexHash1>, Option<IndexHash2>, Vec<u8>), Error>> + 'a
+    {
+        let mut entries = BTreeMap::<FilePointer, (Option<IndexHash1>, Option<IndexHash2>)>::new();
+        for (hash, pointer) in index.iter() {
+            assert!(entries
+                .entry(pointer)
+                .or_default()
+                .0
+                .replace(hash)
+                .is_none());
+        }
+        for (hash, pointer) in index2.iter() {
+            assert!(entries
+                .entry(pointer)
+                .or_default()
+                .1
+                .replace(hash)
+                .is_none());
+        }
+        entries.into_iter().map(move |(pointer, (hash1, hash2))| {
+            Ok((
+                hash1,
+                hash2,
+                decompress_file(
+                    self.open(pack_id, pointer.data_file_id())?,
+                    pointer.offset(),
+                )?,
+            ))
+        })
     }
 
     pub fn max_dat_number(&self, pack_id: SqPackId) -> u8 {
@@ -1001,7 +1037,6 @@ pub fn write_packs<
 #[cfg(test)]
 mod tests {
     use std::{
-        collections::BTreeMap,
         convert::TryInto,
         fs::File,
         io::{Cursor, Read, Seek, SeekFrom, Write},
@@ -1012,10 +1047,8 @@ mod tests {
 
     use crate::{
         encoding::{PackIO, PackSetWriter, SetLen},
-        parser::decompress_file,
         sidetables::build_side_tables,
-        Category, Expansion, FilePointer, GameData, IndexEntry1, IndexEntry2, IndexHash1,
-        IndexHash2,
+        Category, Expansion, GameData, IndexEntry1, IndexEntry2,
     };
 
     #[test]
@@ -1331,58 +1364,29 @@ mod tests {
                 .read_to_end(&mut original_index2_file)
                 .unwrap();
 
-            let mut original_entries: BTreeMap<
-                FilePointer,
-                (Option<IndexHash1>, Option<IndexHash2>),
-            > = BTreeMap::new();
             let index_1 = game_data.get_index_1(&pack_id).unwrap().unwrap();
-            for (hash, pointer) in index_1.iter() {
-                assert!(original_entries
-                    .entry(pointer)
-                    .or_default()
-                    .0
-                    .replace(hash)
-                    .is_none());
-            }
             let index_2 = game_data.get_index_2(&pack_id).unwrap().unwrap();
-            for (hash, pointer) in index_2.iter() {
-                assert!(original_entries
-                    .entry(pointer)
-                    .or_default()
-                    .1
-                    .replace(hash)
-                    .is_none());
-            }
-
-            let mut entries: Vec<_> = index_2.iter().collect();
-            // sort by location within data files.
-            entries.sort_unstable_by_key(|(_, pointer)| *pointer);
 
             let mut data_file_set = game_data.data_files();
 
             let side_table = build_side_tables(&game_data, &mut data_file_set, pack_id);
 
-            let mut original_max_dat_file_id: usize = 0;
-            let all_files = entries.into_iter().map(|(hash, pointer)| {
-                if usize::from(pointer.data_file_id()) > original_max_dat_file_id {
-                    original_max_dat_file_id = pointer.data_file_id().into();
+            let mut original_max_dat_file_id = 0;
+            for (_, pointer) in index_2.iter() {
+                if pointer.data_file_id() > original_max_dat_file_id {
+                    original_max_dat_file_id = pointer.data_file_id();
                 }
-                let data = decompress_file(
-                    data_file_set.open(pack_id, pointer.data_file_id()).unwrap(),
-                    pointer.offset(),
-                )
-                .unwrap();
-                (hash, pointer, data)
-            });
+            }
 
             let mocked_io = MockedPackIO::new();
             let mut writer =
                 PackSetWriter::new(mocked_io, crate::PlatformId::Win32, pack_id).unwrap();
             writer.set_side_table(side_table);
-            for (hash2, pointer, data) in all_files {
-                let hashes = original_entries.get(&pointer).unwrap();
-                let hash1 = hashes.0.unwrap();
-                writer.add_file_by_hashes(hash1, hash2, &data).unwrap();
+            for res in data_file_set.iter_files_both_hashes(pack_id, index_1, index_2) {
+                let (hash1, hash2, data) = res.unwrap();
+                writer
+                    .add_file_by_hashes(hash1.unwrap(), hash2.unwrap(), &data)
+                    .unwrap();
             }
             let original_dat_file_count = original_max_dat_file_id + 1;
             let mocked_io = writer.finalize().unwrap();
@@ -1404,7 +1408,7 @@ mod tests {
                     &original_index2_file,
                 );
             }
-            let mut dat_matches = mocked_io.files.len() == original_dat_file_count;
+            let mut dat_matches = mocked_io.files.len() == original_dat_file_count.into();
             if !dat_matches {
                 println!(
                     "Wrong number of .dat files, expected {}, got {}",

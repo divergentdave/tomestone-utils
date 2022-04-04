@@ -140,6 +140,7 @@ pub struct ColumnDefinition {
 #[derive(PartialEq)]
 pub enum Value<'a> {
     String(&'a [u8]),
+    StringOwned(Vec<u8>),
     Bool(bool),
     I8(i8),
     U8(u8),
@@ -156,6 +157,7 @@ impl<'a> fmt::Debug for Value<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::String(value) => String::from_utf8_lossy(value).fmt(f),
+            Value::StringOwned(value) => String::from_utf8_lossy(value).fmt(f),
             Value::Bool(value) => value.fmt(f),
             Value::I8(value) => value.fmt(f),
             Value::U8(value) => value.fmt(f),
@@ -227,7 +229,7 @@ pub struct Row<'a> {
 }
 
 struct DatasetPage {
-    _row_start: u32,
+    row_start: u32,
     exdf: Exdf,
 }
 
@@ -254,19 +256,37 @@ impl<'a> Iterator for DatasetPageIter<'a> {
     }
 }
 
-pub struct Dataset {
+pub struct Dataset<'a> {
     pub exhf: Exhf,
     pages: Vec<DatasetPage>,
+    base: &'a str,
+    language: Option<Language>,
 }
 
-impl Dataset {
+impl<'a> Dataset<'a> {
+    fn exh_path_helper(base: &str) -> String {
+        format!("exd/{}.exh", base)
+    }
+
+    fn exd_path_helper(base: &str, page_start: u32, language: Option<Language>) -> String {
+        match language {
+            Some(language) => {
+                let short_code = language.short_code();
+                format!("exd/{}_{}_{}.exd", base, page_start, short_code)
+            }
+            None => {
+                format!("exd/{}_{}.exd", base, page_start)
+            }
+        }
+    }
+
     pub fn load(
         game_data: &GameData,
         data_file_set: &mut DataFileSet,
-        base: &str,
+        base: &'a str,
         language: Language,
-    ) -> Result<Dataset, Error> {
-        let exh_path = format!("exd/{}.exh", base);
+    ) -> Result<Dataset<'a>, Error> {
+        let exh_path = Self::exh_path_helper(base);
         let exh_data = match game_data.lookup_path_data(data_file_set, &exh_path) {
             Ok(Some(exh_data)) => exh_data,
             Ok(None) => return Err(Error::NoSuchFile),
@@ -277,8 +297,8 @@ impl Dataset {
             .map_err(|e| Error::Nom(e.code))?
             .1;
 
-        let short_code = if exhf.languages().contains(&Some(language)) {
-            Some(language.short_code())
+        let language = if exhf.languages().contains(&Some(language)) {
+            Some(language)
         } else if exhf.languages().contains(&None) {
             None
         } else {
@@ -289,11 +309,7 @@ impl Dataset {
             .pages()
             .iter()
             .map(|(page_start, _)| {
-                let exd_path = if let Some(short_code) = short_code {
-                    format!("exd/{}_{}_{}.exd", base, page_start, short_code)
-                } else {
-                    format!("exd/{}_{}.exd", base, page_start)
-                };
+                let exd_path = Self::exd_path_helper(base, *page_start, language);
                 let exdf_data = match game_data.lookup_path_data(data_file_set, &exd_path) {
                     Ok(Some(exd_data)) => exd_data,
                     Ok(None) => return Err(Error::NoSuchFile),
@@ -301,12 +317,17 @@ impl Dataset {
                 };
                 let exdf = Exdf::new(exdf_data)?;
                 Ok(DatasetPage {
-                    _row_start: *page_start,
+                    row_start: *page_start,
                     exdf,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(Dataset { exhf, pages })
+        Ok(Dataset {
+            exhf,
+            pages,
+            base,
+            language,
+        })
     }
 
     pub fn page_iter(&self) -> impl Iterator<Item = DatasetPageIter<'_>> {
@@ -315,6 +336,20 @@ impl Dataset {
             exdf_iter: p.exdf.iter(),
             exhf,
         })
+    }
+
+    pub fn exh_path(&self) -> String {
+        Self::exh_path_helper(self.base)
+    }
+
+    pub fn exd_path_iter(&self) -> impl Iterator<Item = String> + '_ {
+        self.pages
+            .iter()
+            .map(move |page| Self::exd_path_helper(self.base, page.row_start, self.language))
+    }
+
+    pub fn name(&self) -> &str {
+        self.base
     }
 }
 

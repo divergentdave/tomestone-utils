@@ -77,10 +77,15 @@ impl PackIO for RealPackIO {
 
     fn open_dat_file(&mut self, number: u8) -> Result<File, io::Error> {
         assert_eq!(self.platform_id, PlatformId::Win32);
-        File::create(self.base.join(self.pack_id.expansion.name()).join(format!(
-            "{:02x}{:02x}{:02x}.win32.dat{}",
-            self.pack_id.category as u8, self.pack_id.expansion as u8, self.pack_id.number, number
-        )))
+        File::options().read(true).write(true).create(true).open(
+            self.base.join(self.pack_id.expansion.name()).join(format!(
+                "{:02x}{:02x}{:02x}.win32.dat{}",
+                self.pack_id.category as u8,
+                self.pack_id.expansion as u8,
+                self.pack_id.number,
+                number
+            )),
+        )
     }
 }
 

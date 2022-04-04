@@ -245,5 +245,28 @@
             ],
             "cwd": "${workspaceFolder}"
         },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'experimental-patcher'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=experimental-patcher",
+                    "--package=experimental-patcher"
+                ],
+                "filter": {
+                    "name": "experimental-patcher",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--src",
+                "src",
+                "--dest",
+                "dest"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
     ]
 }

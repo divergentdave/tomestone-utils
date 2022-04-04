@@ -1,0 +1,12 @@
+[package]
+name = "experimental-patcher"
+version = "0.1.0"
+authors = ["David Cook <divergentdave@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+clap = { version = "3.0.0", features = ["cargo"] }
+nom = "6.0.1"
+tomestone-exdf = { path = "../tomestone-exdf" }
+tomestone-sqpack = { path = "../tomestone-sqpack" }
+tomestone-string-interp = { path = "../tomestone-string-interp" }

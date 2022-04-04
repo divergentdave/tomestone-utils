@@ -461,9 +461,9 @@ fn main() {
         Ok(game_data) => game_data,
         Err(e) => {
             eprintln!(
-            "error: couldn't read the directory {:?} (from environment variable FFXIV_INSTALL_DIR), {}",
-            root, e
-        );
+                "error: couldn't read the directory {:?} (from environment variable FFXIV_INSTALL_DIR), {}",
+                root, e
+            );
             process::exit(1);
         }
     };

@@ -13,8 +13,10 @@ pub fn encode_row(row: &[SubRow], header: &Exhf, padding_offset: u32) -> Vec<u8>
     let mut inner_length_variable: usize = 0;
     for sub_row in row.iter() {
         for value in sub_row.cells.iter() {
-            if let Value::String(data) = value {
-                inner_length_variable += data.len() + 1;
+            match &value {
+                Value::String(data) => inner_length_variable += data.len() + 1,
+                Value::StringOwned(data) => inner_length_variable += data.len() + 1,
+                _ => {}
             }
         }
     }
@@ -47,6 +49,18 @@ pub fn encode_row(row: &[SubRow], header: &Exhf, padding_offset: u32) -> Vec<u8>
             let value = &sub_row.cells[column_def.index];
             match (value, column_def.format) {
                 (Value::String(val), crate::ColumnFormat::String) => {
+                    data[off..off + 4].copy_from_slice(
+                        &TryInto::<u32>::try_into(string_data_offset_relative)
+                            .unwrap()
+                            .to_be_bytes(),
+                    );
+                    data[string_data_offset_vec..string_data_offset_vec + val.len()]
+                        .copy_from_slice(val);
+                    data[string_data_offset_vec + val.len()] = 0;
+                    string_data_offset_relative += TryInto::<u32>::try_into(val.len()).unwrap() + 1;
+                    string_data_offset_vec += val.len() + 1;
+                }
+                (Value::StringOwned(val), crate::ColumnFormat::String) => {
                     data[off..off + 4].copy_from_slice(
                         &TryInto::<u32>::try_into(string_data_offset_relative)
                             .unwrap()

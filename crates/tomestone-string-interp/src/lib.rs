@@ -7,6 +7,8 @@ mod parser;
 mod serialization;
 mod types;
 
+pub use encoding::{encode, EncodeError};
+
 #[derive(Debug)]
 pub enum Error {
     Nom(nom::error::ErrorKind),
@@ -60,6 +62,7 @@ impl<'a> From<nom::error::Error<&'a [u8]>> for Error {
 
 pub trait TreeNode {
     fn accept<V: Visitor>(&self, visitor: &mut V);
+    fn accept_mut<V: MutVisitor>(&mut self, visitor: &mut V);
 }
 
 pub trait Visitor {
@@ -216,38 +219,198 @@ pub trait Visitor {
         Self: Sized,
     {
         match expr {
-            Expression::GreaterThanOrEqual(boite) => {
+            Expression::GreaterThanOrEqual(boite)
+            | Expression::GreaterThan(boite)
+            | Expression::LessThanOrEqual(boite)
+            | Expression::LessThan(boite)
+            | Expression::Equal(boite)
+            | Expression::NotEqual(boite) => {
                 boite.0.accept(self);
                 boite.1.accept(self);
             }
-            Expression::GreaterThan(boite) => {
-                boite.0.accept(self);
-                boite.1.accept(self);
-            }
-            Expression::LessThanOrEqual(boite) => {
-                boite.0.accept(self);
-                boite.1.accept(self);
-            }
-            Expression::LessThan(boite) => {
-                boite.0.accept(self);
-                boite.1.accept(self);
-            }
-            Expression::Equal(boite) => {
-                boite.0.accept(self);
-                boite.1.accept(self);
-            }
-            Expression::NotEqual(boite) => {
-                boite.0.accept(self);
-                boite.1.accept(self);
-            }
-            Expression::TopLevelParameter(_) => {}
-            Expression::InputParameter(_) => {}
-            Expression::PlayerParameter(_) => {}
-            Expression::StringParameter(_) => {}
-            Expression::ObjectParameter(_) => {}
-            Expression::TodoEC => {}
-            Expression::Integer(_) => {}
+            Expression::TopLevelParameter(_)
+            | Expression::InputParameter(_)
+            | Expression::PlayerParameter(_)
+            | Expression::StringParameter(_)
+            | Expression::ObjectParameter(_)
+            | Expression::TodoEC
+            | Expression::Integer(_) => {}
             Expression::Text(boite) => boite.accept(self),
+        }
+    }
+}
+
+pub trait MutVisitor {
+    fn visit_tag(&mut self, _tag: &mut Segment) {}
+
+    fn visit_expression(&mut self, _expr: &mut Expression) {}
+
+    fn recurse_tag(&mut self, tag: &mut Segment)
+    where
+        Self: Sized,
+    {
+        match tag {
+            Segment::Literal(_) => {}
+            Segment::TodoResetTime(_) => {}
+            Segment::Time(expr) => expr.accept_mut(self),
+            Segment::If {
+                condition,
+                true_value,
+                false_value,
+            } => {
+                condition.accept_mut(self);
+                true_value.accept_mut(self);
+                false_value.accept_mut(self);
+            }
+            Segment::Switch {
+                discriminant,
+                cases,
+            } => {
+                discriminant.accept_mut(self);
+                for case in cases {
+                    case.accept_mut(self);
+                }
+            }
+            Segment::Todo0A(expr) => expr.accept_mut(self),
+            Segment::IfEquals {
+                left,
+                right,
+                true_value,
+                false_value,
+            } => {
+                left.accept_mut(self);
+                right.accept_mut(self);
+                true_value.accept_mut(self);
+                false_value.accept_mut(self);
+            }
+            Segment::Todo0F {
+                player,
+                self_value,
+                other_value,
+            } => {
+                player.accept_mut(self);
+                self_value.accept_mut(self);
+                other_value.accept_mut(self);
+            }
+            Segment::NewLine => {}
+            Segment::GuiIcon(expr) => expr.accept_mut(self),
+            Segment::ColorChange(expr) => expr.accept_mut(self),
+            Segment::Todo14(expr) => expr.accept_mut(self),
+            Segment::SoftHyphen => {}
+            Segment::Todo17 => {}
+            Segment::Todo19(_) => {}
+            Segment::Emphasis(_) => {}
+            Segment::Todo1B(_) => {}
+            Segment::Todo1C(_) => {}
+            Segment::NonBreakingSpace => {}
+            Segment::CommandIcon(expr) => expr.accept_mut(self),
+            Segment::Dash => {}
+            Segment::Value(expr) => expr.accept_mut(self),
+            Segment::TodoFormat(expr, _) => expr.accept_mut(self),
+            Segment::TwoDigitValue(expr) => expr.accept_mut(self),
+            Segment::Todo26(arg1, arg2, arg3) => {
+                arg1.accept_mut(self);
+                arg2.accept_mut(self);
+                arg3.accept_mut(self);
+            }
+            Segment::Sheet {
+                name,
+                row_index,
+                column_index,
+                parameters,
+            } => {
+                name.accept_mut(self);
+                row_index.accept_mut(self);
+                if let Some(column_index) = column_index {
+                    column_index.accept_mut(self);
+                }
+                for param in parameters.iter_mut() {
+                    param.accept_mut(self);
+                }
+            }
+            Segment::TodoHighlight(expr) => expr.accept_mut(self),
+            Segment::Link(args) => {
+                for arg in args.iter_mut() {
+                    arg.accept_mut(self);
+                }
+            }
+            Segment::Split {
+                input,
+                separator,
+                index,
+            } => {
+                input.accept_mut(self);
+                separator.accept_mut(self);
+                index.accept_mut(self);
+            }
+            Segment::Todo2D(expr) => expr.accept_mut(self),
+            Segment::AutoTranslate(arg1, arg2) => {
+                arg1.accept_mut(self);
+                arg2.accept_mut(self);
+            }
+            Segment::Todo2F(expr) => expr.accept_mut(self),
+            Segment::SheetJa(args) => {
+                for arg in args.iter_mut() {
+                    arg.accept_mut(self);
+                }
+            }
+            Segment::SheetEn(args) => {
+                for arg in args.iter_mut() {
+                    arg.accept_mut(self);
+                }
+            }
+            Segment::SheetDe(args) => {
+                for arg in args.iter_mut() {
+                    arg.accept_mut(self);
+                }
+            }
+            Segment::SheetFr(args) => {
+                for arg in args.iter_mut() {
+                    arg.accept_mut(self);
+                }
+            }
+            Segment::Todo40(expr) => expr.accept_mut(self),
+            Segment::Foreground(expr) => expr.accept_mut(self),
+            Segment::Glow(expr) => expr.accept_mut(self),
+            Segment::Ruby {
+                annotated,
+                annotation,
+            } => {
+                annotated.accept_mut(self);
+                annotation.accept_mut(self);
+            }
+            Segment::ZeroPaddedValue { value, digits } => {
+                value.accept_mut(self);
+                digits.accept_mut(self);
+            }
+            Segment::Todo51(expr) => expr.accept_mut(self),
+            Segment::Todo60(_) => {}
+            Segment::Todo61(expr) => expr.accept_mut(self),
+        }
+    }
+
+    fn recurse_expression(&mut self, expr: &mut Expression)
+    where
+        Self: Sized,
+    {
+        match expr {
+            Expression::GreaterThanOrEqual(boite)
+            | Expression::GreaterThan(boite)
+            | Expression::LessThanOrEqual(boite)
+            | Expression::LessThan(boite)
+            | Expression::Equal(boite)
+            | Expression::NotEqual(boite) => {
+                boite.0.accept_mut(self);
+                boite.1.accept_mut(self);
+            }
+            Expression::TopLevelParameter(_)
+            | Expression::InputParameter(_)
+            | Expression::PlayerParameter(_)
+            | Expression::StringParameter(_)
+            | Expression::ObjectParameter(_)
+            | Expression::TodoEC
+            | Expression::Integer(_) => {}
+            Expression::Text(boite) => boite.accept_mut(self),
         }
     }
 }
@@ -272,6 +435,10 @@ pub enum Expression {
 
 impl TreeNode for Expression {
     fn accept<V: Visitor>(&self, visitor: &mut V) {
+        visitor.visit_expression(self);
+    }
+
+    fn accept_mut<V: MutVisitor>(&mut self, visitor: &mut V) {
         visitor.visit_expression(self);
     }
 }
@@ -370,6 +537,10 @@ pub enum Segment {
 
 impl TreeNode for Segment {
     fn accept<V: Visitor>(&self, visitor: &mut V) {
+        visitor.visit_tag(self);
+    }
+
+    fn accept_mut<V: MutVisitor>(&mut self, visitor: &mut V) {
         visitor.visit_tag(self);
     }
 }
@@ -505,7 +676,7 @@ impl fmt::Debug for Segment {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Text {
-    segments: Vec<Segment>,
+    pub segments: Vec<Segment>,
 }
 
 impl Text {
@@ -530,11 +701,72 @@ impl TreeNode for Text {
             segment.accept(visitor);
         }
     }
+
+    fn accept_mut<V: MutVisitor>(&mut self, visitor: &mut V) {
+        for segment in self.segments.iter_mut() {
+            segment.accept_mut(visitor);
+        }
+    }
 }
 
 impl fmt::Debug for Text {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.segments.fmt(f)
+    }
+}
+
+#[derive(Default)]
+pub struct TextAccumulator {
+    next_literal: Option<String>,
+    segments: Vec<Segment>,
+}
+
+impl TextAccumulator {
+    pub fn new() -> TextAccumulator {
+        TextAccumulator::default()
+    }
+
+    pub fn with_capacity(cap: usize) -> TextAccumulator {
+        TextAccumulator {
+            next_literal: None,
+            segments: Vec::with_capacity(cap),
+        }
+    }
+
+    pub fn push(&mut self, next: Segment) {
+        match (next, &mut self.next_literal) {
+            (Segment::Literal(value), None) => self.next_literal = Some(value),
+            (Segment::Literal(value), Some(next_literal)) => next_literal.push_str(&value),
+            (next, None) => self.segments.push(next),
+            (next, next_literal @ Some(_)) => {
+                self.segments.reserve(2);
+                self.segments
+                    .push(Segment::Literal(next_literal.take().unwrap()));
+                self.segments.push(next);
+            }
+        }
+    }
+}
+
+impl From<TextAccumulator> for Text {
+    fn from(mut acc: TextAccumulator) -> Text {
+        if let Some(last_string) = acc.next_literal.take() {
+            acc.segments.push(Segment::Literal(last_string))
+        }
+        Text::new(acc.segments)
+    }
+}
+
+impl Extend<Segment> for TextAccumulator {
+    fn extend<T: IntoIterator<Item = Segment>>(&mut self, iter: T) {
+        let iter = iter.into_iter();
+        match iter.size_hint() {
+            (lower_bound, None) => self.segments.reserve(lower_bound),
+            (_, Some(upper_bound)) => self.segments.reserve(upper_bound),
+        }
+        for next in iter {
+            self.push(next);
+        }
     }
 }
 

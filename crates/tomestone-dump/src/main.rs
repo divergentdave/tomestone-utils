@@ -491,7 +491,7 @@ fn discover_paths(
         .map_err(tomestone_sqpack::Error::from)?;
     let mut statements = PathDb::prepare(&connection).map_err(tomestone_sqpack::Error::from)?;
     for (pack_id, index) in indices.iter() {
-        for res in data_file_set.iter_files(*pack_id, index)? {
+        for res in data_file_set.iter_files(*pack_id, index) {
             let (_hash, file) = res?;
             for caps in PATH_DISCOVERY_RE.captures_iter(&file) {
                 let discovered_path = std::str::from_utf8(caps.get(1).unwrap().as_bytes()).unwrap();

@@ -171,7 +171,7 @@ mod tests {
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(Category::Exd, *expansion) {
                 let index = game_data.get_index_2(&pack_id).unwrap().unwrap();
-                for res in data_file_set.iter_files(pack_id, index).unwrap() {
+                for res in data_file_set.iter_files(pack_id, index) {
                     let file = res.unwrap().1;
                     if file.len() > 32 && &file[..4] == b"EXDF" {
                         let exdf = Exdf::new(file).unwrap();
@@ -196,7 +196,7 @@ mod tests {
         for expansion in Expansion::iter_all() {
             for pack_id in game_data.iter_packs_category_expansion(Category::Exd, *expansion) {
                 let index = game_data.get_index_2(&pack_id).unwrap().unwrap();
-                for res in data_file_set.iter_files(pack_id, index).unwrap() {
+                for res in data_file_set.iter_files(pack_id, index) {
                     let file = res.unwrap().1;
                     if file.len() > 32 && &file[..4] == b"EXDF" {
                         let header = exdf_header(&file).unwrap().1;
