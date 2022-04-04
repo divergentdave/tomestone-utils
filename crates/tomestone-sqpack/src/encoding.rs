@@ -1016,7 +1016,8 @@ impl FreeList {
 
 #[cfg(test)]
 mod tests {
-    use super::{FreeList, FreeListExhaustedError};
+    use super::{FreeList, FreeListExhaustedError, PackSetWriter, RealPackIO};
+    use crate::{Category, Expansion, PlatformId, SqPackId};
     use quickcheck::{Arbitrary, QuickCheck, TestResult};
     use std::ops::Range;
 
@@ -1161,5 +1162,27 @@ mod tests {
     #[test]
     fn free_list_model_regression_1() {
         assert!(!property_model_equivalent(vec![Op::ReserveNext(255, 1)]).is_failure());
+    }
+
+    #[test]
+    fn real_pack_io() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // TODO: clean up directory handling.
+        std::fs::create_dir_all(dir.path().join("ffxiv")).unwrap();
+
+        // TODO: eliminate redundancy of arguments between RealPackIO and PackSetWriter.
+        let platform_id = PlatformId::Win32;
+        let pack_id = SqPackId {
+            category: Category::Exd,
+            expansion: Expansion::Base,
+            number: 0,
+        };
+        let io = RealPackIO::new(dir.path().to_path_buf(), platform_id, pack_id).unwrap();
+        let mut writer = PackSetWriter::new(io, platform_id, pack_id).unwrap();
+        writer
+            .add_file("exd/foobar.txt", b"Hello, world\n")
+            .unwrap();
+        writer.finalize().unwrap();
     }
 }
