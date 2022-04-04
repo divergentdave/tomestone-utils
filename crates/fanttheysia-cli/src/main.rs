@@ -382,6 +382,7 @@ fn print_template(
     for if_tag in if_tag_set.into_iter() {
         if let Err(e) = serde_yaml::to_writer(NoOpWriter, &if_tag) {
             eprintln!("{}", e);
+            eprintln!("{:?}", &if_tag);
             serialization_error_count += 1;
         } else {
             rules.structured_text_rules.push(StructuredTextRule {

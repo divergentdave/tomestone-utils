@@ -83,22 +83,6 @@ fn main() {
         }
     };
 
-    let source_tamtara_dataset = match Dataset::load(
-        &source_game_data,
-        &mut source_data_file_set,
-        "dungeon/000/DungeonTamtara_00000",
-        Language::English,
-    ) {
-        Ok(dataset) => dataset,
-        Err(e) => {
-            eprintln!("error: couldn't load dataset: {}", e);
-            process::exit(1);
-        }
-    };
-    let tamtara_exd_hashes = &source_tamtara_dataset
-        .exd_path_iter()
-        .map(|path| IndexHash2::hash(&path))
-        .collect::<Vec<IndexHash2>>();
     let source_addon_dataset = match Dataset::load(
         &source_game_data,
         &mut source_data_file_set,
@@ -176,9 +160,13 @@ fn main() {
                                             let find = vec![Segment::TodoStringValue1(Expression::StringParameter(1))];
                                             let replace = vec![
                                                 Segment::TodoStringValue1(Expression::StringParameter(1)),
-                                                Segment::Literal(" (original: ".to_string()),
-                                                Segment::IntegerValue(Expression::StringParameter(1)),
-                                                Segment::Literal(")".to_string()),
+                                                Segment::Literal(" (#2: \"".to_string()),
+                                                Segment::TodoStringValue2(vec![Expression::StringParameter(1)]),
+                                                Segment::Literal("\", #3: \"".to_string()),
+                                                Segment::TodoStringValue3(Expression::StringParameter(1)),
+                                                Segment::Literal("\", #4: \"".to_string()),
+                                                Segment::TodoStringValue4(Expression::StringParameter(1)),
+                                                Segment::Literal("\")".to_string()),
                                             ];
                                             let mut visitor = StructuralFindAndReplace::new(find, replace);
                                             visitor.visit_tag_sequence(&mut text.segments);
@@ -214,79 +202,6 @@ fn main() {
                         &rows,
                     );
                 }
-                if tamtara_exd_hashes.contains(&hash2) {
-                    let source_exdf = match Exdf::new(data) {
-                        Ok(exdf) => exdf,
-                        Err(e) => {
-                            eprintln!("error: couldn't read exdf header: {:?}", e);
-                            process::exit(1);
-                        }
-                    };
-                    let rows_res = source_exdf
-                        .iter()
-                        .map(|res| {
-                            let (row_number, raw_row) = match res {
-                                Ok(tuple) => tuple,
-                                Err(e) => return Err(e.code),
-                            };
-                            let mut sub_rows = parse_row(raw_row, &source_tamtara_dataset.exhf)?;
-
-                            if row_number == 1 {
-                                for sub_row in &mut sub_rows {
-                                    for cell in sub_row.cells.iter_mut() {
-                                            if let Value::String(text_data) = cell {
-                                            let mut text = match Text::parse(text_data) {
-                                                Ok(text) => text,
-                                                Err(e) => {
-                                                    eprintln!(
-                                                        "error: couldn't parse tagged text: {}",
-                                                        e
-                                                    );
-                                                    process::exit(1);
-                                                }
-                                            };
-                                            let find = vec![
-                                                Segment::If {
-                                                    condition: Expression::PlayerParameter(4),
-                                                    true_value: Expression::Text(Text::new(vec![Segment::Literal("her".to_string())])),
-                                                    false_value: Expression::Text(Text::new(vec![Segment::Literal("him".to_string())])),
-                                                },
-                                            ];
-                                            let replace = vec![Segment::Literal("them".to_string())];
-                                            let mut visitor = StructuralFindAndReplace::new(find, replace);
-                                            visitor.visit_tag_sequence(&mut text.segments);
-                                            match tomestone_string_interp::encode(&text) {
-                                                Ok(encoded) => *cell = Value::StringOwned(encoded),
-                                                Err(e) => {
-                                                    eprintln!("error: couldn't re-encode modified text: {}", e);
-                                                    process::exit(1);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            let row = Row {
-                                number: row_number,
-                                sub_rows,
-                            };
-                            Ok(row)
-                        })
-                        .collect::<Result<Vec<_>, nom::error::ErrorKind>>();
-                    let rows = match rows_res {
-                        Ok(rows) => rows,
-                        Err(e) => {
-                            eprintln!("error: couldn't parse data row: {:?}", e);
-                            process::exit(1);
-                        }
-                    };
-                    data = encode_exdf_page(
-                        source_tamtara_dataset.name(),
-                        &source_tamtara_dataset.exhf,
-                        &rows,
-                    );
-                }
 
                 if let Err(e) = writer.add_file_by_hashes(hash1, hash2, &data) {
                     eprintln!("error: problem while writing files: {}", e);
@@ -294,7 +209,8 @@ fn main() {
                 }
             }
             Ok((None, _, _)) | Ok((_, None, _)) => {
-                eprintln!("warning: skipping file present in only one index");
+                eprintln!("error: a file was present in only one index");
+                process::exit(1);
             }
             Err(e) => {
                 eprintln!("error: couldn't load original file entries: {}", e);
