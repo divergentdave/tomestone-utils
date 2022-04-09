@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
@@ -102,14 +104,55 @@ impl Visitor for GenderConditionalTextVisitor {
             let mut expression_visitor = GenderExpressionVisitor::new();
             condition.accept(&mut expression_visitor);
             if expression_visitor.flag {
-                self.ifs.push(IfSegment {
-                    condition: condition.clone(),
-                    true_value: true_value.clone(),
-                    false_value: false_value.clone(),
-                });
+                // The If expression switches on gender. Now check if the two branches use
+                // different literal strings. (This will weed out an unwieldy PvP rank expression,
+                // which selects from different columns of a sheet of titles.)
+                let mut true_literal_visitor = TextLiteralVisitor::new();
+                true_value.accept(&mut true_literal_visitor);
+                let mut false_literal_visitor = TextLiteralVisitor::new();
+                false_value.accept(&mut false_literal_visitor);
+                if true_literal_visitor.literals != false_literal_visitor.literals {
+                    self.ifs.push(IfSegment {
+                        condition: condition.clone(),
+                        true_value: true_value.clone(),
+                        false_value: false_value.clone(),
+                    });
+                }
             } else {
                 self.recurse_tag(tag);
             }
+        } else {
+            self.recurse_tag(tag);
+        }
+    }
+
+    fn visit_expression(&mut self, expr: &Expression) {
+        self.recurse_expression(expr);
+    }
+}
+
+pub struct TextLiteralVisitor {
+    pub literals: BTreeSet<String>,
+}
+
+impl TextLiteralVisitor {
+    pub fn new() -> TextLiteralVisitor {
+        TextLiteralVisitor {
+            literals: BTreeSet::new(),
+        }
+    }
+}
+
+impl Default for TextLiteralVisitor {
+    fn default() -> TextLiteralVisitor {
+        TextLiteralVisitor::new()
+    }
+}
+
+impl Visitor for TextLiteralVisitor {
+    fn visit_tag(&mut self, tag: &Segment) {
+        if let Segment::Literal(literal) = tag {
+            self.literals.insert(literal.clone());
         } else {
             self.recurse_tag(tag);
         }
@@ -140,11 +183,19 @@ pub struct GrandCompanyRankRule {
     pub after: Text,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PvpRankRule {
+    pub before_female: Text,
+    pub before_male: Text,
+    pub after: Text,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct TextReplacementRules {
     pub structured_text_rules: Vec<StructuredTextRule>,
     pub achievement_title_rules: Vec<AchievementTitleRule>,
     pub grand_company_rank_rules: Vec<GrandCompanyRankRule>,
+    pub pvp_rank_rules: Vec<PvpRankRule>,
 }
 
 impl TextReplacementRules {

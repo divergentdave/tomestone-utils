@@ -1,10 +1,14 @@
-use std::{collections::HashSet, io::Write, process};
+use std::{
+    collections::{BTreeSet, HashSet},
+    io::Write,
+    process,
+};
 
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg, ArgMatches};
 
 use fanttheysia_common::{
-    AchievementTitleRule, GenderConditionalTextVisitor, GrandCompanyRankRule, StructuredTextRule,
-    TextReplacementRules,
+    AchievementTitleRule, GenderConditionalTextVisitor, GrandCompanyRankRule, PvpRankRule,
+    StructuredTextRule, TextReplacementRules,
 };
 use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::{DataFileSet, GameData};
@@ -233,6 +237,94 @@ fn foreach_grand_company_rank_diff<F: FnMut(GrandCompanyRankRecord)>(
     }
 }
 
+struct PvpRankRecord {
+    dataset_name: &'static str,
+    row_number: u32,
+    female_rank: Text,
+    male_rank: Text,
+}
+
+fn foreach_pvp_rank_diff<F: FnMut(PvpRankRecord)>(
+    game_data: &GameData,
+    data_file_set: &mut DataFileSet,
+    language: Language,
+    mut f: F,
+) {
+    static DATASET_NAME: &str = "PvPRankTransient";
+    let dataset =
+        if let Ok(dataset) = Dataset::load(game_data, data_file_set, DATASET_NAME, language) {
+            dataset
+        } else {
+            eprintln!("error: couldn't load data file {}", DATASET_NAME);
+            process::exit(1);
+        };
+    for page in dataset.page_iter() {
+        for res in page {
+            let row = res.unwrap();
+            for sub_row in row.sub_rows {
+                if let [Value::String(male_maelstrom_rank), Value::String(male_twin_adder_rank), Value::String(male_immortal_flames_rank), Value::String(female_maelstrom_rank), Value::String(female_twin_adder_rank), Value::String(female_immortal_flames_rank)] =
+                    &*sub_row.cells
+                {
+                    match (
+                        Text::parse(male_maelstrom_rank),
+                        Text::parse(male_twin_adder_rank),
+                        Text::parse(male_immortal_flames_rank),
+                        Text::parse(female_maelstrom_rank),
+                        Text::parse(female_twin_adder_rank),
+                        Text::parse(female_immortal_flames_rank),
+                    ) {
+                        (
+                            Ok(male_maelstrom_rank),
+                            Ok(male_twin_adder_rank),
+                            Ok(male_immortal_flames_rank),
+                            Ok(female_maelstrom_rank),
+                            Ok(female_twin_adder_rank),
+                            Ok(female_immortal_flames_rank),
+                        ) => {
+                            if male_maelstrom_rank != female_maelstrom_rank {
+                                f(PvpRankRecord {
+                                    dataset_name: DATASET_NAME,
+                                    row_number: row.number,
+                                    male_rank: male_maelstrom_rank,
+                                    female_rank: female_maelstrom_rank,
+                                });
+                            }
+                            if male_twin_adder_rank != female_twin_adder_rank {
+                                f(PvpRankRecord {
+                                    dataset_name: DATASET_NAME,
+                                    row_number: row.number,
+                                    male_rank: male_twin_adder_rank,
+                                    female_rank: female_twin_adder_rank,
+                                });
+                            }
+                            if male_immortal_flames_rank != female_immortal_flames_rank {
+                                f(PvpRankRecord {
+                                    dataset_name: DATASET_NAME,
+                                    row_number: row.number,
+                                    male_rank: male_immortal_flames_rank,
+                                    female_rank: female_immortal_flames_rank,
+                                });
+                            }
+                        }
+                        (Err(e), _, _, _, _, _)
+                        | (_, Err(e), _, _, _, _)
+                        | (_, _, Err(e), _, _, _)
+                        | (_, _, _, Err(e), _, _)
+                        | (_, _, _, _, Err(e), _)
+                        | (_, _, _, _, _, Err(e)) => {
+                            eprintln!(
+                                "error: failed to parse {} row {}: {}",
+                                DATASET_NAME, row.number, e
+                            );
+                            process::exit(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn print_report(
     game_data: &GameData,
     data_file_set: &mut DataFileSet,
@@ -310,6 +402,20 @@ fn print_report(
         "Total of {} differing Grand Company rank names",
         gc_rank_diffs
     );
+    println!();
+
+    let mut pvp_rank_diffs = 0;
+    foreach_pvp_rank_diff(game_data, data_file_set, language, |record| {
+        println!(
+            "{} row {}: {:?} {:?}",
+            record.dataset_name, record.row_number, record.female_rank, record.male_rank,
+        );
+        pvp_rank_diffs += 1;
+    });
+
+    println!();
+
+    println!("Total of {} differing PvP rank names", pvp_rank_diffs);
 }
 
 struct NoOpWriter;
@@ -394,6 +500,16 @@ fn print_template(
             after: Text::new(vec![Segment::Literal("".to_string())]),
         });
     });
+
+    let mut pvp_rank_set = BTreeSet::new();
+    foreach_pvp_rank_diff(game_data, data_file_set, language, |record| {
+        pvp_rank_set.insert(PvpRankRule {
+            before_female: record.female_rank,
+            before_male: record.male_rank,
+            after: Text::new(vec![Segment::Literal("".to_string())]),
+        });
+    });
+    rules.pvp_rank_rules.extend(pvp_rank_set.into_iter());
 
     let stdout = std::io::stdout();
     let locked = stdout.lock();
