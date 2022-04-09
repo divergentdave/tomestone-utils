@@ -278,7 +278,7 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
         TODO_STRING_VALUE_1 => contents(map(expression, Segment::TodoStringValue1))(input),
         TODO_STRING_VALUE_2 => contents(map(expression, Segment::TodoStringValue2))(input),
         SPLIT => contents(segment_split)(input),
-        STRING_VALUE_TITLE_CASE => contents(map(expression, Segment::StringValueTitleCase))(input),
+        TODO_STRING_VALUE_3 => contents(map(expression, Segment::TodoStringValue3))(input),
         AUTO_TRANSLATE => contents(map(pair(expression, expression), |(arg1, arg2)| {
             Segment::AutoTranslate(arg1, arg2)
         }))(input),

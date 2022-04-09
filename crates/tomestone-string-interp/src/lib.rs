@@ -164,7 +164,7 @@ pub trait Visitor {
                 separator.accept(self);
                 index.accept(self);
             }
-            Segment::StringValueTitleCase(expr) => expr.accept(self),
+            Segment::TodoStringValue3(expr) => expr.accept(self),
             Segment::AutoTranslate(arg1, arg2) => {
                 arg1.accept(self);
                 arg2.accept(self);
@@ -335,7 +335,7 @@ pub trait MutVisitor {
                 separator.accept_mut(self);
                 index.accept_mut(self);
             }
-            Segment::StringValueTitleCase(expr) => expr.accept_mut(self),
+            Segment::TodoStringValue3(expr) => expr.accept_mut(self),
             Segment::AutoTranslate(arg1, arg2) => {
                 arg1.accept_mut(self);
                 arg2.accept_mut(self);
@@ -504,7 +504,7 @@ pub enum Segment {
         separator: Expression,
         index: Expression,
     },
-    StringValueTitleCase(Expression),
+    TodoStringValue3(Expression),
     AutoTranslate(Expression, Expression),
     StringValueLowerCase(Expression),
     SheetJa(Vec<Expression>),
@@ -632,9 +632,7 @@ impl fmt::Debug for Segment {
                 .field("separator", separator)
                 .field("index", index)
                 .finish(),
-            Segment::StringValueTitleCase(arg) => {
-                f.debug_tuple("StringValueTitleCase").field(arg).finish()
-            }
+            Segment::TodoStringValue3(arg) => f.debug_tuple("TodoStringValue3").field(arg).finish(),
             Segment::AutoTranslate(arg1, arg2) => f
                 .debug_tuple("AutoTranslate")
                 .field(arg1)
@@ -1051,7 +1049,7 @@ mod proptests {
                 separator: arbitrary_expr(g, depth),
                 index: arbitrary_expr(g, depth),
             },
-            29 => Segment::StringValueTitleCase(arbitrary_expr(g, depth)),
+            29 => Segment::TodoStringValue3(arbitrary_expr(g, depth)),
             30 => Segment::AutoTranslate(arbitrary_expr(g, depth), arbitrary_expr(g, depth)),
             31 => Segment::StringValueLowerCase(arbitrary_expr(g, depth)),
             32 => {
@@ -1437,8 +1435,8 @@ mod proptests {
                     .into_iter()
                     .flatten(),
                 ),
-                Segment::StringValueTitleCase(arg) => {
-                    Box::new(shrink_expr(arg).map(Segment::StringValueTitleCase))
+                Segment::TodoStringValue3(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue3))
                 }
                 Segment::AutoTranslate(arg1, arg2) => Box::new(
                     shrink_expr(arg1)
