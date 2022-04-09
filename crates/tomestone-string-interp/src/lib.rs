@@ -465,6 +465,7 @@ pub enum Segment {
         self_value: Expression,
         other_value: Expression,
     },
+    // Adds a line break.
     NewLine,
     GuiIcon(Expression),
     ColorChange(Expression),
@@ -480,7 +481,9 @@ pub enum Segment {
     Todo1C(Vec<NonZeroU8>),
     NonBreakingSpace,
     CommandIcon(Expression),
+    /// Adds a dash/hyphen.
     Dash,
+    /// Takes an integer from the result of an expression, and applies default formatting to it.
     IntegerValue(Expression),
     TodoFormat(Expression, Vec<NonZeroU8>),
     TwoDigitValue(Expression),
@@ -495,7 +498,9 @@ pub enum Segment {
         column_index: Option<Expression>,
         parameters: Vec<Expression>,
     },
+    /// Takes a string-valued expression, and emits it unchanged.
     StringValue(Expression),
+    /// Takes a string-valued expression, and capitalizes the first character.
     StringValueSentenceCase(Expression),
     /// Split a string at each occurrence of a separator, and return one of the resulting
     /// substrings.
@@ -504,8 +509,10 @@ pub enum Segment {
         separator: Expression,
         index: Expression,
     },
+    /// Takes a string-valued expression, and capitalizes the first letter of each word.
     StringValueTitleCase(Expression),
     AutoTranslate(Expression, Expression),
+    /// Takes a string-valued expression, and makes every character lower case.
     StringValueLowerCase(Expression),
     SheetJa(Vec<Expression>),
     SheetEn(Vec<Expression>),
