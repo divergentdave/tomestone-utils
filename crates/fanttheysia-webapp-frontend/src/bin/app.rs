@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
 use gloo_events::EventListener;
+use gloo_timers::callback::Timeout;
+use gloo_worker::{Bridge, Bridged};
 use monaco::{
     api::{CodeEditorOptions, DisposableClosure, TextModel},
     sys::editor::{BuiltinTheme, IDimension, IModelContentChangedEvent},
@@ -8,11 +10,13 @@ use monaco::{
 };
 use yew::prelude::*;
 
-use fanttheysia_common::TextReplacementRules;
+use fanttheysia_webapp_frontend::{Request, Response, SyntaxChecker};
 
-enum Msg {
+enum Message {
     ModelContentChanged(IModelContentChangedEvent),
+    TextChangeDebounced,
     WindowResize,
+    WorkerMessage(Response),
 }
 
 fn get_options() -> CodeEditorOptions {
@@ -25,43 +29,55 @@ struct Model {
     model: TextModel,
     resize_listener: Option<EventListener>,
     _text_listener: DisposableClosure<dyn FnMut(IModelContentChangedEvent)>,
+    edit_debounce_timer: Option<Timeout>,
+    debounced_callback: Callback<()>,
+    worker: Box<dyn Bridge<SyntaxChecker>>,
 }
 
 impl Component for Model {
-    type Message = Msg;
+    type Message = Message;
     type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
+        let worker_callback = ctx.link().callback(Message::WorkerMessage);
+        let worker = SyntaxChecker::bridge(Rc::new(move |response| worker_callback.emit(response)));
+
         // TODO: restore from localStorage
         let model = TextModel::create("---\n---\n---\n---\n---\n", Some("yaml"), None).unwrap();
 
-        let callback = ctx.link().callback(Msg::ModelContentChanged);
-        let listener = model.on_did_change_content(move |e| callback.emit(e));
+        let text_change_callback = ctx.link().callback(Message::ModelContentChanged);
+        let text_change_listener =
+            model.on_did_change_content(move |e| text_change_callback.emit(e));
+
+        let debounced_callback = ctx.link().callback(|_| Message::TextChangeDebounced);
 
         Self {
             options: Rc::new(get_options()),
             editor_link: CodeEditorLink::default(),
             model,
             resize_listener: None,
-            _text_listener: listener,
+            _text_listener: text_change_listener,
+            edit_debounce_timer: None,
+            debounced_callback,
+            worker,
         }
     }
 
     fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::ModelContentChanged(_event) => {
-                let data = self.model.get_value();
-                // TODO 1: move this to a worker
-                // TODO 2: debounce text changed events
-                match serde_yaml::from_str::<TextReplacementRules>(&data) {
-                    Ok(_) => gloo_console::log!("OK"),
-                    Err(error) => {
-                        gloo_console::log!(format!("{}", error));
-                    }
-                }
-                true
+            Message::ModelContentChanged(_event) => {
+                self.edit_debounce_timer.take().map(Timeout::cancel);
+                self.edit_debounce_timer = Some(Timeout::new(2000, {
+                    let debounced_callback = self.debounced_callback.clone();
+                    move || debounced_callback.emit(())
+                }));
+                false
             }
-            Msg::WindowResize => self
+            Message::TextChangeDebounced => {
+                self.worker.send(Request::Check(self.model.get_value()));
+                false
+            }
+            Message::WindowResize => self
                 .editor_link
                 .with_editor(|code_editor| {
                     // TODO: need to figure out how to make the editor take up 100% of viewport height, I think that would fix resizing
@@ -73,6 +89,13 @@ impl Component for Model {
                     true
                 })
                 .unwrap_or_default(),
+            Message::WorkerMessage(response) => {
+                match response {
+                    Response::Valid => gloo_console::log!("OK"),
+                    Response::Invalid(message) => gloo_console::log!(message),
+                }
+                true
+            }
         }
     }
 
@@ -96,7 +119,7 @@ impl Component for Model {
         }
 
         if let Some(window) = web_sys::window() {
-            let callback = ctx.link().callback(|_| Msg::WindowResize);
+            let callback = ctx.link().callback(|_| Message::WindowResize);
             let callback_copy = callback.clone();
             self.resize_listener = Some(EventListener::new(&window, "resize", move |_event| {
                 callback.emit(())

@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "anymap2"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d301b3b94cb4b2f23d7917810addbbaff90738e0ca2be692bd027e70d7e0330c"
+
+[[package]]
 name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13,6 +19,15 @@ name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
+
+[[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bitflags"
@@ -84,7 +99,10 @@ dependencies = [
  "fanttheysia-common",
  "gloo-console",
  "gloo-events",
+ "gloo-timers",
+ "gloo-worker",
  "monaco",
+ "serde",
  "serde_yaml",
  "tomestone-string-interp",
  "web-sys",
@@ -199,6 +217,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05c77af6f96a4f9e27c8ac23a88407381a31f4a74c3fb985c85aa79b8d898136"
 dependencies = [
  "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "gloo-worker"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c843b9a46d07485026f030be7bd008580a12a2920fea837745a440a3b0c97cb"
+dependencies = [
+ "anymap2",
+ "bincode",
+ "gloo-console",
+ "gloo-utils",
+ "js-sys",
+ "serde",
+ "slab",
  "wasm-bindgen",
  "web-sys",
 ]
