@@ -165,9 +165,9 @@ fn main() {
                                                 Segment::Literal("\")".to_string()),
                                                 Segment::NewLine,
                                                 Segment::Literal("1: \"".to_string()),
-                                                Segment::TodoStringValue1(Expression::Text(Text::new(vec![Segment::Literal("0123456789!@#$%^&*()\nabcde\tFGHIJK-_=+\u{2026}".to_string())]))),
+                                                Segment::TodoStringValue1(Expression::Text(Text::new(vec![Segment::Literal("\x02\x1f\x01\x03".to_string())]))),
                                                 Segment::Literal("\", 2: \"".to_string()),
-                                                Segment::TodoStringValue2(Expression::Text(Text::new(vec![Segment::Literal("0123456789!@#$%^&*()\nabcde\tFGHIJK-_=+\u{2026}".to_string())]))),
+                                                Segment::TodoStringValue2(Expression::Text(Text::new(vec![Segment::Literal("\x02\x1f\x01\x03".to_string())]))),
                                                 Segment::Literal("\"".to_string()),
                                             ];
                                             let mut visitor = StructuralFindAndReplace::new(find, replace);
