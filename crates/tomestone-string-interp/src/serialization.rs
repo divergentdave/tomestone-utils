@@ -31,50 +31,50 @@ static EXPRESSION_VARIANTS: &[&str] = &[
 ];
 static SEGMENT_NAME: &str = "segment";
 static SEGMENT_VARIANTS: &[&str] = &[
-    "literal",            // 0
-    "placeholder_0x06",   // 1
-    "time",               // 2
-    "if",                 // 3
-    "switch",             // 4
-    "placeholder_0x0a",   // 5
-    "if_equals",          // 6
-    "placeholder_0x0f",   // 7
-    "new_line",           // 8
-    "gui_icon",           // 9
-    "color_change",       // 10
-    "placeholder_0x14",   // 11
-    "soft_hyphen",        // 12
-    "placeholder_0x17",   // 13
-    "placeholder_0x19",   // 14
-    "emphasis",           // 15
-    "placeholder_0x1b",   // 16
-    "placeholder_0x1c",   // 17
-    "non_breaking_space", // 18
-    "command_icon",       // 19
-    "dash",               // 20
-    "value",              // 21
-    "placeholder_0x22",   // 22
-    "two_digit_value",    // 23
-    "placeholder_0x26",   // 24
-    "sheet",              // 25
-    "placeholder_0x29",   // 26
-    "link",               // 27
-    "split",              // 28
-    "placeholder_0x2d",   // 29
-    "auto_translate",     // 30
-    "placeholder_0x2f",   // 31
-    "sheet_ja",           // 32
-    "sheet_en",           // 33
-    "sheet_de",           // 34
-    "sheet_fr",           // 35
-    "placeholder_0x40",   // 36
-    "foreground",         // 37
-    "glow",               // 38
-    "ruby",               // 39
-    "zero_padded_value",  // 40
-    "placeholder_0x51",   // 41
-    "placeholder_0x60",   // 42
-    "placeholder_0x61",   // 43
+    "literal",                    // 0
+    "placeholder_0x06",           // 1
+    "time",                       // 2
+    "if",                         // 3
+    "switch",                     // 4
+    "placeholder_0x0a",           // 5
+    "if_equals",                  // 6
+    "placeholder_0x0f",           // 7
+    "new_line",                   // 8
+    "gui_icon",                   // 9
+    "color_change",               // 10
+    "placeholder_0x14",           // 11
+    "soft_hyphen",                // 12
+    "placeholder_0x17",           // 13
+    "placeholder_0x19",           // 14
+    "emphasis",                   // 15
+    "placeholder_0x1b",           // 16
+    "placeholder_0x1c",           // 17
+    "non_breaking_space",         // 18
+    "command_icon",               // 19
+    "dash",                       // 20
+    "integer_value",              // 21
+    "placeholder_0x22",           // 22
+    "two_digit_value",            // 23
+    "placeholder_0x26",           // 24
+    "sheet",                      // 25
+    "string_value",               // 26
+    "string_value_sentence_case", // 27
+    "split",                      // 28
+    "string_value_title_case",    // 29
+    "auto_translate",             // 30
+    "string_value_lower_case",    // 31
+    "sheet_ja",                   // 32
+    "sheet_en",                   // 33
+    "sheet_de",                   // 34
+    "sheet_fr",                   // 35
+    "placeholder_0x40",           // 36
+    "foreground",                 // 37
+    "glow",                       // 38
+    "ruby",                       // 39
+    "zero_padded_value",          // 40
+    "placeholder_0x51",           // 41
+    "placeholder_0x60",           // 42
+    "placeholder_0x61",           // 43
 ];
 static IF_SEGMENT_FIELDS: &[&str] = &["condition", "true_value", "false_value"];
 static SHEET_SEGMENT_FIELDS: &[&str] = &["name", "row_index", "column_index", "parameters"];
@@ -546,12 +546,12 @@ impl Serialize for Segment {
                 variant.serialize_field("parameters", parameters)?;
                 variant.end()
             }
-            Segment::StringValue(_) => Err(S::Error::custom(
-                "serialization of segments with tag 0x29 is not yet supported",
-            )),
-            Segment::StringValueSentenceCase(_) => Err(S::Error::custom(
-                "serialization of segments with tag 0x2b is not yet supported",
-            )),
+            Segment::StringValue(expr) => {
+                serializer.serialize_newtype_variant(SEGMENT_NAME, 26, SEGMENT_VARIANTS[26], expr)
+            }
+            Segment::StringValueSentenceCase(expr) => {
+                serializer.serialize_newtype_variant(SEGMENT_NAME, 27, SEGMENT_VARIANTS[27], expr)
+            }
             Segment::Split {
                 input,
                 separator,
@@ -568,15 +568,15 @@ impl Serialize for Segment {
                 variant.serialize_field("index", index)?;
                 variant.end()
             }
-            Segment::StringValueTitleCase(_) => Err(S::Error::custom(
-                "serialization of segments with tag 0x2d is not yet supported",
-            )),
+            Segment::StringValueTitleCase(expr) => {
+                serializer.serialize_newtype_variant(SEGMENT_NAME, 29, SEGMENT_VARIANTS[29], expr)
+            }
             Segment::AutoTranslate(_, _) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2e is not yet supported",
             )),
-            Segment::StringValueLowerCase(_) => Err(S::Error::custom(
-                "serialization of segments with tag 0x2f is not yet supported",
-            )),
+            Segment::StringValueLowerCase(expr) => {
+                serializer.serialize_newtype_variant(SEGMENT_NAME, 31, SEGMENT_VARIANTS[31], expr)
+            }
             Segment::SheetJa(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x30 is not yet supported",
             )),
@@ -1001,7 +1001,11 @@ enum SegmentVariant {
     NonBreakingSpace,
     Dash,
     Sheet,
+    StringValue,
+    StringValueSentenceCase,
     Split,
+    StringValueTitleCase,
+    StringValueLowerCase,
     Ruby,
 }
 
@@ -1013,7 +1017,9 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str(
             "`literal`, `time`, `if`, `new_line`, `soft_hyphen`, `emphasis`, \
-            `non_breaking_space`, `dash`, `sheet`, `split`, or `ruby`",
+            `non_breaking_space`, `dash`, `sheet`, `string_value`, \
+            `string_value_sentence_case`, `split`, \
+            `string_value_title_case`, `string_value_lower_case`, or `ruby`",
         )
     }
 
@@ -1031,7 +1037,11 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
             "non_breaking_space" => Ok(SegmentVariant::NonBreakingSpace),
             "dash" => Ok(SegmentVariant::Dash),
             "sheet" => Ok(SegmentVariant::Sheet),
+            "string_value" => Ok(SegmentVariant::StringValue),
+            "string_value_sentence_case" => Ok(SegmentVariant::StringValueSentenceCase),
             "split" => Ok(SegmentVariant::Split),
+            "string_value_title_case" => Ok(SegmentVariant::StringValueTitleCase),
+            "string_value_lower_case" => Ok(SegmentVariant::StringValueLowerCase),
             "ruby" => Ok(SegmentVariant::Ruby),
             _ => Err(E::unknown_variant(
                 s,
@@ -1045,7 +1055,11 @@ impl<'de> Visitor<'de> for SegmentVariantVisitor {
                     "non_breaking_space",
                     "dash",
                     "sheet",
+                    "string_value",
+                    "string_value_sentence_case",
                     "split",
+                    "string_value_title_case",
+                    "string_value_lower_case",
                     "ruby",
                 ],
             )),
@@ -1102,9 +1116,21 @@ impl<'de> Visitor<'de> for SegmentVisitor {
             SegmentVariant::Sheet => {
                 variant_access.struct_variant(SHEET_SEGMENT_FIELDS, SheetSegmentVisitor)
             }
+            SegmentVariant::StringValue => {
+                Ok(Segment::StringValue(variant_access.newtype_variant()?))
+            }
+            SegmentVariant::StringValueSentenceCase => Ok(Segment::StringValueSentenceCase(
+                variant_access.newtype_variant()?,
+            )),
             SegmentVariant::Split => {
                 variant_access.struct_variant(SPLIT_SEGMENT_FIELDS, SplitSegmentVisitor)
             }
+            SegmentVariant::StringValueTitleCase => Ok(Segment::StringValueTitleCase(
+                variant_access.newtype_variant()?,
+            )),
+            SegmentVariant::StringValueLowerCase => Ok(Segment::StringValueLowerCase(
+                variant_access.newtype_variant()?,
+            )),
             SegmentVariant::Ruby => {
                 variant_access.struct_variant(RUBY_SEGMENT_FIELDS, RubySegmentVisitor)
             }
@@ -1732,16 +1758,50 @@ mod tests {
             ],
         );
 
-        assert_ser_tokens_error(
-            &Segment::StringValue(Expression::Integer(0)),
-            &[],
-            "serialization of segments with tag 0x29 is not yet supported",
+        assert_tokens(
+            &Segment::StringValue(Expression::Text(Text::new(vec![Segment::Literal(
+                "contents".to_string(),
+            )]))),
+            &[
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "string_value",
+                },
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str("contents"),
+                Token::SeqEnd,
+            ],
         );
 
-        assert_ser_tokens_error(
-            &Segment::StringValueSentenceCase(Expression::Integer(0)),
-            &[],
-            "serialization of segments with tag 0x2b is not yet supported",
+        assert_tokens(
+            &Segment::StringValueSentenceCase(Expression::Text(Text::new(vec![Segment::Literal(
+                "contents".to_string(),
+            )]))),
+            &[
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "string_value_sentence_case",
+                },
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str("contents"),
+                Token::SeqEnd,
+            ],
         );
 
         assert_tokens(
@@ -1792,10 +1852,27 @@ mod tests {
             ],
         );
 
-        assert_ser_tokens_error(
-            &Segment::StringValueTitleCase(Expression::Integer(0)),
-            &[],
-            "serialization of segments with tag 0x2d is not yet supported",
+        assert_tokens(
+            &Segment::StringValueTitleCase(Expression::Text(Text::new(vec![Segment::Literal(
+                "contents".to_string(),
+            )]))),
+            &[
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "string_value_title_case",
+                },
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str("contents"),
+                Token::SeqEnd,
+            ],
         );
 
         assert_ser_tokens_error(
@@ -1804,10 +1881,27 @@ mod tests {
             "serialization of segments with tag 0x2e is not yet supported",
         );
 
-        assert_ser_tokens_error(
-            &Segment::StringValueLowerCase(Expression::Integer(0)),
-            &[],
-            "serialization of segments with tag 0x2f is not yet supported",
+        assert_tokens(
+            &Segment::StringValueLowerCase(Expression::Text(Text::new(vec![Segment::Literal(
+                "contents".to_string(),
+            )]))),
+            &[
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "string_value_lower_case",
+                },
+                Token::NewtypeVariant {
+                    name: "expr",
+                    variant: "text",
+                },
+                Token::Seq { len: Some(1) },
+                Token::NewtypeVariant {
+                    name: "segment",
+                    variant: "literal",
+                },
+                Token::Str("contents"),
+                Token::SeqEnd,
+            ],
         );
 
         assert_ser_tokens_error(
