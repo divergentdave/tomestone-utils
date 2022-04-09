@@ -1,9 +1,11 @@
 use std::{collections::HashSet, io::Write, process};
 
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg, ArgMatches};
-use serde::{Deserialize, Serialize};
 
-use fanttheysia_common::GenderConditionalTextVisitor;
+use fanttheysia_common::{
+    AchievementTitleRule, GenderConditionalTextVisitor, GrandCompanyRankRule, StructuredTextRule,
+    TextReplacementRules,
+};
 use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::{DataFileSet, GameData};
 use tomestone_string_interp::{Segment, Text, TreeNode};
@@ -319,39 +321,6 @@ impl Write for NoOpWriter {
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct StructuredTextRule {
-    find: Vec<Segment>,
-    replace: Vec<Segment>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct AchievementTitleRule {
-    before_female: Text,
-    before_male: Text,
-    after: Text,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GrandCompanyRankRule {
-    before_female: Text,
-    before_male: Text,
-    after: Text,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct TextReplacementRules {
-    structured_text_rules: Vec<StructuredTextRule>,
-    achievement_title_rules: Vec<AchievementTitleRule>,
-    grand_company_rank_rules: Vec<GrandCompanyRankRule>,
-}
-
-impl TextReplacementRules {
-    fn new() -> TextReplacementRules {
-        TextReplacementRules::default()
     }
 }
 

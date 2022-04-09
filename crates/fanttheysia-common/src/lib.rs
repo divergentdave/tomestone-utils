@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use tomestone_string_interp::{Expression, Segment, TreeNode, Visitor};
+use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
 
 /// Visitor to determine whether an expression tree uses the gender player parameter.
 ///
@@ -117,6 +117,39 @@ impl Visitor for GenderConditionalTextVisitor {
 
     fn visit_expression(&mut self, expr: &Expression) {
         self.recurse_expression(expr);
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StructuredTextRule {
+    pub find: Vec<Segment>,
+    pub replace: Vec<Segment>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AchievementTitleRule {
+    pub before_female: Text,
+    pub before_male: Text,
+    pub after: Text,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GrandCompanyRankRule {
+    pub before_female: Text,
+    pub before_male: Text,
+    pub after: Text,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct TextReplacementRules {
+    pub structured_text_rules: Vec<StructuredTextRule>,
+    pub achievement_title_rules: Vec<AchievementTitleRule>,
+    pub grand_company_rank_rules: Vec<GrandCompanyRankRule>,
+}
+
+impl TextReplacementRules {
+    pub fn new() -> TextReplacementRules {
+        TextReplacementRules::default()
     }
 }
 

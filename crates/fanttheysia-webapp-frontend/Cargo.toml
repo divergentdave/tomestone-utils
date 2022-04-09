@@ -4,8 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+console_error_panic_hook = "0.1.7"
 dotenv = "0.15.0"
-tomestone-exdf = { path = "../tomestone-exdf" }
-tomestone-sqpack = { path = "../tomestone-sqpack" }
+fanttheysia-common = { path = "../fanttheysia-common" }
+gloo-console = "0.2.1"
+gloo-events = "0.1.1"
+monaco = { version = "0.3.0", features = ["yew-components"] }
+serde_yaml = "0.8.23"
 tomestone-string-interp = { path = "../tomestone-string-interp" }
-yew = "0.18.0"
+web-sys = "0.3.57"
+yew = "0.19.3"
