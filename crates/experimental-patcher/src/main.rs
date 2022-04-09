@@ -162,12 +162,16 @@ fn main() {
                                                 Segment::TodoStringValue1(Expression::StringParameter(1)),
                                                 Segment::Literal(" (#2: \"".to_string()),
                                                 Segment::TodoStringValue2(Expression::StringParameter(1)),
+                                                Segment::Literal("\", #3: \"".to_string()),
+                                                Segment::StringValueTitleCase(Expression::StringParameter(1)),
                                                 Segment::Literal("\")".to_string()),
                                                 Segment::NewLine,
                                                 Segment::Literal("1: \"".to_string()),
-                                                Segment::TodoStringValue1(Expression::Text(Text::new(vec![Segment::Literal("\x02\x1f\x01\x03".to_string())]))),
+                                                Segment::TodoStringValue1(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))),
                                                 Segment::Literal("\", 2: \"".to_string()),
-                                                Segment::TodoStringValue2(Expression::Text(Text::new(vec![Segment::Literal("\x02\x1f\x01\x03".to_string())]))),
+                                                Segment::TodoStringValue2(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))),
+                                                Segment::Literal("\", 3: \"".to_string()),
+                                                Segment::StringValueTitleCase(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))),
                                                 Segment::Literal("\"".to_string()),
                                             ];
                                             let mut visitor = StructuralFindAndReplace::new(find, replace);
