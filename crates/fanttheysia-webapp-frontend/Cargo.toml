@@ -9,11 +9,14 @@ dotenv = "0.15.0"
 fanttheysia-common = { path = "../fanttheysia-common" }
 gloo-console = "0.2.1"
 gloo-events = "0.1.1"
+gloo-file = "0.2.1"
+gloo-storage = "0.2.0"
 gloo-timers = "0.2.3"
 gloo-worker = "0.1.0"
 monaco = { version = "0.3.0", features = ["yew-components"] }
 serde = "1.0.136"
 serde_yaml = "0.8.23"
 tomestone-string-interp = { path = "../tomestone-string-interp" }
-web-sys = "0.3.57"
+wasm-bindgen =  "0.2.80"
+web-sys = { version = "0.3.57", features = ["Document", "Element", "HtmlAnchorElement"] }
 yew = "0.19.3"
