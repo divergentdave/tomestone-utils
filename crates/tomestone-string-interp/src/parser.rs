@@ -278,11 +278,11 @@ fn segment(input: &[u8]) -> IResult<&[u8], Segment, Error> {
         TODO_STRING_VALUE_1 => contents(map(expression, Segment::TodoStringValue1))(input),
         TODO_STRING_VALUE_2 => contents(map(expression, Segment::TodoStringValue2))(input),
         SPLIT => contents(segment_split)(input),
-        TODO_STRING_VALUE_3 => contents(map(expression, Segment::TodoStringValue3))(input),
+        STRING_VALUE_TITLE_CASE => contents(map(expression, Segment::StringValueTitleCase))(input),
         AUTO_TRANSLATE => contents(map(pair(expression, expression), |(arg1, arg2)| {
             Segment::AutoTranslate(arg1, arg2)
         }))(input),
-        TODO_STRING_VALUE_4 => contents(map(expression, Segment::TodoStringValue4))(input),
+        STRING_VALUE_LOWER_CASE => contents(map(expression, Segment::StringValueLowerCase))(input),
         SHEET_JA => contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetJa))(input),
         SHEET_EN => contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetEn))(input),
         SHEET_DE => contents(map(many_m_n(3, usize::MAX, expression), Segment::SheetDe))(input),

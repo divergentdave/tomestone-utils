@@ -35,9 +35,9 @@ struct TagUsageCounterVisitor {
     tag_29: usize,
     tag_2b: usize,
     split: usize,
-    tag_2d: usize,
+    string_value_title_case: usize,
     auto_translate: usize,
-    tag_2f: usize,
+    string_value_lower_case: usize,
     sheet_ja: usize,
     sheet_en: usize,
     sheet_de: usize,
@@ -90,9 +90,9 @@ impl Visitor for TagUsageCounterVisitor {
             Segment::TodoStringValue1(_) => self.tag_29 += 1,
             Segment::TodoStringValue2(_) => self.tag_2b += 1,
             Segment::Split { .. } => self.split += 1,
-            Segment::TodoStringValue3(_) => self.tag_2d += 1,
+            Segment::StringValueTitleCase(_) => self.string_value_title_case += 1,
             Segment::AutoTranslate(_, _) => self.auto_translate += 1,
-            Segment::TodoStringValue4(_) => self.tag_2f += 1,
+            Segment::StringValueLowerCase(_) => self.string_value_lower_case += 1,
             Segment::SheetJa(_) => self.sheet_ja += 1,
             Segment::SheetEn(_) => self.sheet_en += 1,
             Segment::SheetDe(_) => self.sheet_de += 1,
@@ -173,9 +173,10 @@ fn main() {
                             if let Value::String(data) = value {
                                 match Text::parse(data) {
                                     Ok(text) => {
-                                        let before = visitor.tag_2f;
+                                        let before_1 = visitor.tag_29;
+                                        let before_2 = visitor.tag_2b;
                                         text.accept(&mut visitor);
-                                        if visitor.tag_2f > before {
+                                        if visitor.tag_29 > before_1 || visitor.tag_2b > before_2 {
                                             println!("{:?}", text);
                                         }
                                     }

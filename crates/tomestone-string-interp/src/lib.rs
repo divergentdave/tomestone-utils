@@ -164,12 +164,12 @@ pub trait Visitor {
                 separator.accept(self);
                 index.accept(self);
             }
-            Segment::TodoStringValue3(expr) => expr.accept(self),
+            Segment::StringValueTitleCase(expr) => expr.accept(self),
             Segment::AutoTranslate(arg1, arg2) => {
                 arg1.accept(self);
                 arg2.accept(self);
             }
-            Segment::TodoStringValue4(expr) => expr.accept(self),
+            Segment::StringValueLowerCase(expr) => expr.accept(self),
             Segment::SheetJa(args) => {
                 for arg in args.iter() {
                     arg.accept(self);
@@ -335,12 +335,12 @@ pub trait MutVisitor {
                 separator.accept_mut(self);
                 index.accept_mut(self);
             }
-            Segment::TodoStringValue3(expr) => expr.accept_mut(self),
+            Segment::StringValueTitleCase(expr) => expr.accept_mut(self),
             Segment::AutoTranslate(arg1, arg2) => {
                 arg1.accept_mut(self);
                 arg2.accept_mut(self);
             }
-            Segment::TodoStringValue4(expr) => expr.accept_mut(self),
+            Segment::StringValueLowerCase(expr) => expr.accept_mut(self),
             Segment::SheetJa(args) => {
                 for arg in args.iter_mut() {
                     arg.accept_mut(self);
@@ -504,9 +504,9 @@ pub enum Segment {
         separator: Expression,
         index: Expression,
     },
-    TodoStringValue3(Expression),
+    StringValueTitleCase(Expression),
     AutoTranslate(Expression, Expression),
-    TodoStringValue4(Expression),
+    StringValueLowerCase(Expression),
     SheetJa(Vec<Expression>),
     SheetEn(Vec<Expression>),
     SheetDe(Vec<Expression>),
@@ -632,13 +632,17 @@ impl fmt::Debug for Segment {
                 .field("separator", separator)
                 .field("index", index)
                 .finish(),
-            Segment::TodoStringValue3(arg) => f.debug_tuple("TodoStringValue3").field(arg).finish(),
+            Segment::StringValueTitleCase(arg) => {
+                f.debug_tuple("StringValueTitleCase").field(arg).finish()
+            }
             Segment::AutoTranslate(arg1, arg2) => f
                 .debug_tuple("AutoTranslate")
                 .field(arg1)
                 .field(arg2)
                 .finish(),
-            Segment::TodoStringValue4(arg) => f.debug_tuple("TodoStringValue4").field(arg).finish(),
+            Segment::StringValueLowerCase(arg) => {
+                f.debug_tuple("StringValueLowerCase").field(arg).finish()
+            }
             Segment::SheetJa(args) => f.debug_tuple("SheetJa").field(args).finish(),
             Segment::SheetEn(args) => f.debug_tuple("SheetEn").field(args).finish(),
             Segment::SheetDe(args) => f.debug_tuple("SheetDe").field(args).finish(),
@@ -1047,9 +1051,9 @@ mod proptests {
                 separator: arbitrary_expr(g, depth),
                 index: arbitrary_expr(g, depth),
             },
-            29 => Segment::TodoStringValue3(arbitrary_expr(g, depth)),
+            29 => Segment::StringValueTitleCase(arbitrary_expr(g, depth)),
             30 => Segment::AutoTranslate(arbitrary_expr(g, depth), arbitrary_expr(g, depth)),
-            31 => Segment::TodoStringValue4(arbitrary_expr(g, depth)),
+            31 => Segment::StringValueLowerCase(arbitrary_expr(g, depth)),
             32 => {
                 let mut args: Vec<Expression> = Vec::<()>::arbitrary(g)
                     .into_iter()
@@ -1433,8 +1437,8 @@ mod proptests {
                     .into_iter()
                     .flatten(),
                 ),
-                Segment::TodoStringValue3(arg) => {
-                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue3))
+                Segment::StringValueTitleCase(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::StringValueTitleCase))
                 }
                 Segment::AutoTranslate(arg1, arg2) => Box::new(
                     shrink_expr(arg1)
@@ -1447,8 +1451,8 @@ mod proptests {
                             move |arg2| Segment::AutoTranslate(arg1.clone(), arg2)
                         })),
                 ),
-                Segment::TodoStringValue4(arg) => {
-                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue4))
+                Segment::StringValueLowerCase(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::StringValueLowerCase))
                 }
                 Segment::SheetJa(args) => {
                     Box::new(shrink_expr_list_preserve_length(args).map(Segment::SheetJa))

@@ -568,13 +568,13 @@ impl Serialize for Segment {
                 variant.serialize_field("index", index)?;
                 variant.end()
             }
-            Segment::TodoStringValue3(_) => Err(S::Error::custom(
+            Segment::StringValueTitleCase(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2d is not yet supported",
             )),
             Segment::AutoTranslate(_, _) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2e is not yet supported",
             )),
-            Segment::TodoStringValue4(_) => Err(S::Error::custom(
+            Segment::StringValueLowerCase(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2f is not yet supported",
             )),
             Segment::SheetJa(_) => Err(S::Error::custom(
@@ -1793,7 +1793,7 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Segment::TodoStringValue3(Expression::Integer(0)),
+            &Segment::StringValueTitleCase(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x2d is not yet supported",
         );
@@ -1805,7 +1805,7 @@ mod tests {
         );
 
         assert_ser_tokens_error(
-            &Segment::TodoStringValue4(Expression::Integer(0)),
+            &Segment::StringValueLowerCase(Expression::Integer(0)),
             &[],
             "serialization of segments with tag 0x2f is not yet supported",
         );

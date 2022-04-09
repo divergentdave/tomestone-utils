@@ -7,8 +7,8 @@ use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
 struct TagContentsVisitor {
     string_value_1_counters: BTreeMap<Expression, u64>,
     string_value_2_counters: BTreeMap<Expression, u64>,
-    string_value_3_counters: BTreeMap<Expression, u64>,
-    string_value_4_counters: BTreeMap<Expression, u64>,
+    string_value_title_case_counters: BTreeMap<Expression, u64>,
+    string_value_lower_case_counters: BTreeMap<Expression, u64>,
 }
 
 impl TagContentsVisitor {
@@ -32,15 +32,15 @@ impl Visitor for TagContentsVisitor {
                     .entry(expr.clone())
                     .or_default() += 1;
             }
-            Segment::TodoStringValue3(expr) => {
+            Segment::StringValueTitleCase(expr) => {
                 *self
-                    .string_value_3_counters
+                    .string_value_title_case_counters
                     .entry(expr.clone())
                     .or_default() += 1
             }
-            Segment::TodoStringValue4(expr) => {
+            Segment::StringValueLowerCase(expr) => {
                 *self
-                    .string_value_4_counters
+                    .string_value_lower_case_counters
                     .entry(expr.clone())
                     .or_default() += 1
             }
