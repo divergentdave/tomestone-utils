@@ -167,6 +167,16 @@ fn main() {
                                                 Segment::Literal("\", #4: \"".to_string()),
                                                 Segment::TodoStringValue4(Expression::StringParameter(1)),
                                                 Segment::Literal("\")".to_string()),
+                                                Segment::NewLine,
+                                                Segment::Literal("1: \"".to_string()),
+                                                Segment::TodoStringValue1(Expression::Text(Text::new(vec![Segment::Literal(" tExT ".to_string())]))),
+                                                Segment::Literal("\"2: \"".to_string()),
+                                                Segment::TodoStringValue2(Expression::Text(Text::new(vec![Segment::Literal(" tExT ".to_string())]))),
+                                                Segment::Literal("\"3: \"".to_string()),
+                                                Segment::TodoStringValue3(Expression::Text(Text::new(vec![Segment::Literal(" tExT ".to_string())]))),
+                                                Segment::Literal("\"4: \"".to_string()),
+                                                Segment::TodoStringValue4(Expression::Text(Text::new(vec![Segment::Literal(" tExT ".to_string())]))),
+                                                Segment::Literal("\"".to_string()),
                                             ];
                                             let mut visitor = StructuralFindAndReplace::new(find, replace);
                                             visitor.visit_tag_sequence(&mut text.segments);
