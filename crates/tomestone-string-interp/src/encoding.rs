@@ -379,16 +379,16 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.append(&mut tag_data);
             buf.push(3);
         }
-        Segment::TodoStringValue1(expr) => {
-            buf.extend_from_slice(&[2, TODO_STRING_VALUE_1]);
+        Segment::StringValue(expr) => {
+            buf.extend_from_slice(&[2, STRING_VALUE]);
             let mut tag_data = vec![];
             encode_expression(&mut tag_data, expr)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;
             buf.append(&mut tag_data);
             buf.push(3);
         }
-        Segment::TodoStringValue2(expr) => {
-            buf.extend_from_slice(&[2, TODO_STRING_VALUE_2]);
+        Segment::StringValueSentenceCase(expr) => {
+            buf.extend_from_slice(&[2, STRING_VALUE_SENTENCE_CASE]);
             let mut tag_data = vec![];
             encode_expression(&mut tag_data, expr)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;
@@ -409,8 +409,8 @@ fn encode_tag(buf: &mut Vec<u8>, tag: &Segment) -> Result<(), EncodeError> {
             buf.append(&mut tag_data);
             buf.push(3);
         }
-        Segment::TodoStringValue3(expr) => {
-            buf.extend_from_slice(&[2, TODO_STRING_VALUE_3]);
+        Segment::StringValueTitleCase(expr) => {
+            buf.extend_from_slice(&[2, STRING_VALUE_TITLE_CASE]);
             let mut tag_data = vec![];
             encode_expression(&mut tag_data, expr)?;
             encode_integer(buf, tag_data.len().try_into().unwrap())?;

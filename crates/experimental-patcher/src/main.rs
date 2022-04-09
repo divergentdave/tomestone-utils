@@ -157,21 +157,21 @@ fn main() {
                                                     process::exit(1);
                                                 }
                                             };
-                                            let find = vec![Segment::TodoStringValue1(Expression::StringParameter(1))];
+                                            let find = vec![Segment::StringValue(Expression::StringParameter(1))];
                                             let replace = vec![
-                                                Segment::TodoStringValue1(Expression::StringParameter(1)),
+                                                Segment::StringValue(Expression::StringParameter(1)),
                                                 Segment::Literal(" (#2: \"".to_string()),
-                                                Segment::TodoStringValue2(Expression::StringParameter(1)),
+                                                Segment::StringValueSentenceCase(Expression::StringParameter(1)),
                                                 Segment::Literal("\", #3: \"".to_string()),
-                                                Segment::TodoStringValue3(Expression::StringParameter(1)),
+                                                Segment::StringValueTitleCase(Expression::StringParameter(1)),
                                                 Segment::Literal("\")".to_string()),
                                                 Segment::NewLine,
                                                 Segment::Literal("1: \"".to_string()),
-                                                Segment::TodoStringValue1(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))),
+                                                Segment::StringValue(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))), // no change
                                                 Segment::Literal("\", 2: \"".to_string()),
-                                                Segment::TodoStringValue2(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))),
+                                                Segment::StringValueSentenceCase(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))), // leading character capitalized
                                                 Segment::Literal("\", 3: \"".to_string()),
-                                                Segment::TodoStringValue3(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))),
+                                                Segment::StringValueTitleCase(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))), // each word capitalized
                                                 Segment::Literal("\"".to_string()),
                                             ];
                                             let mut visitor = StructuralFindAndReplace::new(find, replace);

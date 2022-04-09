@@ -153,8 +153,8 @@ pub trait Visitor {
                     param.accept(self);
                 }
             }
-            Segment::TodoStringValue1(expr) => expr.accept(self),
-            Segment::TodoStringValue2(expr) => expr.accept(self),
+            Segment::StringValue(expr) => expr.accept(self),
+            Segment::StringValueSentenceCase(expr) => expr.accept(self),
             Segment::Split {
                 input,
                 separator,
@@ -164,7 +164,7 @@ pub trait Visitor {
                 separator.accept(self);
                 index.accept(self);
             }
-            Segment::TodoStringValue3(expr) => expr.accept(self),
+            Segment::StringValueTitleCase(expr) => expr.accept(self),
             Segment::AutoTranslate(arg1, arg2) => {
                 arg1.accept(self);
                 arg2.accept(self);
@@ -324,8 +324,8 @@ pub trait MutVisitor {
                     param.accept_mut(self);
                 }
             }
-            Segment::TodoStringValue1(expr) => expr.accept_mut(self),
-            Segment::TodoStringValue2(expr) => expr.accept_mut(self),
+            Segment::StringValue(expr) => expr.accept_mut(self),
+            Segment::StringValueSentenceCase(expr) => expr.accept_mut(self),
             Segment::Split {
                 input,
                 separator,
@@ -335,7 +335,7 @@ pub trait MutVisitor {
                 separator.accept_mut(self);
                 index.accept_mut(self);
             }
-            Segment::TodoStringValue3(expr) => expr.accept_mut(self),
+            Segment::StringValueTitleCase(expr) => expr.accept_mut(self),
             Segment::AutoTranslate(arg1, arg2) => {
                 arg1.accept_mut(self);
                 arg2.accept_mut(self);
@@ -495,8 +495,8 @@ pub enum Segment {
         column_index: Option<Expression>,
         parameters: Vec<Expression>,
     },
-    TodoStringValue1(Expression),
-    TodoStringValue2(Expression),
+    StringValue(Expression),
+    StringValueSentenceCase(Expression),
     /// Split a string at each occurrence of a separator, and return one of the resulting
     /// substrings.
     Split {
@@ -504,7 +504,7 @@ pub enum Segment {
         separator: Expression,
         index: Expression,
     },
-    TodoStringValue3(Expression),
+    StringValueTitleCase(Expression),
     AutoTranslate(Expression, Expression),
     StringValueLowerCase(Expression),
     SheetJa(Vec<Expression>),
@@ -620,8 +620,10 @@ impl fmt::Debug for Segment {
                 .field("column_index", column_index)
                 .field("parameters", parameters)
                 .finish(),
-            Segment::TodoStringValue1(arg) => f.debug_tuple("TodoStringValue1").field(arg).finish(),
-            Segment::TodoStringValue2(arg) => f.debug_tuple("TodoStringValue2").field(arg).finish(),
+            Segment::StringValue(arg) => f.debug_tuple("StringValue").field(arg).finish(),
+            Segment::StringValueSentenceCase(arg) => {
+                f.debug_tuple("StringValueSentenceCase").field(arg).finish()
+            }
             Segment::Split {
                 input,
                 separator,
@@ -632,7 +634,9 @@ impl fmt::Debug for Segment {
                 .field("separator", separator)
                 .field("index", index)
                 .finish(),
-            Segment::TodoStringValue3(arg) => f.debug_tuple("TodoStringValue3").field(arg).finish(),
+            Segment::StringValueTitleCase(arg) => {
+                f.debug_tuple("StringValueTitleCase").field(arg).finish()
+            }
             Segment::AutoTranslate(arg1, arg2) => f
                 .debug_tuple("AutoTranslate")
                 .field(arg1)
@@ -1042,14 +1046,14 @@ mod proptests {
                     parameters: args,
                 }
             }
-            26 => Segment::TodoStringValue1(arbitrary_expr(g, depth)),
-            27 => Segment::TodoStringValue2(arbitrary_expr(g, depth)),
+            26 => Segment::StringValue(arbitrary_expr(g, depth)),
+            27 => Segment::StringValueSentenceCase(arbitrary_expr(g, depth)),
             28 => Segment::Split {
                 input: arbitrary_expr(g, depth),
                 separator: arbitrary_expr(g, depth),
                 index: arbitrary_expr(g, depth),
             },
-            29 => Segment::TodoStringValue3(arbitrary_expr(g, depth)),
+            29 => Segment::StringValueTitleCase(arbitrary_expr(g, depth)),
             30 => Segment::AutoTranslate(arbitrary_expr(g, depth), arbitrary_expr(g, depth)),
             31 => Segment::StringValueLowerCase(arbitrary_expr(g, depth)),
             32 => {
@@ -1392,11 +1396,9 @@ mod proptests {
                     .into_iter()
                     .flatten(),
                 ),
-                Segment::TodoStringValue1(arg) => {
-                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue1))
-                }
-                Segment::TodoStringValue2(arg) => {
-                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue2))
+                Segment::StringValue(arg) => Box::new(shrink_expr(arg).map(Segment::StringValue)),
+                Segment::StringValueSentenceCase(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::StringValueSentenceCase))
                 }
                 Segment::Split {
                     input,
@@ -1435,8 +1437,8 @@ mod proptests {
                     .into_iter()
                     .flatten(),
                 ),
-                Segment::TodoStringValue3(arg) => {
-                    Box::new(shrink_expr(arg).map(Segment::TodoStringValue3))
+                Segment::StringValueTitleCase(arg) => {
+                    Box::new(shrink_expr(arg).map(Segment::StringValueTitleCase))
                 }
                 Segment::AutoTranslate(arg1, arg2) => Box::new(
                     shrink_expr(arg1)

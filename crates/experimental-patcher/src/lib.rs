@@ -290,15 +290,17 @@ mod tests {
             ]
         );
 
-        let mut text = vec![Segment::TodoStringValue1(Expression::Text(Text::new(
-            vec![Segment::Literal("needle".to_string())],
-        )))];
+        let mut text = vec![Segment::StringValue(Expression::Text(Text::new(vec![
+            Segment::Literal("needle".to_string()),
+        ])))];
         visitor.visit_tag_sequence(&mut text);
         assert_eq!(
             text,
-            vec![Segment::TodoStringValue1(Expression::Text(Text::new(
-                vec![Segment::NewLine, Segment::Dash, Segment::NewLine]
-            )))]
+            vec![Segment::StringValue(Expression::Text(Text::new(vec![
+                Segment::NewLine,
+                Segment::Dash,
+                Segment::NewLine
+            ])))]
         );
     }
 
