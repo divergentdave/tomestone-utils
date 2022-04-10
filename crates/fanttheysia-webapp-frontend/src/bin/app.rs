@@ -61,6 +61,8 @@ struct Model {
     debounced_autosave_callback: Callback<()>,
     autosave_is_dirty: Rc<AtomicBool>,
     worker: Box<dyn Bridge<SyntaxChecker>>,
+    worker_check_busy: bool,
+    worker_check_queued: bool,
     file_chooser_ref: NodeRef,
     valid: Option<bool>,
     error_message: String,
@@ -132,6 +134,8 @@ impl Component for Model {
             debounced_autosave_callback,
             autosave_is_dirty: Rc::new(AtomicBool::new(false)),
             worker,
+            worker_check_busy: false,
+            worker_check_queued: false,
             file_chooser_ref: NodeRef::default(),
             valid: None,
             error_message: String::new(),
@@ -161,8 +165,12 @@ impl Component for Model {
                 false
             }
             Message::CheckText => {
-                // TODO: queue up a request if there's already a check in-progress
-                self.worker.send(Request::Check(self.model.get_value()));
+                if self.worker_check_busy {
+                    self.worker_check_queued = true;
+                } else {
+                    self.worker_check_busy = true;
+                    self.worker.send(Request::Check(self.model.get_value()));
+                }
                 false
             }
             Message::Autosave => {
@@ -196,10 +204,16 @@ impl Component for Model {
                         self.valid = Some(false);
                         gloo_console::log!(&message);
                         self.error_message = message;
+                        self.worker_check_busy = false
                     }
                     Response::Progress(progress) => {
                         self.progress = Some(progress);
+                        self.worker_check_busy = false
                     }
+                }
+                if !self.worker_check_busy && self.worker_check_queued {
+                    self.worker_check_queued = false;
+                    ctx.link().send_message(Message::CheckText);
                 }
                 true
             }
