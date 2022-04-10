@@ -23,14 +23,25 @@ use yew::prelude::*;
 use fanttheysia_webapp_frontend::{ProgressAccumulator, Request, Response, SyntaxChecker};
 
 enum Message {
+    /// Text change event from the Monaco editor.
     ModelContentChanged(IModelContentChangedEvent),
+    /// Trigger to send the editor's contents to the worker thread, for validation. This is
+    /// sent by a debounce timer after the editor's text has changed, in addition to other sources.
     CheckText,
+    /// Trigger to save the editor's contents to localStorage. This is done after a timer has
+    /// elapsed following a text change, or before the page unloads, if the editor is dirty.
     Autosave,
+    /// Signals that the window has been resized, and the editor's size should be recalculated.
     WindowResize,
+    /// Incoming responses from the worker's bridge.
     WorkerMessage(Response),
+    /// Fired when the user clicks on the "open" button.
     OpenFileClick,
+    /// Fired when the user has selected a file to open.
     OpenFileChoice(Event),
+    /// Fired when the opened file has been read in its entirety.
     OpenFileDone(String),
+    /// Fired when the user clicks on the "save" button.
     SaveFile,
 }
 
@@ -49,23 +60,46 @@ fn save_to_storage(data: &str) -> Result<(), JsValue> {
 }
 
 struct Model {
+    /// Monaco editor options (just its theme, for now).
     options: Rc<CodeEditorOptions>,
+    /// This link will hold hooks to communicate with the Monaco editor. It is created here, and a
+    /// copy is passed to the editor component via its properties.
     editor_link: CodeEditorLink,
+    /// The data structure holding the editor's contents.
     model: TextModel,
+    /// Event listener for "resize" on the window.
     resize_listener: Option<EventListener>,
+    /// Event listener for "beforeunload" on the window.
     beforeunload_listener: Option<EventListener>,
+    /// Handle for a Monaco event listener.
     _text_listener: DisposableClosure<dyn FnMut(IModelContentChangedEvent)>,
+    /// `setTimeout` timer to debounce text change events, for sending it to the worker.
     edit_check_debounce_timer: Option<Timeout>,
+    /// `setTimeout` timer to debounce text change events, for autosaving.
     edit_autosave_debounce_timer: Option<Timeout>,
+    /// Callback used by `edit_check_debounce_timer`.
     debounced_check_callback: Callback<()>,
+    /// Callback used by `edit_autosave_debounce_timer`.
     debounced_autosave_callback: Callback<()>,
+    /// Flag to indicate whether the contents of the editor are unsaved. This is set when
+    /// the text changes, cleared when an autosave is done, and checked in the "beforeunload"
+    /// event listener.
     autosave_is_dirty: Rc<AtomicBool>,
+    /// Bridge to the worker, which handles parsing off the main thread.
     worker: Box<dyn Bridge<SyntaxChecker>>,
+    /// Flag to indicate there's a request in-flight to the worker.
     worker_check_busy: bool,
+    /// Flag to indicate the text has changed again since sending the last request to the worker.
+    /// If set, once the response arrives, a new request will be sent with the latest text, and
+    /// this flag will be cleared.
     worker_check_queued: bool,
+    /// Reference to the invisible `<input type="file">` used to open files.
     file_chooser_ref: NodeRef,
+    /// The latest syntax check result from the worker.
     valid: Option<bool>,
+    /// The latest error message from the worker (or empty, if none).
     error_message: String,
+    /// The latest progress bar update from the worker.
     progress: Option<ProgressAccumulator>,
 }
 
