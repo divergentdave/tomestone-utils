@@ -161,4 +161,8 @@ impl Worker for SyntaxChecker {
     fn name_of_resource() -> &'static str {
         "worker.js"
     }
+
+    fn resource_path_is_relative() -> bool {
+        true
+    }
 }
