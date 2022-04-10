@@ -181,18 +181,19 @@ impl Component for Model {
                 }
                 false
             }
-            Message::WindowResize => self
-                .editor_link
-                .with_editor(|code_editor| {
-                    // TODO: need to figure out how to make the editor take up 100% of viewport height, I think that would fix resizing
-                    //code_editor.as_ref().layout(None);
-                    code_editor
-                        .as_ref()
-                        .layout(Some(&IDimension::new(800, 600)));
-                    gloo_console::log!("did layout");
-                    true
-                })
-                .unwrap_or_default(),
+            Message::WindowResize => {
+                let window = web_sys::window().unwrap();
+                let width = window.inner_width().unwrap().as_f64().unwrap();
+                let height = window.inner_height().unwrap().as_f64().unwrap() - 120.0;
+                self.editor_link
+                    .with_editor(|code_editor| {
+                        code_editor
+                            .as_ref()
+                            .layout(Some(&IDimension::new(width, height)));
+                        true
+                    })
+                    .unwrap_or_default()
+            }
             Message::WorkerMessage(response) => {
                 match response {
                     Response::Valid => {
