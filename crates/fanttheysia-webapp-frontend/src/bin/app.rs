@@ -20,7 +20,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{HtmlAnchorElement, HtmlElement, HtmlInputElement, Url};
 use yew::prelude::*;
 
-use fanttheysia_webapp_frontend::{Request, Response, SyntaxChecker};
+use fanttheysia_webapp_frontend::{ProgressAccumulator, Request, Response, SyntaxChecker};
 
 enum Message {
     ModelContentChanged(IModelContentChangedEvent),
@@ -64,6 +64,7 @@ struct Model {
     file_chooser_ref: NodeRef,
     valid: Option<bool>,
     error_message: String,
+    progress: Option<ProgressAccumulator>,
 }
 
 impl Model {
@@ -134,6 +135,7 @@ impl Component for Model {
             file_chooser_ref: NodeRef::default(),
             valid: None,
             error_message: String::new(),
+            progress: None,
         }
     }
 
@@ -195,6 +197,9 @@ impl Component for Model {
                         gloo_console::log!(&message);
                         self.error_message = message;
                     }
+                    Response::Progress(progress) => {
+                        self.progress = Some(progress);
+                    }
                 }
                 true
             }
@@ -249,6 +254,10 @@ impl Component for Model {
         let open_click = ctx.link().callback(|_| Message::OpenFileClick);
         let save_click = ctx.link().callback(|_| Message::SaveFile);
         let file_chooser_change = ctx.link().callback(Message::OpenFileChoice);
+        let (progress_current, progress_max) = match &self.progress {
+            Some(progress) => (format!("{}", progress.current), format!("{}", progress.max)),
+            None => ("0".to_string(), "1".to_string()),
+        };
         html! {
             <>
             <CodeEditor
@@ -266,8 +275,11 @@ impl Component for Model {
                     style="display: none;"
                     />
                 <button onclick={ save_click }>{"Save File"}</button>
-                // TODO: show re-localization progress here.
-                <progress max="2" value="1"></progress>
+                <progress
+                    value={ progress_current }
+                    max={ progress_max }
+                    style="width: 500px;">
+                </progress>
                 <StatusIndicator valid={ self.valid } />
                 <span>{ &self.error_message }</span>
             </div>

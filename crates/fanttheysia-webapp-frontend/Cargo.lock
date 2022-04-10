@@ -103,6 +103,7 @@ dependencies = [
  "gloo-storage",
  "gloo-timers",
  "gloo-worker",
+ "lazy_static",
  "monaco",
  "serde",
  "serde_yaml",
