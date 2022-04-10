@@ -1,0 +1,13 @@
+.status-box {
+    width: 200px;
+    height: 50px;
+    text-align: center;
+}
+
+.status-box.valid {
+    background-color: rgb(128, 255, 128);
+}
+
+.status-box.invalid {
+    background-color: rgb(255, 128, 128);
+}

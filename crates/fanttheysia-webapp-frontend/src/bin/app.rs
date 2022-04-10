@@ -62,6 +62,8 @@ struct Model {
     autosave_is_dirty: Rc<AtomicBool>,
     worker: Box<dyn Bridge<SyntaxChecker>>,
     file_chooser_ref: NodeRef,
+    valid: Option<bool>,
+    error_message: String,
 }
 
 impl Model {
@@ -130,6 +132,8 @@ impl Component for Model {
             autosave_is_dirty: Rc::new(AtomicBool::new(false)),
             worker,
             file_chooser_ref: NodeRef::default(),
+            valid: None,
+            error_message: String::new(),
         }
     }
 
@@ -181,9 +185,16 @@ impl Component for Model {
                 .unwrap_or_default(),
             Message::WorkerMessage(response) => {
                 match response {
-                    // TODO: display in page somehow
-                    Response::Valid => gloo_console::log!("OK"),
-                    Response::Invalid(message) => gloo_console::log!(message),
+                    Response::Valid => {
+                        self.valid = Some(true);
+                        gloo_console::log!("OK");
+                        self.error_message.clear();
+                    }
+                    Response::Invalid(message) => {
+                        self.valid = Some(false);
+                        gloo_console::log!(&message);
+                        self.error_message = message;
+                    }
                 }
                 true
             }
@@ -257,6 +268,8 @@ impl Component for Model {
                 <button onclick={ save_click }>{"Save File"}</button>
                 // TODO: show re-localization progress here.
                 <progress max="2" value="1"></progress>
+                <StatusIndicator valid={ self.valid } />
+                <span>{ &self.error_message }</span>
             </div>
             </>
         }
@@ -287,9 +300,55 @@ impl Component for Model {
                         autosave_callback.emit(());
                     }
                 },
-            ))
+            ));
+
+            ctx.link().send_message(Message::CheckText);
         }
     }
+}
+
+#[derive(PartialEq, Eq, Properties)]
+struct StatusIndicatorProperties {
+    valid: Option<bool>,
+}
+
+struct StatusIndicator {}
+
+impl Component for StatusIndicator {
+    type Message = ();
+    type Properties = StatusIndicatorProperties;
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        StatusIndicator {}
+    }
+
+    fn update(&mut self, _ctx: &Context<Self>, _msg: Self::Message) -> bool {
+        false
+    }
+
+    fn changed(&mut self, _ctx: &Context<Self>) -> bool {
+        true
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let mut class = classes!("status-box");
+        let text = match ctx.props().valid {
+            Some(true) => {
+                class.push("valid");
+                "OK"
+            }
+            Some(false) => {
+                class.push("invalid");
+                "Error"
+            }
+            None => "",
+        };
+        html! {
+            <div { class }>{ text }</div>
+        }
+    }
+
+    fn rendered(&mut self, _ctx: &Context<Self>, _first_render: bool) {}
 }
 
 fn main() {
