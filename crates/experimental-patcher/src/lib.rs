@@ -38,7 +38,7 @@ impl StructuralFindAndReplace {
             for i in (0..text.len()).rev() {
                 let segment = &text[i];
                 if let Segment::Literal(value) = segment {
-                    if !value.contains(&*find_string) {
+                    if !value.contains(find_string) {
                         continue;
                     }
                     let split_parts = value.split(find_string).collect::<Vec<_>>();
@@ -76,7 +76,7 @@ impl StructuralFindAndReplace {
             for i in (0..text.len() + 1 - self.find.len()).rev() {
                 let mut matches = match (&text[i], &self.find[0]) {
                     (Segment::Literal(original), Segment::Literal(find_string)) => {
-                        original.ends_with(&*find_string)
+                        original.ends_with(find_string)
                     }
                     (other_text, other_find) => other_text == other_find,
                 };
@@ -86,7 +86,7 @@ impl StructuralFindAndReplace {
                         &self.find[self.find.len() - 1],
                     ) {
                         (Segment::Literal(original), Segment::Literal(find_string)) => {
-                            matches = original.starts_with(&*find_string);
+                            matches = original.starts_with(find_string);
                         }
                         (other_text, other_find) => matches = other_text == other_find,
                     }

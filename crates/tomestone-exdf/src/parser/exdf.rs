@@ -74,7 +74,7 @@ pub struct ExdfIterator<'a> {
     offsets: std::slice::Iter<'a, OffsetEntry>,
 }
 
-impl<'a, 'b> Iterator for ExdfIterator<'a> {
+impl<'a> Iterator for ExdfIterator<'a> {
     type Item = Result<(u32, RawDataRow<'a>), nom::error::Error<&'a [u8]>>;
 
     fn next(&mut self) -> Option<Self::Item> {

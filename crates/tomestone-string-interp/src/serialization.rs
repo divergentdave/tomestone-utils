@@ -196,7 +196,7 @@ impl Serialize for Expression {
                 EXPRESSION_NAME,
                 13,
                 EXPRESSION_VARIANTS[13],
-                &*boxed_text,
+                boxed_text,
             ),
         }
     }
