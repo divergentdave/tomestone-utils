@@ -430,12 +430,12 @@ impl Write for NoOpWriter {
     }
 }
 
-fn print_template(
+fn build_template(
     game_data: &GameData,
     data_file_set: &mut DataFileSet,
     root_list: &RootList,
     language: Language,
-) {
+) -> TextReplacementRules {
     let mut rules = TextReplacementRules::new();
 
     let mut if_tag_set = HashSet::new();
@@ -455,6 +455,7 @@ fn print_template(
     rules.structured_text_rules.reserve_exact(if_tag_set.len());
     let mut serialization_error_count = 0;
     for if_tag in if_tag_set.into_iter() {
+        // TODO: clean this out
         if let Err(e) = serde_yaml::to_writer(NoOpWriter, &if_tag) {
             eprintln!("{}", e);
             eprintln!("{:?}", &if_tag);
@@ -511,18 +512,29 @@ fn print_template(
     });
     rules.pvp_rank_rules.extend(pvp_rank_set.into_iter());
 
-    let stdout = std::io::stdout();
-    let locked = stdout.lock();
-    if let Err(e) = serde_yaml::to_writer(locked, &rules) {
-        eprintln!("error: failed to serialize rules file: {}", e);
-        process::exit(1);
-    }
-
     if serialization_error_count > 0 {
         eprintln!(
             "warning: could not serialize {} structured text replacement rules",
             serialization_error_count
         );
+    }
+
+    rules
+}
+
+fn print_template(
+    game_data: &GameData,
+    data_file_set: &mut DataFileSet,
+    root_list: &RootList,
+    language: Language,
+) {
+    let rules = build_template(game_data, data_file_set, root_list, language);
+
+    let stdout = std::io::stdout();
+    let locked = stdout.lock();
+    if let Err(e) = serde_yaml::to_writer(locked, &rules) {
+        eprintln!("error: failed to serialize rules file: {}", e);
+        process::exit(1);
     }
 }
 
