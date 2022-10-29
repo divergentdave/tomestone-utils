@@ -20,6 +20,7 @@ SUBCOMMANDS:
     hex               Extract a file and print it as a hex dump
     list              List files by hash or path (where available)
     raw               Extract a file and write it to standard output
+
 ```
 
 ```
@@ -36,6 +37,7 @@ ARGS:
 OPTIONS:
     -h, --help                   Print help information
     -l, --language <language>    
+
 ```
 
 ```
@@ -53,4 +55,5 @@ ARGS:
 OPTIONS:
     -h, --help           Print help information
     -i, --ignore-case    
+
 ```
