@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "3.0.0", features = ["cargo"] }
-nom = "6.0.1"
+nom = "7.1.0"
 tomestone-exdf = { path = "../tomestone-exdf" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }
 tomestone-string-interp = { path = "../tomestone-string-interp" }
