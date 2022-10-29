@@ -550,7 +550,7 @@ fn parse_language_flag(matches: &ArgMatches) -> Language {
 }
 
 fn main() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     let app_matches = app().get_matches();
 

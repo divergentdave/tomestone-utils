@@ -29,7 +29,7 @@ where
 #[macro_export]
 macro_rules! test_game_data_or_skip {
     () => {{
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
         // Don't test anything if the game directory isn't provided
         let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
             root

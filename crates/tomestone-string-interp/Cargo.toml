@@ -9,7 +9,7 @@ nom = "6.0.1"
 serde = "1.0.136"
 
 [dev-dependencies]
-dotenv = "0.15.0"
+dotenvy = "0.15.6"
 serde_test = "1.0.117"
 serde_yaml = "0.8.13"
 tomestone-common = { path = "../tomestone-common" }

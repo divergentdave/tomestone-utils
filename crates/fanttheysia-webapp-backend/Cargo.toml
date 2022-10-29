@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 async-std = "1.10.0"
-dotenv = "0.15.0"
+dotenvy = "0.15.6"
 tide = "0.16.0"
 tomestone-exdf = { path = "../tomestone-exdf" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }

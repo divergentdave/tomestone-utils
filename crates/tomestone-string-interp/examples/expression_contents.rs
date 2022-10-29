@@ -80,7 +80,7 @@ impl Visitor for ExpressionContentsVisitor {
 }
 
 fn main() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
     let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
         root
     } else {

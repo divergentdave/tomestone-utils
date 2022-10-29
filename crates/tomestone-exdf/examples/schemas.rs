@@ -4,7 +4,7 @@ use tomestone_exdf::{Dataset, Language, RootList};
 use tomestone_sqpack::GameData;
 
 fn main() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
     let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
         root
     } else {

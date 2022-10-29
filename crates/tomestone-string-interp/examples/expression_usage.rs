@@ -59,7 +59,7 @@ impl Visitor for ExpressionUsageCounterVisitor {
 }
 
 fn main() {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
     let root = if let Ok(root) = std::env::var("FFXIV_INSTALL_DIR") {
         root
     } else {

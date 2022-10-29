@@ -10,4 +10,4 @@ tomestone-common = { path = "../tomestone-common" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }
 
 [dev-dependencies]
-dotenv = "0.15.0"
+dotenvy = "0.15.6"

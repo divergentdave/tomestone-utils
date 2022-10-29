@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "3.0.0", features = ["cargo", "env"] }
-dotenv = "0.15.0"
+dotenvy = "0.15.6"
 fanttheysia-common = { path = "../fanttheysia-common" }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_yaml = "0.8.13"
