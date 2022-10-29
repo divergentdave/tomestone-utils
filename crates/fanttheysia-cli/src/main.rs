@@ -1,10 +1,14 @@
 use std::{
     collections::{BTreeSet, HashSet},
     io::Write,
+    path::PathBuf,
     process,
 };
 
-use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg, ArgMatches};
+use clap::{
+    builder::{EnumValueParser, ValueParser},
+    crate_authors, crate_description, crate_name, crate_version, Arg, ArgMatches, Command,
+};
 
 use fanttheysia_common::{
     AchievementTitleRule, GenderConditionalTextVisitor, GrandCompanyRankRule, PvpRankRule,
@@ -14,8 +18,8 @@ use tomestone_exdf::{Dataset, Language, RootList, Value};
 use tomestone_sqpack::{DataFileSet, GameData};
 use tomestone_string_interp::{Segment, Text, TreeNode};
 
-fn app() -> App<'static> {
-    App::new(crate_name!())
+fn app() -> Command {
+    Command::new(crate_name!())
         .version(crate_version!())
         .author(crate_authors!())
         .about(crate_description!())
@@ -23,40 +27,40 @@ fn app() -> App<'static> {
             Arg::new("ffxiv-install-dir")
                 .long("ffxiv-install-dir")
                 .required(true)
-                .takes_value(true)
+                .value_parser(ValueParser::path_buf())
                 .env("FFXIV_INSTALL_DIR"),
         )
         .subcommand(
-            App::new("report")
+            Command::new("report")
                 .about("Print a report of all gender conditional text expressions")
                 .arg(
                     Arg::new("language")
                         .long("language")
                         .short('l')
                         .required(false)
-                        .takes_value(true),
+                        .value_parser(EnumValueParser::<Language>::new()),
                 ),
         )
         .subcommand(
-            App::new("template")
+            Command::new("template")
                 .about("Print a YAML text replacement rules file template")
                 .arg(
                     Arg::new("language")
                         .long("language")
                         .short('l')
                         .required(false)
-                        .takes_value(true),
+                        .value_parser(EnumValueParser::<Language>::new()),
                 ),
         )
         .subcommand(
-            App::new("update")
+            Command::new("update")
             .about("Update a YAML text replacement rules file, adding template rules for any novel conditionals")
             .arg(
                 Arg::new("language")
                     .long("language")
                     .short('l')
                     .required(false)
-                    .takes_value(true),
+                    .value_parser(EnumValueParser::<Language>::new()),
             ),
         )
 }
@@ -583,14 +587,10 @@ fn update_rules(
 }
 
 fn parse_language_flag(matches: &ArgMatches) -> Language {
-    let language_code = matches.value_of("language").unwrap_or("en");
-    match language_code.parse() {
-        Ok(language) => language,
-        Err(_) => {
-            eprintln!("error: did not recognize language {}", language_code);
-            process::exit(1);
-        }
-    }
+    matches
+        .get_one("language")
+        .copied()
+        .unwrap_or(Language::English)
 }
 
 fn main() {
@@ -598,7 +598,7 @@ fn main() {
 
     let app_matches = app().get_matches();
 
-    let root = app_matches.value_of_os("ffxiv-install-dir").unwrap();
+    let root = app_matches.get_one::<PathBuf>("ffxiv-install-dir").unwrap();
     let game_data = match GameData::new(root) {
         Ok(game_data) => game_data,
         Err(e) => {

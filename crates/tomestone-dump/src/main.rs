@@ -2,10 +2,14 @@ use std::{
     collections::BTreeMap,
     fmt::Write as FmtWrite,
     io::{self, stdout, Write},
+    path::PathBuf,
     process,
 };
 
-use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
+use clap::{
+    builder::{EnumValueParser, ValueParser},
+    crate_authors, crate_description, crate_name, crate_version, Arg, ArgAction, Command,
+};
 use once_cell::sync::Lazy;
 use regex::{
     bytes::{Regex as BytesRegex, RegexBuilder as BytesRegexBuilder},
@@ -590,8 +594,8 @@ fn open_db() -> PathDb {
     }
 }
 
-fn app() -> App<'static> {
-    App::new(crate_name!())
+fn app() -> Command {
+    Command::new(crate_name!())
         .version(crate_version!())
         .author(crate_authors!())
         .about(crate_description!())
@@ -599,38 +603,36 @@ fn app() -> App<'static> {
             Arg::new("ffxiv-install-dir")
                 .long("ffxiv-install-dir")
                 .required(true)
-                .takes_value(true)
+                .value_parser(ValueParser::path_buf())
                 .env("FFXIV_INSTALL_DIR"),
         )
         .subcommand(
-            App::new("raw")
+            Command::new("raw")
                 .about("Extract a file and write it to standard output")
                 .arg(
                     Arg::new("path_or_crc")
                         .required(true)
                         .index(1)
-                        .min_values(1)
-                        .max_values(2),
+                        .num_args(1..=2),
                 ),
         )
         .subcommand(
-            App::new("hex")
+            Command::new("hex")
                 .about("Extract a file and print it as a hex dump")
                 .arg(
                     Arg::new("path_or_crc")
                         .required(true)
                         .index(1)
-                        .min_values(1)
-                        .max_values(2),
+                        .num_args(1..=2),
                 ),
         )
         .subcommand(
-            App::new("list")
+            Command::new("list")
                 .about("List files by hash or path (where available)")
                 .arg(Arg::new("path").required(false).index(1)),
         )
         .subcommand(
-            App::new("grep")
+            Command::new("grep")
                 .about("Search file contents for regular expressions")
                 .arg(Arg::new("pattern").required(true).index(1))
                 .arg(Arg::new("path").required(false).index(2))
@@ -639,15 +641,15 @@ fn app() -> App<'static> {
                         .short('i')
                         .long("ignore-case")
                         .required(false)
-                        .takes_value(false),
+                        .action(ArgAction::SetTrue),
                 ),
         )
         .subcommand(
-            App::new("discover_paths")
+            Command::new("discover_paths")
                 .about("Search all files for paths of other files, and update the path database"),
         )
         .subcommand(
-            App::new("exd")
+            Command::new("exd")
                 .about("Extract and dump EXHF/EXDF files")
                 .arg(Arg::new("path").required(true).index(1))
                 .arg(
@@ -655,7 +657,7 @@ fn app() -> App<'static> {
                         .long("language")
                         .short('l')
                         .required(false)
-                        .takes_value(true),
+                        .value_parser(EnumValueParser::<Language>::new()),
                 ),
         )
 }
@@ -669,7 +671,7 @@ fn main() {
     let connection = db.get_connection().unwrap();
     let mut statements = PathDb::prepare(&connection).unwrap();
 
-    let root = app_matches.value_of_os("ffxiv-install-dir").unwrap();
+    let root = app_matches.get_one::<PathBuf>("ffxiv-install-dir").unwrap();
     let game_data = match GameData::new(root) {
         Ok(game_data) => game_data,
         Err(e) => {
@@ -688,7 +690,10 @@ fn main() {
                 &game_data,
                 &mut data_file_set,
                 Some(&mut statements),
-                matches.values_of("path_or_crc").unwrap(),
+                matches
+                    .get_many::<String>("path_or_crc")
+                    .unwrap()
+                    .map(AsRef::as_ref),
             ) {
                 Ok(Some(data)) => {
                     stdout().write_all(&data).unwrap();
@@ -708,7 +713,10 @@ fn main() {
                 &game_data,
                 &mut data_file_set,
                 Some(&mut statements),
-                matches.values_of("path_or_crc").unwrap(),
+                matches
+                    .get_many::<String>("path_or_crc")
+                    .unwrap()
+                    .map(AsRef::as_ref),
             ) {
                 Ok(Some(data)) => print_hex_dump(&data),
                 Ok(None) => {
@@ -721,29 +729,31 @@ fn main() {
                 }
             }
         }
-        Some(("list", matches)) => match parse_repository_path(matches.value_of("path")) {
-            Some((category, expansion)) => {
-                if let Err(e) = list_files(&game_data, category, expansion, &mut statements) {
-                    eprintln!("error: couldn't read indices, {}", e);
-                    process::exit(1);
+        Some(("list", matches)) => {
+            match parse_repository_path(matches.get_one::<String>("path").map(AsRef::as_ref)) {
+                Some((category, expansion)) => {
+                    if let Err(e) = list_files(&game_data, category, expansion, &mut statements) {
+                        eprintln!("error: couldn't read indices, {}", e);
+                        process::exit(1);
+                    }
                 }
-            }
-            None => {
-                for category in Category::iter_all() {
-                    for expansion in Expansion::iter_all() {
-                        if let Err(e) =
-                            list_files(&game_data, *category, *expansion, &mut statements)
-                        {
-                            eprintln!("error: couldn't read indices, {}", e);
-                            process::exit(1);
+                None => {
+                    for category in Category::iter_all() {
+                        for expansion in Expansion::iter_all() {
+                            if let Err(e) =
+                                list_files(&game_data, *category, *expansion, &mut statements)
+                            {
+                                eprintln!("error: couldn't read indices, {}", e);
+                                process::exit(1);
+                            }
                         }
                     }
                 }
             }
-        },
+        }
         Some(("grep", matches)) => {
-            let mut builder = BytesRegexBuilder::new(matches.value_of("pattern").unwrap());
-            if matches.is_present("ignore-case") {
+            let mut builder = BytesRegexBuilder::new(matches.get_one::<String>("pattern").unwrap());
+            if matches.get_one("ignore-case").copied().unwrap_or_default() {
                 builder.case_insensitive(true);
             }
             let re = match builder.build() {
@@ -753,7 +763,7 @@ fn main() {
                     process::exit(1);
                 }
             };
-            match parse_repository_path(matches.value_of("path")) {
+            match parse_repository_path(matches.get_one::<String>("path").map(AsRef::as_ref)) {
                 Some((category, expansion)) => {
                     if let Err(e) = do_grep(
                         &game_data,
@@ -793,15 +803,11 @@ fn main() {
             }
         }
         Some(("exd", matches)) => {
-            let original_path = matches.value_of("path").unwrap();
-            let language_code = matches.value_of("language").unwrap_or("en");
-            let language = match language_code.parse() {
-                Ok(language) => language,
-                Err(_) => {
-                    eprintln!("error: did not recognize language {}", language_code);
-                    process::exit(1);
-                }
-            };
+            let original_path = matches.get_one::<String>("path").unwrap();
+            let language = matches
+                .get_one("language")
+                .copied()
+                .unwrap_or(Language::English);
             let path_base = match (original_path.rfind('.'), original_path.starts_with("exd/")) {
                 (Some(dot_position), false) => &original_path[..dot_position],
                 (Some(dot_position), true) => &original_path[4..dot_position],

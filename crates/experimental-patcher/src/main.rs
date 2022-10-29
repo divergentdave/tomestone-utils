@@ -1,6 +1,6 @@
 use std::{path::PathBuf, process};
 
-use clap::{crate_name, crate_version, App, Arg};
+use clap::{builder::ValueParser, crate_name, crate_version, Arg, Command};
 
 use experimental_patcher::StructuralFindAndReplace;
 use tomestone_exdf::{
@@ -15,32 +15,29 @@ use tomestone_sqpack::{
 };
 use tomestone_string_interp::{Expression, Segment, Text};
 
-fn app() -> App<'static> {
-    App::new(crate_name!())
+fn app() -> Command {
+    Command::new(crate_name!())
         .version(crate_version!())
         .arg(
             Arg::new("source directory")
                 .long("src")
                 .required(true)
-                .takes_value(true)
-                .allow_invalid_utf8(true),
+                .value_parser(ValueParser::path_buf()),
         )
         .arg(
             Arg::new("destination directory")
                 .long("dest")
                 .required(true)
-                .takes_value(true)
-                .allow_invalid_utf8(true),
+                .value_parser(ValueParser::path_buf()),
         )
 }
 
 fn main() {
     let app_matches = app().get_matches();
-    let source_directory = app_matches.value_of_os("source directory").unwrap();
-    let dest_directory = app_matches.value_of_os("destination directory").unwrap();
-
-    let source_path = PathBuf::from(source_directory);
-    let dest_path = PathBuf::from(dest_directory);
+    let source_path = app_matches.get_one::<PathBuf>("source directory").unwrap();
+    let dest_path = app_matches
+        .get_one::<PathBuf>("destination directory")
+        .unwrap();
 
     match (source_path.canonicalize(), dest_path.canonicalize()) {
         (Err(e), _) | (_, Err(e)) => {
@@ -54,7 +51,7 @@ fn main() {
         _ => {}
     }
 
-    let source_game_data = match GameData::new(source_directory) {
+    let source_game_data = match GameData::new(source_path) {
         Ok(game_data) => game_data,
         Err(e) => {
             eprintln!("error: couldn't read source directory: {}", e);
@@ -102,7 +99,7 @@ fn main() {
 
     let side_table = build_side_tables(&source_game_data, &mut source_data_file_set, pack_id);
     let dest_io = match RealPackIO::new(
-        PathBuf::from(dest_directory).join("game").join("sqpack"),
+        PathBuf::from(dest_path).join("game").join("sqpack"),
         PlatformId::Win32,
         pack_id,
     ) {

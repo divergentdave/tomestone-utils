@@ -14,14 +14,21 @@ pub mod parser;
 #[derive(Debug)]
 pub struct EnumParseError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Language {
+    #[value(name = "ja")]
     Japanese = 1,
+    #[value(name = "en")]
     English = 2,
+    #[value(name = "de")]
     German = 3,
+    #[value(name = "fr")]
     French = 4,
+    #[value(name = "cns")]
     ChineseSimplified = 5,
+    #[value(name = "cnt")]
     ChineseTraditional = 6,
+    #[value(name = "kr")]
     Korean = 7,
 }
 
