@@ -27,7 +27,7 @@ pub fn encode_row(row: &[SubRow], header: &Exhf, padding_offset: u32) -> Vec<u8>
         Cardinality::Single => {
             ((inner_length_unpadded + padding_offset + 2) + 3) / 4 * 4 - padding_offset - 2
         }
-        Cardinality::Multiple => ((inner_length_unpadded + 3) / 4 * 4),
+        Cardinality::Multiple => (inner_length_unpadded + 3) / 4 * 4,
     };
     let outer_length = TryInto::<usize>::try_into(inner_length).unwrap() + 6;
 

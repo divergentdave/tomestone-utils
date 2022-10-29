@@ -489,8 +489,7 @@ pub struct GrowableBufReader<R: Read> {
 
 impl<R: Read> GrowableBufReader<R> {
     pub fn with_capacity(inner: R, capacity: usize) -> GrowableBufReader<R> {
-        let mut buf = Vec::with_capacity(capacity);
-        buf.resize(buf.capacity(), 0);
+        let buf = vec![0; capacity];
         GrowableBufReader {
             inner,
             buf,
