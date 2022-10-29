@@ -175,7 +175,7 @@ fn main() {
                                                 Segment::Literal("\"".to_string()),
                                             ];
                                             let mut visitor = StructuralFindAndReplace::new(find, replace);
-                                            visitor.visit_tag_sequence(&mut text.segments);
+                                            visitor.visit_text(&mut text);
                                             match tomestone_string_interp::encode(&text) {
                                                 Ok(encoded) => *cell = Value::StringOwned(encoded),
                                                 Err(e) => {

@@ -1,4 +1,4 @@
-use std::{fmt, num::NonZeroU8, string::FromUtf8Error};
+use std::{fmt, num::NonZeroU8, string::FromUtf8Error, vec::IntoIter};
 
 use nom::Finish;
 
@@ -681,7 +681,7 @@ impl fmt::Debug for Segment {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Text {
-    pub segments: Vec<Segment>,
+    segments: Vec<Segment>,
 }
 
 impl Text {
@@ -697,6 +697,10 @@ impl Text {
 
     pub fn encode(&self) -> Result<Vec<u8>, encoding::EncodeError> {
         encoding::encode(self)
+    }
+
+    pub fn into_vec(self) -> Vec<Segment> {
+        self.segments
     }
 }
 
@@ -717,6 +721,16 @@ impl TreeNode for Text {
 impl fmt::Debug for Text {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.segments.fmt(f)
+    }
+}
+
+impl IntoIterator for Text {
+    type Item = Segment;
+
+    type IntoIter = IntoIter<Segment>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.segments.into_iter()
     }
 }
 

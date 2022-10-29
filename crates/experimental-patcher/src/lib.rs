@@ -1,3 +1,5 @@
+use std::mem::swap;
+
 use tomestone_string_interp::{Expression, MutVisitor, Segment, Text, TextAccumulator};
 
 pub struct StructuralFindAndReplace {
@@ -8,6 +10,14 @@ pub struct StructuralFindAndReplace {
 impl StructuralFindAndReplace {
     pub fn new(find: Vec<Segment>, replace: Vec<Segment>) -> StructuralFindAndReplace {
         StructuralFindAndReplace { find, replace }
+    }
+
+    pub fn visit_text(&mut self, text: &mut Text) {
+        let mut old_text = Text::new(Vec::new());
+        swap(text, &mut old_text);
+        let mut segments = old_text.into_vec();
+        self.visit_tag_sequence(&mut segments);
+        *text = Text::new(segments);
     }
 
     pub fn visit_tag_sequence(&mut self, text: &mut Vec<Segment>) {
@@ -55,7 +65,7 @@ impl StructuralFindAndReplace {
                         }
                     }
                     let result_text: Text = result.into();
-                    text.splice(i..=i, result_text.segments.into_iter());
+                    text.splice(i..=i, result_text.into_iter());
                 }
             }
         } else if self.find.len() == 1 {
@@ -143,7 +153,7 @@ impl MutVisitor for StructuralFindAndReplace {
 
     fn visit_expression(&mut self, expr: &mut Expression) {
         if let Expression::Text(text) = expr {
-            self.visit_tag_sequence(&mut text.segments);
+            self.visit_text(text);
         } else {
             self.recurse_expression(expr);
         }
