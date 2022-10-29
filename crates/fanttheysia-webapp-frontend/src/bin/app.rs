@@ -139,7 +139,7 @@ impl Component for Model {
 
         let load_result = load_from_storage();
         let data = match &load_result {
-            Ok(Some(data)) => &*data,
+            Ok(Some(data)) => data,
             Ok(None) => "",
             Err(e) => {
                 gloo_console::error!(e);
