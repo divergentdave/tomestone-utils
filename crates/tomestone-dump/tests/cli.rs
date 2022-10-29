@@ -8,7 +8,7 @@ fn cli_tests() {
     std::env::set_current_dir(&test_dir).unwrap();
 
     trycmd::TestCases::new()
-        .default_bin_path(current_dir_before.join(trycmd::cargo_bin!("tomestone-dump")))
+        .default_bin_path(current_dir_before.join(trycmd::cargo::cargo_bin!("tomestone-dump")))
         .case(current_dir_before.join("tests/cmd/*.trycmd"))
         .run();
 
