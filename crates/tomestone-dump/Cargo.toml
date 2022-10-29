@@ -17,4 +17,4 @@ tomestone-string-interp = { path = "../tomestone-string-interp" }
 [dev-dependencies]
 tempfile = "3.3.0"
 tomestone-common = { path = "../tomestone-common" }
-trycmd = "0.8.3"
+trycmd = "0.14.0"
