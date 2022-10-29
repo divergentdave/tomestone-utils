@@ -48,6 +48,17 @@ fn app() -> App<'static> {
                         .takes_value(true),
                 ),
         )
+        .subcommand(
+            App::new("update")
+            .about("Update a YAML text replacement rules file, adding template rules for any novel conditionals")
+            .arg(
+                Arg::new("language")
+                    .long("language")
+                    .short('l')
+                    .required(false)
+                    .takes_value(true),
+            ),
+        )
 }
 
 fn foreach_exd_text_value<F: FnMut(&str, u32, &Text)>(
@@ -538,6 +549,34 @@ fn print_template(
     }
 }
 
+fn update_rules(
+    game_data: &GameData,
+    data_file_set: &mut DataFileSet,
+    root_list: &RootList,
+    language: Language,
+) {
+    let stdin = std::io::stdin();
+    let locked_stdin = stdin.lock();
+    let mut rules: TextReplacementRules = match serde_yaml::from_reader(locked_stdin) {
+        Ok(rules) => rules,
+        Err(e) => {
+            eprintln!("error: failed to parse rules file: {}", e);
+            process::exit(1);
+        }
+    };
+
+    let template_rules = build_template(game_data, data_file_set, root_list, language);
+
+    rules.merge(&template_rules);
+
+    let stdout = std::io::stdout();
+    let locked = stdout.lock();
+    if let Err(e) = serde_yaml::to_writer(locked, &rules) {
+        eprintln!("error: failed to serialize rules file: {}", e);
+        process::exit(1);
+    }
+}
+
 fn parse_language_flag(matches: &ArgMatches) -> Language {
     let language_code = matches.value_of("language").unwrap_or("en");
     match language_code.parse() {
@@ -582,6 +621,12 @@ fn main() {
             parse_language_flag(matches),
         ),
         Some(("template", matches)) => print_template(
+            &game_data,
+            &mut data_file_set,
+            &root_list,
+            parse_language_flag(matches),
+        ),
+        Some(("update", matches)) => update_rules(
             &game_data,
             &mut data_file_set,
             &root_list,

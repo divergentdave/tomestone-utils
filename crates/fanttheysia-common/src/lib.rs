@@ -163,27 +163,27 @@ impl Visitor for TextLiteralVisitor {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructuredTextRule {
     pub find: Vec<Segment>,
     pub replace: Vec<Segment>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AchievementTitleRule {
     pub before_female: Text,
     pub before_male: Text,
     pub after: Text,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GrandCompanyRankRule {
     pub before_female: Text,
     pub before_male: Text,
     pub after: Text,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PvpRankRule {
     pub before_female: Text,
     pub before_male: Text,
@@ -201,6 +201,44 @@ pub struct TextReplacementRules {
 impl TextReplacementRules {
     pub fn new() -> TextReplacementRules {
         TextReplacementRules::default()
+    }
+
+    /// Copy text replacement rules from another object into this one. Rules will be copied if
+    /// their target text to replace isn't covered by any existing rule, and ignored otherwise.
+    pub fn merge(&mut self, other: &TextReplacementRules) {
+        merge_helper(
+            &mut self.structured_text_rules,
+            &other.structured_text_rules,
+            |rule| rule.find.clone(),
+        );
+        merge_helper(
+            &mut self.achievement_title_rules,
+            &other.achievement_title_rules,
+            |rule| (rule.before_female.clone(), rule.before_male.clone()),
+        );
+        merge_helper(
+            &mut self.grand_company_rank_rules,
+            &other.grand_company_rank_rules,
+            |rule| (rule.before_female.clone(), rule.before_male.clone()),
+        );
+        merge_helper(&mut self.pvp_rank_rules, &other.pvp_rank_rules, |rule| {
+            (rule.before_female.clone(), rule.before_male.clone())
+        });
+    }
+}
+
+/// This is a helper function for [`TextReplacementRules::merge`]. It copies rules between lists of
+/// rules if the destination list does not yet contain a rule that matches the same text. It also
+/// takes a closure argument that takes a rule object and returns the text it matches against, to
+/// be used in identifying duplicate rules.
+fn merge_helper<T: Clone, K: Clone + Ord>(base: &mut Vec<T>, other: &[T], key: impl Fn(&T) -> K) {
+    let mut set: BTreeSet<K> = base.iter().map(&key).collect();
+    for item in other {
+        let item_key = key(item);
+        if !set.contains(&item_key) {
+            set.insert(item_key);
+            base.push(item.clone());
+        }
     }
 }
 
