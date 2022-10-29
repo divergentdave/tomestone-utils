@@ -146,7 +146,12 @@ fn main() {
                             if row_number == 10946 {
                                 for sub_row in &mut sub_rows {
                                     for cell in sub_row.cells.iter_mut() {
-                                        if let Value::String(text_data) = cell {
+                                        let text_data_opt = match cell {
+                                            Value::String(text_data) => Some(*text_data),
+                                            Value::StringOwned(text_data) => Some(&**text_data),
+                                            _ => None,
+                                        };
+                                        if let Some(text_data) = text_data_opt {
                                             let mut text = match Text::parse(text_data) {
                                                 Ok(text) => text,
                                                 Err(e) => {

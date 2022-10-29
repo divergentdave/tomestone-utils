@@ -81,7 +81,12 @@ fn foreach_exd_text_value<F: FnMut(&str, u32, &Text)>(
                 let row = res.unwrap();
                 for sub_row in row.sub_rows {
                     for value in sub_row.cells {
-                        if let Value::String(data) = value {
+                        let text_data_opt = match &value {
+                            Value::String(text_data) => Some(*text_data),
+                            Value::StringOwned(text_data) => Some(&**text_data),
+                            _ => None,
+                        };
+                        if let Some(data) = text_data_opt {
                             match Text::parse(data) {
                                 Ok(text) => {
                                     f(name, row.number, &text);
