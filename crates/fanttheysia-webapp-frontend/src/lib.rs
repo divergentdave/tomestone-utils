@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign};
 
-use gloo_worker::{HandlerId, Public, Worker, WorkerLink};
+use gloo_worker::{HandlerId, Worker, WorkerScope};
 use serde::{Deserialize, Serialize};
 
 use fanttheysia_common::{
@@ -113,9 +113,7 @@ impl CalculateProgress for PvpRankRule {
     }
 }
 
-pub struct SyntaxChecker {
-    link: WorkerLink<Self>,
-}
+pub struct SyntaxChecker {}
 
 #[derive(Serialize, Deserialize)]
 pub enum Request {
@@ -130,39 +128,28 @@ pub enum Response {
 }
 
 impl Worker for SyntaxChecker {
-    type Reach = Public<Self>;
     type Message = ();
     type Input = Request;
     type Output = Response;
 
-    fn create(link: WorkerLink<Self>) -> Self {
-        Self { link }
+    fn create(_scope: &WorkerScope<Self>) -> Self {
+        Self {}
     }
 
-    fn update(&mut self, _msg: Self::Message) {}
+    fn update(&mut self, _scope: &WorkerScope<Self>, _msg: Self::Message) {}
 
-    fn handle_input(&mut self, input: Self::Input, id: HandlerId) {
+    fn received(&mut self, scope: &WorkerScope<Self>, input: Self::Input, id: HandlerId) {
         match input {
             Request::Check(data) => {
                 match serde_yaml::from_str::<TextReplacementRules>(&data) {
                     Ok(rules) => {
-                        self.link.respond(id, Response::Valid);
+                        scope.respond(id, Response::Valid);
                         let progress = rules.progress();
-                        self.link.respond(id, Response::Progress(progress));
+                        scope.respond(id, Response::Progress(progress));
                     }
-                    Err(error) => self
-                        .link
-                        .respond(id, Response::Invalid(format!("{}", error))),
+                    Err(error) => scope.respond(id, Response::Invalid(format!("{}", error))),
                 };
             }
         }
-    }
-
-    fn name_of_resource() -> &'static str {
-        "worker.js"
-    }
-
-    fn resource_path_is_relative() -> bool {
-        true
     }
 }

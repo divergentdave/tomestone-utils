@@ -10,7 +10,7 @@ use gloo_events::{EventListener, EventListenerOptions};
 use gloo_file::Blob;
 use gloo_storage::{LocalStorage, Storage};
 use gloo_timers::callback::Timeout;
-use gloo_worker::{Bridge, Bridged};
+use gloo_worker::{Spawnable, WorkerBridge};
 use monaco::{
     api::{CodeEditorOptions, DisposableClosure, TextModel},
     sys::editor::{BuiltinTheme, IDimension, IModelContentChangedEvent},
@@ -86,7 +86,7 @@ struct Model {
     /// event listener.
     autosave_is_dirty: Rc<AtomicBool>,
     /// Bridge to the worker, which handles parsing off the main thread.
-    worker: Box<dyn Bridge<SyntaxChecker>>,
+    worker: WorkerBridge<SyntaxChecker>,
     /// Flag to indicate there's a request in-flight to the worker.
     worker_check_busy: bool,
     /// Flag to indicate the text has changed again since sending the last request to the worker.
@@ -135,7 +135,9 @@ impl Component for Model {
 
     fn create(ctx: &Context<Self>) -> Self {
         let worker_callback = ctx.link().callback(Message::WorkerMessage);
-        let worker = SyntaxChecker::bridge(Rc::new(move |response| worker_callback.emit(response)));
+        let worker = SyntaxChecker::spawner()
+            .callback(move |response| worker_callback.emit(response))
+            .spawn("worker.js");
 
         let load_result = load_from_storage();
         let data = match &load_result {

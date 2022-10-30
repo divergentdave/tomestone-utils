@@ -1,6 +1,6 @@
 use fanttheysia_webapp_frontend::SyntaxChecker;
-use gloo_worker::PublicWorker;
+use gloo_worker::Registrable;
 
 fn main() {
-    SyntaxChecker::register();
+    SyntaxChecker::registrar().register();
 }
