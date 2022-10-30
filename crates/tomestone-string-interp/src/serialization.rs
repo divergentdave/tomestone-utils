@@ -7,8 +7,11 @@ use std::{marker::PhantomData, mem::MaybeUninit};
 
 use crate::{Expression, Segment, Text};
 use serde::{
-    de::{EnumAccess, Error as DeError, MapAccess, SeqAccess, VariantAccess, Visitor},
-    ser::{Error as SerError, SerializeSeq, SerializeStructVariant, SerializeTupleVariant},
+    de::{
+        DeserializeSeed, EnumAccess, Error as DeError, IgnoredAny, MapAccess, SeqAccess,
+        Unexpected, VariantAccess, Visitor,
+    },
+    ser::{Error as SerError, SerializeMap, SerializeSeq},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
@@ -81,123 +84,127 @@ static SHEET_SEGMENT_FIELDS: &[&str] = &["name", "row_index", "column_index", "p
 static SPLIT_SEGMENT_FIELDS: &[&str] = &["input", "separator", "index"];
 static RUBY_SEGMENT_FIELDS: &[&str] = &["annotated", "annotation"];
 
+struct ExpressionTupleVariantBody<'a> {
+    sequence: &'a [&'a Expression],
+}
+
+impl<'a> Serialize for ExpressionTupleVariantBody<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(self.sequence.len()))?;
+        for element in self.sequence {
+            seq.serialize_element(element)?;
+        }
+        seq.end()
+    }
+}
+
 impl Serialize for Expression {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         match self {
-            Expression::Integer(value) => serializer.serialize_newtype_variant(
-                EXPRESSION_NAME,
-                0,
-                EXPRESSION_VARIANTS[0],
-                value,
-            ),
-            Expression::TopLevelParameter(value) => serializer.serialize_newtype_variant(
-                EXPRESSION_NAME,
-                1,
-                EXPRESSION_VARIANTS[1],
-                value,
-            ),
+            Expression::Integer(value) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(EXPRESSION_VARIANTS[0], value)?;
+                map.end()
+            }
+            Expression::TopLevelParameter(value) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(EXPRESSION_VARIANTS[1], value)?;
+                map.end()
+            }
             Expression::GreaterThanOrEqual(boite) => {
-                let mut variant = serializer.serialize_tuple_variant(
-                    EXPRESSION_NAME,
-                    2,
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
                     EXPRESSION_VARIANTS[2],
-                    2,
+                    &ExpressionTupleVariantBody {
+                        sequence: &[&boite.0, &boite.1],
+                    },
                 )?;
-                variant.serialize_field(&boite.0)?;
-                variant.serialize_field(&boite.1)?;
-                variant.end()
+                map.end()
             }
             Expression::GreaterThan(boite) => {
-                let mut variant = serializer.serialize_tuple_variant(
-                    EXPRESSION_NAME,
-                    3,
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
                     EXPRESSION_VARIANTS[3],
-                    2,
+                    &ExpressionTupleVariantBody {
+                        sequence: &[&boite.0, &boite.1],
+                    },
                 )?;
-                variant.serialize_field(&boite.0)?;
-                variant.serialize_field(&boite.1)?;
-                variant.end()
+                map.end()
             }
             Expression::LessThanOrEqual(boite) => {
-                let mut variant = serializer.serialize_tuple_variant(
-                    EXPRESSION_NAME,
-                    4,
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
                     EXPRESSION_VARIANTS[4],
-                    2,
+                    &ExpressionTupleVariantBody {
+                        sequence: &[&boite.0, &boite.1],
+                    },
                 )?;
-                variant.serialize_field(&boite.0)?;
-                variant.serialize_field(&boite.1)?;
-                variant.end()
+                map.end()
             }
             Expression::LessThan(boite) => {
-                let mut variant = serializer.serialize_tuple_variant(
-                    EXPRESSION_NAME,
-                    5,
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
                     EXPRESSION_VARIANTS[5],
-                    2,
+                    &ExpressionTupleVariantBody {
+                        sequence: &[&boite.0, &boite.1],
+                    },
                 )?;
-                variant.serialize_field(&boite.0)?;
-                variant.serialize_field(&boite.1)?;
-                variant.end()
+                map.end()
             }
             Expression::Equal(boite) => {
-                let mut variant = serializer.serialize_tuple_variant(
-                    EXPRESSION_NAME,
-                    6,
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
                     EXPRESSION_VARIANTS[6],
-                    2,
+                    &ExpressionTupleVariantBody {
+                        sequence: &[&boite.0, &boite.1],
+                    },
                 )?;
-                variant.serialize_field(&boite.0)?;
-                variant.serialize_field(&boite.1)?;
-                variant.end()
+                map.end()
             }
             Expression::NotEqual(boite) => {
-                let mut variant = serializer.serialize_tuple_variant(
-                    EXPRESSION_NAME,
-                    7,
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
                     EXPRESSION_VARIANTS[7],
-                    2,
+                    &ExpressionTupleVariantBody {
+                        sequence: &[&boite.0, &boite.1],
+                    },
                 )?;
-                variant.serialize_field(&boite.0)?;
-                variant.serialize_field(&boite.1)?;
-                variant.end()
+                map.end()
             }
-            Expression::InputParameter(value) => serializer.serialize_newtype_variant(
-                EXPRESSION_NAME,
-                8,
-                EXPRESSION_VARIANTS[8],
-                value,
-            ),
-            Expression::PlayerParameter(value) => serializer.serialize_newtype_variant(
-                EXPRESSION_NAME,
-                9,
-                EXPRESSION_VARIANTS[9],
-                value,
-            ),
-            Expression::StringParameter(value) => serializer.serialize_newtype_variant(
-                EXPRESSION_NAME,
-                10,
-                EXPRESSION_VARIANTS[10],
-                value,
-            ),
-            Expression::ObjectParameter(value) => serializer.serialize_newtype_variant(
-                EXPRESSION_NAME,
-                11,
-                EXPRESSION_VARIANTS[11],
-                value,
-            ),
+            Expression::InputParameter(value) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(EXPRESSION_VARIANTS[8], value)?;
+                map.end()
+            }
+            Expression::PlayerParameter(value) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(EXPRESSION_VARIANTS[9], value)?;
+                map.end()
+            }
+            Expression::StringParameter(value) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(EXPRESSION_VARIANTS[10], value)?;
+                map.end()
+            }
+            Expression::ObjectParameter(value) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(EXPRESSION_VARIANTS[11], value)?;
+                map.end()
+            }
             Expression::TodoEC => Err(S::Error::custom(
                 "serialization of expressions with tag 0xec is not yet supported",
             )),
-            Expression::Text(boxed_text) => serializer.serialize_newtype_variant(
-                EXPRESSION_NAME,
-                13,
-                EXPRESSION_VARIANTS[13],
-                boxed_text,
-            ),
+            Expression::Text(boxed_text) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(EXPRESSION_VARIANTS[13], boxed_text)?;
+                map.end()
+            }
         }
     }
 }
@@ -347,6 +354,134 @@ where
     }
 }
 
+struct SingletonMapAdapter<D> {
+    name: &'static str,
+    delegate: D,
+}
+
+impl<'de, D> EnumAccess<'de> for SingletonMapAdapter<D>
+where
+    D: MapAccess<'de>,
+{
+    type Error = D::Error;
+    type Variant = Self;
+
+    fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
+    where
+        V: serde::de::DeserializeSeed<'de>,
+    {
+        match self.delegate.next_key_seed(seed)? {
+            Some(value) => Ok((value, self)),
+            None => Err(DeError::invalid_value(
+                Unexpected::Map,
+                &"map with a single key",
+            )),
+        }
+    }
+}
+
+impl<'de, D> VariantAccess<'de> for SingletonMapAdapter<D>
+where
+    D: MapAccess<'de>,
+{
+    type Error = D::Error;
+
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        Err(DeError::invalid_type(Unexpected::Map, &"unit variant"))
+    }
+
+    fn newtype_variant_seed<T>(mut self, seed: T) -> Result<T::Value, Self::Error>
+    where
+        T: serde::de::DeserializeSeed<'de>,
+    {
+        let value = self.delegate.next_value_seed(seed)?;
+        match self.delegate.next_key()? {
+            None => Ok(value),
+            Some(IgnoredAny) => Err(DeError::invalid_value(
+                Unexpected::Map,
+                &"map with a single key",
+            )),
+        }
+    }
+
+    fn tuple_variant<V>(mut self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        let value = self
+            .delegate
+            .next_value_seed(TupleVariantSeed { len, visitor })?;
+        match self.delegate.next_key()? {
+            None => Ok(value),
+            Some(IgnoredAny) => Err(DeError::invalid_value(
+                Unexpected::Map,
+                &"map with a single key",
+            )),
+        }
+    }
+
+    fn struct_variant<V>(
+        mut self,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        let value = self.delegate.next_value_seed(StructVariantSeed {
+            name: self.name,
+            fields,
+            visitor,
+        })?;
+        match self.delegate.next_key()? {
+            None => Ok(value),
+            Some(IgnoredAny) => Err(DeError::invalid_value(
+                Unexpected::Map,
+                &"map with a single key",
+            )),
+        }
+    }
+}
+
+struct TupleVariantSeed<V> {
+    len: usize,
+    visitor: V,
+}
+
+impl<'de, V> DeserializeSeed<'de> for TupleVariantSeed<V>
+where
+    V: Visitor<'de>,
+{
+    type Value = V::Value;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_tuple(self.len, self.visitor)
+    }
+}
+
+struct StructVariantSeed<V> {
+    name: &'static str,
+    fields: &'static [&'static str],
+    visitor: V,
+}
+
+impl<'de, V> DeserializeSeed<'de> for StructVariantSeed<V>
+where
+    V: Visitor<'de>,
+{
+    type Value = V::Value;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_struct(self.name, self.fields, self.visitor)
+    }
+}
+
 struct ExpressionVisitor;
 
 impl<'de> Visitor<'de> for ExpressionVisitor {
@@ -354,6 +489,16 @@ impl<'de> Visitor<'de> for ExpressionVisitor {
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("an enum representing an expression")
+    }
+
+    fn visit_map<M>(self, access: M) -> Result<Expression, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        self.visit_enum(SingletonMapAdapter {
+            name: EXPRESSION_NAME,
+            delegate: access,
+        })
     }
 
     fn visit_enum<E>(self, access: E) -> Result<Expression, E::Error>
@@ -420,7 +565,83 @@ impl<'de> Deserialize<'de> for Expression {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_enum("expr", EXPRESSION_VARIANTS, ExpressionVisitor)
+        deserializer.deserialize_map(ExpressionVisitor)
+    }
+}
+
+struct IfSegmentBody<'a> {
+    condition: &'a Expression,
+    true_value: &'a Expression,
+    false_value: &'a Expression,
+}
+
+impl<'a> Serialize for IfSegmentBody<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(3))?;
+        map.serialize_entry("condition", self.condition)?;
+        map.serialize_entry("true_value", self.true_value)?;
+        map.serialize_entry("false_value", self.false_value)?;
+        map.end()
+    }
+}
+
+struct SheetSegmentBody<'a> {
+    name: &'a Expression,
+    row_index: &'a Expression,
+    column_index: &'a Option<Expression>,
+    parameters: &'a Vec<Expression>,
+}
+
+impl<'a> Serialize for SheetSegmentBody<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(4))?;
+        map.serialize_entry("name", self.name)?;
+        map.serialize_entry("row_index", self.row_index)?;
+        map.serialize_entry("column_index", self.column_index)?;
+        map.serialize_entry("parameters", self.parameters)?;
+        map.end()
+    }
+}
+
+struct SplitSegmentBody<'a> {
+    input: &'a Expression,
+    separator: &'a Expression,
+    index: &'a Expression,
+}
+
+impl<'a> Serialize for SplitSegmentBody<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(3))?;
+        map.serialize_entry("input", self.input)?;
+        map.serialize_entry("separator", self.separator)?;
+        map.serialize_entry("index", self.index)?;
+        map.end()
+    }
+}
+
+struct RubySegmentBody<'a> {
+    annotated: &'a Expression,
+    annotation: &'a Expression,
+}
+
+impl<'a> Serialize for RubySegmentBody<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("annotated", self.annotated)?;
+        map.serialize_entry("annotation", self.annotation)?;
+        map.end()
     }
 }
 
@@ -430,32 +651,34 @@ impl Serialize for Segment {
         S: Serializer,
     {
         match self {
-            Segment::Literal(literal_text) => serializer.serialize_newtype_variant(
-                SEGMENT_NAME,
-                0,
-                SEGMENT_VARIANTS[0],
-                literal_text,
-            ),
+            Segment::Literal(literal_text) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(SEGMENT_VARIANTS[0], literal_text)?;
+                map.end()
+            }
             Segment::TodoResetTime(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x06 is not yet supported",
             )),
-            Segment::Time(timestamp) => serializer.serialize_newtype_variant(
-                SEGMENT_NAME,
-                2,
-                SEGMENT_VARIANTS[2],
-                timestamp,
-            ),
+            Segment::Time(timestamp) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(SEGMENT_VARIANTS[2], timestamp)?;
+                map.end()
+            }
             Segment::If {
                 condition,
                 true_value,
                 false_value,
             } => {
-                let mut variant =
-                    serializer.serialize_struct_variant(SEGMENT_NAME, 3, SEGMENT_VARIANTS[3], 3)?;
-                variant.serialize_field("condition", condition)?;
-                variant.serialize_field("true_value", true_value)?;
-                variant.serialize_field("false_value", false_value)?;
-                variant.end()
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    SEGMENT_VARIANTS[3],
+                    &IfSegmentBody {
+                        condition,
+                        true_value,
+                        false_value,
+                    },
+                )?;
+                map.end()
             }
             Segment::Switch {
                 discriminant: _discriminant,
@@ -499,7 +722,9 @@ impl Serialize for Segment {
                 "serialization of segments with tag 0x19 is not yet supported",
             )),
             Segment::Emphasis(flag) => {
-                serializer.serialize_newtype_variant(SEGMENT_NAME, 15, SEGMENT_VARIANTS[15], flag)
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(SEGMENT_VARIANTS[15], flag)?;
+                map.end()
             }
             Segment::Todo1B(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x1b is not yet supported",
@@ -534,48 +759,56 @@ impl Serialize for Segment {
                 column_index,
                 parameters,
             } => {
-                let mut variant = serializer.serialize_struct_variant(
-                    SEGMENT_NAME,
-                    25,
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
                     SEGMENT_VARIANTS[25],
-                    4,
+                    &SheetSegmentBody {
+                        name,
+                        row_index,
+                        column_index,
+                        parameters,
+                    },
                 )?;
-                variant.serialize_field("name", name)?;
-                variant.serialize_field("row_index", row_index)?;
-                variant.serialize_field("column_index", column_index)?;
-                variant.serialize_field("parameters", parameters)?;
-                variant.end()
+                map.end()
             }
             Segment::StringValue(expr) => {
-                serializer.serialize_newtype_variant(SEGMENT_NAME, 26, SEGMENT_VARIANTS[26], expr)
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(SEGMENT_VARIANTS[26], expr)?;
+                map.end()
             }
             Segment::StringValueSentenceCase(expr) => {
-                serializer.serialize_newtype_variant(SEGMENT_NAME, 27, SEGMENT_VARIANTS[27], expr)
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(SEGMENT_VARIANTS[27], expr)?;
+                map.end()
             }
             Segment::Split {
                 input,
                 separator,
                 index,
             } => {
-                let mut variant = serializer.serialize_struct_variant(
-                    SEGMENT_NAME,
-                    28,
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
                     SEGMENT_VARIANTS[28],
-                    3,
+                    &SplitSegmentBody {
+                        input,
+                        separator,
+                        index,
+                    },
                 )?;
-                variant.serialize_field("input", input)?;
-                variant.serialize_field("separator", separator)?;
-                variant.serialize_field("index", index)?;
-                variant.end()
+                map.end()
             }
             Segment::StringValueTitleCase(expr) => {
-                serializer.serialize_newtype_variant(SEGMENT_NAME, 29, SEGMENT_VARIANTS[29], expr)
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(SEGMENT_VARIANTS[29], expr)?;
+                map.end()
             }
             Segment::AutoTranslate(_, _) => Err(S::Error::custom(
                 "serialization of segments with tag 0x2e is not yet supported",
             )),
             Segment::StringValueLowerCase(expr) => {
-                serializer.serialize_newtype_variant(SEGMENT_NAME, 31, SEGMENT_VARIANTS[31], expr)
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(SEGMENT_VARIANTS[31], expr)?;
+                map.end()
             }
             Segment::SheetJa(_) => Err(S::Error::custom(
                 "serialization of segments with tag 0x30 is not yet supported",
@@ -602,15 +835,15 @@ impl Serialize for Segment {
                 annotated,
                 annotation,
             } => {
-                let mut variant = serializer.serialize_struct_variant(
-                    SEGMENT_NAME,
-                    39,
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
                     SEGMENT_VARIANTS[39],
-                    2,
+                    &RubySegmentBody {
+                        annotated,
+                        annotation,
+                    },
                 )?;
-                variant.serialize_field("annotated", annotated)?;
-                variant.serialize_field("annotation", annotation)?;
-                variant.end()
+                map.end()
             }
             Segment::ZeroPaddedValue {
                 value: _value,
@@ -1085,6 +1318,32 @@ impl<'de> Visitor<'de> for SegmentVisitor {
         formatter.write_str("an enum representing a text segment")
     }
 
+    fn visit_map<M>(self, access: M) -> Result<Segment, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        self.visit_enum(SingletonMapAdapter {
+            name: SEGMENT_NAME,
+            delegate: access,
+        })
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Segment, E>
+    where
+        E: DeError,
+    {
+        match value {
+            "new_line" => Ok(Segment::NewLine),
+            "soft_hyphen" => Ok(Segment::SoftHyphen),
+            "non_breaking_space" => Ok(Segment::NonBreakingSpace),
+            "dash" => Ok(Segment::Dash),
+            _ => Err(E::invalid_value(
+                Unexpected::Str(value),
+                &"`new_line`, `soft_hyphen`, `non_breaking_space`, or `dash`",
+            )),
+        }
+    }
+
     fn visit_enum<E>(self, access: E) -> Result<Segment, E::Error>
     where
         E: EnumAccess<'de>,
@@ -1143,7 +1402,7 @@ impl<'de> Deserialize<'de> for Segment {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_enum("segment", SEGMENT_VARIANTS, SegmentVisitor)
+        deserializer.deserialize_any(SegmentVisitor)
     }
 }
 
@@ -1205,22 +1464,20 @@ mod tests {
         assert_tokens(
             &Expression::Integer(10),
             &[
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(10),
+                Token::MapEnd,
             ],
         );
 
         assert_tokens(
             &Expression::TopLevelParameter(15),
             &[
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "param",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("param"),
                 Token::U8(15),
+                Token::MapEnd,
             ],
         );
 
@@ -1230,44 +1487,38 @@ mod tests {
                 Expression::Integer(1),
             ))),
             &[
-                Token::TupleVariant {
-                    name: "expr",
-                    variant: "geq",
-                    len: 2,
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("geq"),
+                Token::Seq { len: Some(2) },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(0),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::MapEnd,
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
-                Token::TupleVariantEnd,
+                Token::MapEnd,
+                Token::SeqEnd,
+                Token::MapEnd,
             ],
         );
 
         assert_tokens(
             &Expression::GreaterThan(Box::new((Expression::Integer(0), Expression::Integer(1)))),
             &[
-                Token::TupleVariant {
-                    name: "expr",
-                    variant: "gt",
-                    len: 2,
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("gt"),
+                Token::Seq { len: Some(2) },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(0),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::MapEnd,
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
-                Token::TupleVariantEnd,
+                Token::MapEnd,
+                Token::SeqEnd,
+                Token::MapEnd,
             ],
         );
 
@@ -1277,132 +1528,116 @@ mod tests {
                 Expression::Integer(1),
             ))),
             &[
-                Token::TupleVariant {
-                    name: "expr",
-                    variant: "leq",
-                    len: 2,
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("leq"),
+                Token::Seq { len: Some(2) },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(0),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::MapEnd,
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
-                Token::TupleVariantEnd,
+                Token::MapEnd,
+                Token::SeqEnd,
+                Token::MapEnd,
             ],
         );
 
         assert_tokens(
             &Expression::LessThan(Box::new((Expression::Integer(0), Expression::Integer(1)))),
             &[
-                Token::TupleVariant {
-                    name: "expr",
-                    variant: "lt",
-                    len: 2,
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("lt"),
+                Token::Seq { len: Some(2) },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(0),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::MapEnd,
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
-                Token::TupleVariantEnd,
+                Token::MapEnd,
+                Token::SeqEnd,
+                Token::MapEnd,
             ],
         );
 
         assert_tokens(
             &Expression::Equal(Box::new((Expression::Integer(0), Expression::Integer(1)))),
             &[
-                Token::TupleVariant {
-                    name: "expr",
-                    variant: "eq",
-                    len: 2,
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("eq"),
+                Token::Seq { len: Some(2) },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(0),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::MapEnd,
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
-                Token::TupleVariantEnd,
+                Token::MapEnd,
+                Token::SeqEnd,
+                Token::MapEnd,
             ],
         );
 
         assert_tokens(
             &Expression::NotEqual(Box::new((Expression::Integer(0), Expression::Integer(1)))),
             &[
-                Token::TupleVariant {
-                    name: "expr",
-                    variant: "neq",
-                    len: 2,
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("neq"),
+                Token::Seq { len: Some(2) },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(0),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::MapEnd,
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
-                Token::TupleVariantEnd,
+                Token::MapEnd,
+                Token::SeqEnd,
+                Token::MapEnd,
             ],
         );
 
         assert_tokens(
             &Expression::InputParameter(9),
             &[
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "input_param",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("input_param"),
                 Token::U32(9),
+                Token::MapEnd,
             ],
         );
 
         assert_tokens(
             &Expression::PlayerParameter(4),
             &[
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "player_param",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("player_param"),
                 Token::U32(4),
+                Token::MapEnd,
             ],
         );
 
         assert_tokens(
             &Expression::StringParameter(8),
             &[
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "string_param",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("string_param"),
                 Token::U32(8),
+                Token::MapEnd,
             ],
         );
 
         assert_tokens(
             &Expression::ObjectParameter(82),
             &[
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "object_param",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("object_param"),
                 Token::U32(82),
+                Token::MapEnd,
             ],
         );
 
@@ -1417,17 +1652,15 @@ mod tests {
                 "Hello, world".to_string(),
             )])),
             &[
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("Hello, world"),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
             ],
         );
     }
@@ -1437,11 +1670,10 @@ mod tests {
         assert_tokens(
             &Segment::Literal("Test message".to_string()),
             &[
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("Test message"),
+                Token::MapEnd,
             ],
         );
 
@@ -1454,15 +1686,13 @@ mod tests {
         assert_tokens(
             &Segment::Time(Expression::Integer(1285056000)),
             &[
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "time",
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("time"),
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1285056000),
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
 
@@ -1475,42 +1705,36 @@ mod tests {
                 )])),
             },
             &[
-                Token::StructVariant {
-                    name: "segment",
-                    variant: "if",
-                    len: 3,
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("if"),
+                Token::Map { len: Some(3) },
                 Token::Str("condition"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
+                Token::MapEnd,
                 Token::Str("true_value"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("true"),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
                 Token::Str("false_value"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("false"),
+                Token::MapEnd,
                 Token::SeqEnd,
-                Token::StructVariantEnd,
+                Token::MapEnd,
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
 
@@ -1599,11 +1823,10 @@ mod tests {
         assert_tokens(
             &Segment::Emphasis(false),
             &[
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "emphasis",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("emphasis"),
                 Token::Bool(false),
+                Token::MapEnd,
             ],
         );
 
@@ -1677,45 +1900,39 @@ mod tests {
                 parameters: vec![Expression::Integer(5)],
             },
             &[
-                Token::StructVariant {
-                    name: "segment",
-                    variant: "sheet",
-                    len: 4,
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("sheet"),
+                Token::Map { len: Some(4) },
                 Token::Str("name"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("SheetName"),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
                 Token::Str("row_index"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
+                Token::MapEnd,
                 Token::Str("column_index"),
                 Token::Some,
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(2),
+                Token::MapEnd,
                 Token::Str("parameters"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(5),
+                Token::MapEnd,
                 Token::SeqEnd,
-                Token::StructVariantEnd,
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
         assert_tokens(
@@ -1726,35 +1943,31 @@ mod tests {
                 parameters: vec![],
             },
             &[
-                Token::StructVariant {
-                    name: "segment",
-                    variant: "sheet",
-                    len: 4,
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("sheet"),
+                Token::Map { len: Some(4) },
                 Token::Str("name"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("SheetName"),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
                 Token::Str("row_index"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
+                Token::MapEnd,
                 Token::Str("column_index"),
                 Token::None,
                 Token::Str("parameters"),
                 Token::Seq { len: Some(0) },
                 Token::SeqEnd,
-                Token::StructVariantEnd,
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
 
@@ -1763,21 +1976,18 @@ mod tests {
                 "contents".to_string(),
             )]))),
             &[
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "string_value",
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("string_value"),
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("contents"),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
 
@@ -1786,21 +1996,18 @@ mod tests {
                 "contents".to_string(),
             )]))),
             &[
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "string_value_sentence_case",
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("string_value_sentence_case"),
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("contents"),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
 
@@ -1813,42 +2020,36 @@ mod tests {
                 index: Expression::Integer(1),
             },
             &[
-                Token::StructVariant {
-                    name: "segment",
-                    variant: "split",
-                    len: 3,
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("split"),
+                Token::Map { len: Some(3) },
                 Token::Str("input"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("First Last"),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
                 Token::Str("separator"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str(" "),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
                 Token::Str("index"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "int",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("int"),
                 Token::U32(1),
-                Token::StructVariantEnd,
+                Token::MapEnd,
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
 
@@ -1857,21 +2058,18 @@ mod tests {
                 "contents".to_string(),
             )]))),
             &[
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "string_value_title_case",
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("string_value_title_case"),
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("contents"),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
 
@@ -1886,21 +2084,18 @@ mod tests {
                 "contents".to_string(),
             )]))),
             &[
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "string_value_lower_case",
-                },
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("string_value_lower_case"),
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
                 Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
                 Token::Str("contents"),
+                Token::MapEnd,
                 Token::SeqEnd,
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
 
@@ -1954,36 +2149,31 @@ mod tests {
                 annotation: Expression::Text(Text::new(vec![Segment::Literal("ruby".to_string())])),
             },
             &[
-                Token::StructVariant {
-                    name: "segment",
-                    variant: "ruby",
-                    len: 2,
-                },
-                Token::Str("annotated"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
-                Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
-                Token::Str("main text"),
-                Token::SeqEnd,
-                Token::Str("annotation"),
-                Token::NewtypeVariant {
-                    name: "expr",
-                    variant: "text",
-                },
-                Token::Seq { len: Some(1) },
-                Token::NewtypeVariant {
-                    name: "segment",
-                    variant: "literal",
-                },
+                Token::Map { len: Some(1) },
                 Token::Str("ruby"),
+                Token::Map { len: Some(2) },
+                Token::Str("annotated"),
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
+                Token::Seq { len: Some(1) },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
+                Token::Str("main text"),
+                Token::MapEnd,
                 Token::SeqEnd,
-                Token::StructVariantEnd,
+                Token::MapEnd,
+                Token::Str("annotation"),
+                Token::Map { len: Some(1) },
+                Token::Str("text"),
+                Token::Seq { len: Some(1) },
+                Token::Map { len: Some(1) },
+                Token::Str("literal"),
+                Token::Str("ruby"),
+                Token::MapEnd,
+                Token::SeqEnd,
+                Token::MapEnd,
+                Token::MapEnd,
+                Token::MapEnd,
             ],
         );
 

@@ -9,7 +9,7 @@ clap = { version = "4.0.18", features = ["cargo", "env"] }
 dotenvy = "0.15.6"
 fanttheysia-common = { path = "../fanttheysia-common" }
 serde = { version = "1.0.136", features = ["derive"] }
-serde_yaml = "0.8.13"
+serde_yaml = "0.9.14"
 tomestone-exdf = { path = "../tomestone-exdf" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }
 tomestone-string-interp = { path = "../tomestone-string-interp" }

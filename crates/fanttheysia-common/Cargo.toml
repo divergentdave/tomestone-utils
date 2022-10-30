@@ -5,6 +5,8 @@ authors = ["David Cook <divergentdave@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-serde = "1.0.136"
-serde_yaml = "0.8.13"
+serde = { version = "1.0.136", features = ["derive"] }
 tomestone-string-interp = { path = "../tomestone-string-interp" }
+
+[dev-dependencies]
+serde_yaml = "0.9.14"
