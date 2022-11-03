@@ -7,6 +7,12 @@ updates:
       interval: "weekly"
       day: "friday"
       time: "23:00"
+  - package-ecosystem: "cargo"
+    directory: "/crates/fanttheysia-webapp-frontend"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+      time: "23:00"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
