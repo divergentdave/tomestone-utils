@@ -686,6 +686,13 @@ pub struct Text {
 
 impl Text {
     pub fn new(segments: Vec<Segment>) -> Text {
+        #[cfg(debug_assertions)]
+        if segments.len() > 1 {
+            debug_assert!(segments
+                .iter()
+                .zip(segments[1..].iter())
+                .all(|pair| !(matches!(pair, (Segment::Literal(_), Segment::Literal(_))))));
+        }
         Text { segments }
     }
 
