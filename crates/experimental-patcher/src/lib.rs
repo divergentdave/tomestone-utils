@@ -113,7 +113,7 @@ impl StructuralFindAndReplace {
                     }
                 }
                 if matches {
-                    let mut result = Vec::with_capacity(self.replace.len() + 2);
+                    let mut result = TextAccumulator::with_capacity(self.replace.len() + 2);
                     if let (Some(find_leading_literal), Segment::Literal(text_leading_literal)) =
                         (find_leading_literal, &text[i])
                     {
@@ -135,7 +135,7 @@ impl StructuralFindAndReplace {
                             ));
                         }
                     }
-                    text.splice(i..i + self.find.len(), result.into_iter());
+                    text.splice(i..i + self.find.len(), Text::from(result).into_iter());
                 }
             }
         }
@@ -337,7 +337,6 @@ mod tests {
         visitor.visit_tag_sequence(&mut text);
         assert_eq!(text, vec![Segment::Literal("new".to_string())]);
 
-        /*
         let mut text = vec![
             Segment::Literal(" left".to_string()),
             Segment::Dash,
@@ -345,9 +344,7 @@ mod tests {
         ];
         visitor.visit_tag_sequence(&mut text);
         assert_eq!(text, vec![Segment::Literal(" new".to_string())]);
-        */
 
-        /*
         let mut text = vec![
             Segment::Literal("left".to_string()),
             Segment::Dash,
@@ -355,9 +352,7 @@ mod tests {
         ];
         visitor.visit_tag_sequence(&mut text);
         assert_eq!(text, vec![Segment::Literal("new ".to_string())]);
-        */
 
-        /*
         let mut text = vec![
             Segment::Literal("left".to_string()),
             Segment::Dash,
@@ -367,9 +362,7 @@ mod tests {
         ];
         visitor.visit_tag_sequence(&mut text);
         assert_eq!(text, vec![Segment::Literal("newnew".to_string())]);
-        */
 
-        /*
         let mut text = vec![
             Segment::Literal("left".to_string()),
             Segment::Dash,
@@ -379,9 +372,7 @@ mod tests {
         ];
         visitor.visit_tag_sequence(&mut text);
         assert_eq!(text, vec![Segment::Literal("new new".to_string())]);
-        */
 
-        /*
         let mut text = vec![
             Segment::Literal(" left".to_string()),
             Segment::Dash,
@@ -391,6 +382,5 @@ mod tests {
         ];
         visitor.visit_tag_sequence(&mut text);
         assert_eq!(text, vec![Segment::Literal(" new new ".to_string())]);
-        */
     }
 }
