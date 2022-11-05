@@ -711,7 +711,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 .copy_from_slice(&IndexPointer::Pointer(locator).to_u32().to_le_bytes());
             self.index.write_all(&entry_buffer)?;
             seg_accum.length += 16;
-            seg_accum.hash.as_mut().unwrap().update(&entry_buffer);
+            seg_accum.hash.as_mut().unwrap().update(entry_buffer);
             last_folder_crc = Some(hash.folder_crc);
         }
         if let Some(last_folder) = folder_table.last_mut() {
@@ -768,7 +768,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 index_entry_buf[8..12].copy_from_slice(&(entry.shifted_length + 1).to_le_bytes());
                 self.index.write_all(&index_entry_buf)?;
                 seg_accum.length += 16;
-                seg_accum.hash.as_mut().unwrap().update(&index_entry_buf);
+                seg_accum.hash.as_mut().unwrap().update(index_entry_buf);
             }
         }
 
@@ -781,7 +781,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
             entry_buffer[8..12].copy_from_slice(&folder.files_span.to_le_bytes());
             self.index.write_all(&entry_buffer)?;
             seg_accum.length += 16;
-            seg_accum.hash.as_mut().unwrap().update(&entry_buffer);
+            seg_accum.hash.as_mut().unwrap().update(entry_buffer);
         }
 
         // write updated sqpack and index headers in first index file
@@ -806,7 +806,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
                 .copy_from_slice(&IndexPointer::Pointer(pointer).to_u32().to_le_bytes());
             self.index2.write_all(&entry_buffer)?;
             seg_accum.length += 8;
-            seg_accum.hash.as_mut().unwrap().update(&entry_buffer);
+            seg_accum.hash.as_mut().unwrap().update(entry_buffer);
         }
 
         // unknown data in the second segment.
