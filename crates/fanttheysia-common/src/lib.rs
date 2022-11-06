@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use tomestone_string_interp::{Expression, Segment, Text, TreeNode, Visitor};
 
+mod replace;
+
+pub use replace::StructuralFindAndReplace;
+
 /// Visitor to determine whether an expression tree uses the gender player parameter.
 ///
 /// # Example

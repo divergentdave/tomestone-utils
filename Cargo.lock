@@ -286,6 +286,7 @@ name = "experimental-patcher"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "fanttheysia-common",
  "nom",
  "tomestone-exdf",
  "tomestone-sqpack",

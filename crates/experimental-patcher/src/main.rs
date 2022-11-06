@@ -2,7 +2,7 @@ use std::{path::PathBuf, process};
 
 use clap::{builder::ValueParser, crate_name, crate_version, Arg, Command};
 
-use experimental_patcher::StructuralFindAndReplace;
+use fanttheysia_common::StructuralFindAndReplace;
 use tomestone_exdf::{
     encoding::encode_exdf_page,
     parser::{exdf::Exdf, parse_row},
