@@ -288,6 +288,7 @@ dependencies = [
  "clap",
  "fanttheysia-common",
  "nom",
+ "serde_yaml",
  "tomestone-exdf",
  "tomestone-sqpack",
  "tomestone-string-interp",

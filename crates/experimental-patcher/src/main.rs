@@ -1,8 +1,8 @@
-use std::{path::PathBuf, process};
+use std::{fs::File, path::PathBuf, process};
 
 use clap::{builder::ValueParser, crate_name, crate_version, Arg, Command};
 
-use fanttheysia_common::StructuralFindAndReplace;
+use fanttheysia_common::{StructuralFindAndReplace, TextReplacementRules};
 use tomestone_exdf::{
     encoding::encode_exdf_page,
     parser::{exdf::Exdf, parse_row},
@@ -13,7 +13,7 @@ use tomestone_sqpack::{
     sidetables::build_side_tables,
     Category, Expansion, GameData, IndexHash, IndexHash2, PlatformId, SqPackId,
 };
-use tomestone_string_interp::{Expression, Segment, Text};
+use tomestone_string_interp::Text;
 
 fn app() -> Command {
     Command::new(crate_name!())
@@ -30,6 +30,12 @@ fn app() -> Command {
                 .required(true)
                 .value_parser(ValueParser::path_buf()),
         )
+        .arg(
+            Arg::new("rules")
+                .long("rules")
+                .required(true)
+                .value_parser(ValueParser::path_buf()),
+        )
 }
 
 fn main() {
@@ -38,6 +44,24 @@ fn main() {
     let dest_path = app_matches
         .get_one::<PathBuf>("destination directory")
         .unwrap();
+    let rules_path = app_matches.get_one::<PathBuf>("rules").unwrap();
+
+    let rules = {
+        let file = match File::open(rules_path) {
+            Ok(file) => file,
+            Err(e) => {
+                eprintln!("error: could not open rules file: {}", e);
+                process::exit(1);
+            }
+        };
+        match serde_yaml::from_reader::<_, TextReplacementRules>(file) {
+            Ok(rules) => rules,
+            Err(e) => {
+                eprintln!("error: rules file is malformed: {}", e);
+                process::exit(1);
+            }
+        }
+    };
 
     match (source_path.canonicalize(), dest_path.canonicalize()) {
         (Err(e), _) | (_, Err(e)) => {
@@ -118,6 +142,8 @@ fn main() {
     };
     writer.set_side_table(side_table);
 
+    let mut visitor = StructuralFindAndReplace::new(&rules.structured_text_rules);
+
     let file_iterator =
         source_data_file_set.iter_files_both_hashes(pack_id, source_index, source_index_2);
     for res in file_iterator {
@@ -140,50 +166,33 @@ fn main() {
                             };
                             let mut sub_rows = parse_row(raw_row, &source_addon_dataset.exhf)?;
 
-                            if row_number == 10946 {
-                                for sub_row in &mut sub_rows {
-                                    for cell in sub_row.cells.iter_mut() {
-                                        let text_data_opt = match cell {
-                                            Value::String(text_data) => Some(*text_data),
-                                            Value::StringOwned(text_data) => Some(&**text_data),
-                                            _ => None,
+                            for sub_row in &mut sub_rows {
+                                for cell in sub_row.cells.iter_mut() {
+                                    let text_data_opt = match cell {
+                                        Value::String(text_data) => Some(*text_data),
+                                        Value::StringOwned(text_data) => Some(&**text_data),
+                                        _ => None,
+                                    };
+                                    if let Some(text_data) = text_data_opt {
+                                        let mut text = match Text::parse(text_data) {
+                                            Ok(text) => text,
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "error: couldn't parse tagged text: {}",
+                                                    e
+                                                );
+                                                process::exit(1);
+                                            }
                                         };
-                                        if let Some(text_data) = text_data_opt {
-                                            let mut text = match Text::parse(text_data) {
-                                                Ok(text) => text,
-                                                Err(e) => {
-                                                    eprintln!(
-                                                        "error: couldn't parse tagged text: {}",
-                                                        e
-                                                    );
-                                                    process::exit(1);
-                                                }
-                                            };
-                                            let find = vec![Segment::StringValue(Expression::StringParameter(1))];
-                                            let replace = vec![
-                                                Segment::StringValue(Expression::StringParameter(1)),
-                                                Segment::Literal(" (#2: \"".to_string()),
-                                                Segment::StringValueSentenceCase(Expression::StringParameter(1)),
-                                                Segment::Literal("\", #3: \"".to_string()),
-                                                Segment::StringValueTitleCase(Expression::StringParameter(1)),
-                                                Segment::Literal("\")".to_string()),
-                                                Segment::NewLine,
-                                                Segment::Literal("1: \"".to_string()),
-                                                Segment::StringValue(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))), // no change
-                                                Segment::Literal("\", 2: \"".to_string()),
-                                                Segment::StringValueSentenceCase(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))), // leading character capitalized
-                                                Segment::Literal("\", 3: \"".to_string()),
-                                                Segment::StringValueTitleCase(Expression::Text(Text::new(vec![Segment::Literal("pen pineapple apple pen".to_string())]))), // each word capitalized
-                                                Segment::Literal("\"".to_string()),
-                                            ];
-                                            let mut visitor = StructuralFindAndReplace::new(find, replace);
-                                            visitor.visit_text(&mut text);
-                                            match tomestone_string_interp::encode(&text) {
-                                                Ok(encoded) => *cell = Value::StringOwned(encoded),
-                                                Err(e) => {
-                                                    eprintln!("error: couldn't re-encode modified text: {}", e);
-                                                    process::exit(1);
-                                                }
+                                        visitor.visit_text(&mut text);
+                                        match tomestone_string_interp::encode(&text) {
+                                            Ok(encoded) => *cell = Value::StringOwned(encoded),
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "error: couldn't re-encode modified text: {}",
+                                                    e
+                                                );
+                                                process::exit(1);
                                             }
                                         }
                                     }
