@@ -137,11 +137,11 @@ impl ColumnFormat {
 #[derive(Debug, Clone)]
 pub struct ColumnDefinition {
     /// Data type of the column.
-    format: ColumnFormat,
+    pub format: ColumnFormat,
     /// Offset of the column inside the fixed-width portion of an encoded row.
-    offset: usize,
+    pub offset: usize,
     /// Index of the column in the table's schema.
-    index: usize,
+    pub index: usize,
 }
 
 #[derive(PartialEq)]
