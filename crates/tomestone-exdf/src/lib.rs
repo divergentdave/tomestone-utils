@@ -144,6 +144,28 @@ pub struct ColumnDefinition {
     index: usize,
 }
 
+impl ColumnDefinition {
+    pub fn new(format: ColumnFormat, offset: usize, index: usize) -> ColumnDefinition {
+        ColumnDefinition {
+            format,
+            offset,
+            index,
+        }
+    }
+
+    pub fn format(&self) -> &ColumnFormat {
+        &self.format
+    }
+
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn index(&self) -> usize {
+        self.index
+    }
+}
+
 #[derive(PartialEq)]
 pub enum Value<'a> {
     String(&'a [u8]),
