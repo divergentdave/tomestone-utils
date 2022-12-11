@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 nom = "7.1.0"
-serde = "1.0.136"
+serde = "1.0.149"
 
 [dev-dependencies]
 dotenvy = "0.15.6"
