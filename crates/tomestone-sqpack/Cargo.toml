@@ -17,7 +17,7 @@ r2d2 = "0.8.9"
 r2d2_sqlite = "0.21.0"
 regex = "1.7.0"
 rusqlite = { version = "0.28.0", features = ["bundled"] }
-sha-1 = "0.10.0"
+sha1 = "0.10.5"
 tomestone-common = { path = "../tomestone-common" }
 
 [dev-dependencies]
