@@ -15,7 +15,7 @@ gloo-timers = "0.2.5"
 gloo-worker = "0.2.1"
 lazy_static = "1.4.0"
 monaco = { version = "0.3.0", features = ["yew-components"] }
-serde = { version = "1.0.151", features = ["derive"] }
+serde = { version = "1.0.152", features = ["derive"] }
 serde_yaml = "0.9.17"
 tomestone-string-interp = { path = "../tomestone-string-interp" }
 wasm-bindgen =  "0.2.80"
