@@ -9,4 +9,4 @@ serde = { version = "1.0.149", features = ["derive"] }
 tomestone-string-interp = { path = "../tomestone-string-interp" }
 
 [dev-dependencies]
-serde_yaml = "0.9.14"
+serde_yaml = "0.9.17"
