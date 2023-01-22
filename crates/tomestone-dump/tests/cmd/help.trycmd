@@ -14,8 +14,8 @@ Commands:
 
 Options:
       --ffxiv-install-dir <ffxiv-install-dir>  [env: FFXIV_INSTALL_DIR=]
-  -h, --help                                   Print help information
-  -V, --version                                Print version information
+  -h, --help                                   Print help
+  -V, --version                                Print version
 
 ```
 
@@ -30,7 +30,7 @@ Arguments:
 
 Options:
   -l, --language <language>  [possible values: ja, en, de, fr, cns, cnt, kr]
-  -h, --help                 Print help information
+  -h, --help                 Print help
 
 ```
 
@@ -46,6 +46,6 @@ Arguments:
 
 Options:
   -i, --ignore-case  
-  -h, --help         Print help information
+  -h, --help         Print help
 
 ```
