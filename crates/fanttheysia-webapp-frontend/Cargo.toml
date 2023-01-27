@@ -11,7 +11,7 @@ gloo-console = "0.2.1"
 gloo-events = "0.1.1"
 gloo-file = "0.2.1"
 gloo-storage = "0.2.0"
-gloo-timers = "0.2.5"
+gloo-timers = "0.2.6"
 gloo-worker = "0.2.1"
 lazy_static = "1.4.0"
 monaco = { version = "0.3.0", features = ["yew-components"] }
