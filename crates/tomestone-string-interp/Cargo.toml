@@ -10,7 +10,7 @@ serde = "1.0.149"
 
 [dev-dependencies]
 dotenvy = "0.15.6"
-serde_test = "1.0.151"
+serde_test = "1.0.158"
 serde_yaml = "0.9.17"
 tomestone-common = { path = "../tomestone-common" }
 tomestone-exdf = { path = "../tomestone-exdf" }
