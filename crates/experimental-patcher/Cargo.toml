@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.1.1", features = ["cargo"] }
 fanttheysia-common = { path = "../fanttheysia-common" }
-nom = "7.1.0"
+nom = "7.1.3"
 serde_yaml = "0.9.17"
 tomestone-exdf = { path = "../tomestone-exdf" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }
