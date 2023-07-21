@@ -15,6 +15,6 @@ tomestone-sqpack = { path = "../tomestone-sqpack" }
 tomestone-string-interp = { path = "../tomestone-string-interp" }
 
 [dev-dependencies]
-tempfile = "3.3.0"
+tempfile = "3.7.0"
 tomestone-common = { path = "../tomestone-common" }
 trycmd = "0.14.10"
