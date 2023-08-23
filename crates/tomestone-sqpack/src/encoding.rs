@@ -944,7 +944,7 @@ impl FreeList {
         // Use a reverse range iterator to check the free list entry immediately before the pivot.
         // If there is an entry, and it covers the entire requested range, then we can remove it,
         // split it, re-insert the remainders, and return success.
-        if let Some(left_free_entry) = self.inner.range(..=pivot.clone()).rev().next() {
+        if let Some(left_free_entry) = self.inner.range(..=pivot.clone()).next_back() {
             if left_free_entry.0.contains(&to_reserve.start)
                 && left_free_entry.0.contains(&(to_reserve.end - 1))
             {
@@ -984,7 +984,7 @@ impl FreeList {
         // within a free list entry. If so, and there's enough room from the start of the search
         // range to the end of the free list entry for the requested length, carve it up and
         // return it.
-        if let Some(left_free_entry) = self.inner.range(..=pivot.clone()).rev().next() {
+        if let Some(left_free_entry) = self.inner.range(..=pivot.clone()).next_back() {
             if left_free_entry.0.contains(&search_range_start)
                 && left_free_entry
                     .0
