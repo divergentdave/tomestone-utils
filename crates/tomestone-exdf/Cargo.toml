@@ -5,7 +5,7 @@ authors = ["David Cook <divergentdave@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.1.1", features = ["derive"] }
+clap = { version = "4.4.3", features = ["derive"] }
 nom = "7.1.0"
 tomestone-common = { path = "../tomestone-common" }
 tomestone-sqpack = { path = "../tomestone-sqpack" }
