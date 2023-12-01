@@ -18,6 +18,6 @@ monaco = { version = "0.3.0", features = ["yew-components"] }
 serde = { version = "1.0.160", features = ["derive"] }
 serde_yaml = "0.9.17"
 tomestone-string-interp = { path = "../tomestone-string-interp" }
-wasm-bindgen =  "0.2.80"
+wasm-bindgen =  "0.2.89"
 web-sys = { version = "0.3.57", features = ["Document", "Element", "HtmlAnchorElement"] }
 yew = "0.19.3"
