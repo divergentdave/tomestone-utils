@@ -5,7 +5,7 @@ authors = ["David Cook <divergentdave@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.1.1", features = ["cargo", "env"] }
+clap = { version = "4.4.10", features = ["cargo", "env"] }
 dotenvy = "0.15.6"
 fanttheysia-common = { path = "../fanttheysia-common" }
 serde = { version = "1.0.160", features = ["derive"] }
