@@ -466,6 +466,7 @@ pub enum Expansion {
     Ex2 = 2,
     Ex3 = 3,
     Ex4 = 4,
+    Ex5 = 5,
 }
 
 impl Expansion {
@@ -476,6 +477,7 @@ impl Expansion {
             "ex2" => Ok(Expansion::Ex2),
             "ex3" => Ok(Expansion::Ex3),
             "ex4" => Ok(Expansion::Ex4),
+            "ex5" => Ok(Expansion::Ex5),
             _ => Err(EnumParseError),
         }
     }
@@ -487,17 +489,19 @@ impl Expansion {
             2 => Ok(Expansion::Ex2),
             3 => Ok(Expansion::Ex3),
             4 => Ok(Expansion::Ex4),
+            5 => Ok(Expansion::Ex5),
             _ => Err(EnumParseError),
         }
     }
 
     pub fn iter_all() -> impl Iterator<Item = &'static Expansion> {
-        const LIST: [Expansion; 5] = [
+        const LIST: [Expansion; 6] = [
             Expansion::Base,
             Expansion::Ex1,
             Expansion::Ex2,
             Expansion::Ex3,
             Expansion::Ex4,
+            Expansion::Ex5,
         ];
         LIST.iter()
     }
@@ -509,6 +513,7 @@ impl Expansion {
             Expansion::Ex2 => "ex2",
             Expansion::Ex3 => "ex3",
             Expansion::Ex4 => "ex4",
+            Expansion::Ex5 => "ex5",
         }
     }
 }
@@ -1078,6 +1083,10 @@ mod tests {
             Expansion::parse_name(Expansion::Ex4.name()).unwrap(),
             Expansion::Ex4
         );
+        assert_eq!(
+            Expansion::parse_name(Expansion::Ex5.name()).unwrap(),
+            Expansion::Ex5
+        );
 
         assert_eq!(Expansion::from_u8(0).unwrap() as u8, 0);
         assert_eq!(Expansion::from_u8(1).unwrap() as u8, 1);
@@ -1103,6 +1112,10 @@ mod tests {
         assert_eq!(
             Expansion::from_u8(Expansion::Ex4 as u8).unwrap(),
             Expansion::Ex4
+        );
+        assert_eq!(
+            Expansion::from_u8(Expansion::Ex5 as u8).unwrap(),
+            Expansion::Ex5
         );
     }
 
