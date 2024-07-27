@@ -530,7 +530,7 @@ fn build_template(
             after: Text::new(vec![Segment::Literal("".to_string())]),
         });
     });
-    rules.pvp_rank_rules.extend(pvp_rank_set.into_iter());
+    rules.pvp_rank_rules.extend(pvp_rank_set);
 
     if serialization_error_count > 0 {
         eprintln!(

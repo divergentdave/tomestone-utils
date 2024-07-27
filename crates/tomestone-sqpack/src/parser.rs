@@ -287,10 +287,7 @@ fn data_entry_header_common(input: &[u8]) -> IResult<&[u8], (u32, DataEntryHeade
 pub fn type_2_block_table<'a>(
     num_blocks: u16,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(u32, u16, u16)>, nom::error::Error<&'a [u8]>> {
-    count(
-        tuple((le_u32, le_u16, le_u16)),
-        num_blocks.try_into().unwrap(),
-    )
+    count(tuple((le_u32, le_u16, le_u16)), num_blocks.into())
 }
 
 fn type_3_block_table<'a>(
@@ -317,7 +314,7 @@ fn type_4_block_table<'a>(
                 le_u32, // frame_block_size_offset
                 le_u32, // frame_block_size_count
             )),
-            num_blocks.try_into().unwrap(),
+            num_blocks.into(),
         )(input)?;
         let size_field_count = frame_infos
             .iter()
@@ -725,11 +722,11 @@ pub fn decompress_file(mut file: &mut File, data_entry_offset: u32) -> Result<Ve
         let (compressed_length, decompressed_length) =
             drive_streaming_parser_smaller(&mut *file, block_header)?;
         if compressed_length == 32000 {
-            let mut take = file.take(decompressed_length.try_into().unwrap());
+            let mut take = file.take(decompressed_length.into());
             take.read_to_end(&mut decompressed)?;
             file = take.into_inner();
         } else {
-            let mut take = file.take(compressed_length.try_into().unwrap());
+            let mut take = file.take(compressed_length.into());
             take.read_to_end(&mut compressed)?;
             let block_decompressed =
                 decompress_sqpack_block(&compressed, decompressed_length.try_into().unwrap())?;

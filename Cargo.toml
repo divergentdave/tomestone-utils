@@ -1,9 +1,10 @@
 [workspace]
 members = ["crates/*"]
 
-# Exclude placeholder crates
 exclude = [
     "crates/fanttheysia-webapp-backend",
     "crates/fanttheysia-webapp-frontend",
     "crates/tomestone-explorer",
 ]
+
+resolver = "2"

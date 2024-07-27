@@ -34,6 +34,7 @@ enum Message {
     /// Signals that the window has been resized, and the editor's size should be recalculated.
     WindowResize,
     /// Incoming responses from the worker's bridge.
+    #[allow(clippy::enum_variant_names)]
     WorkerMessage(Response),
     /// Fired when the user clicks on the "open" button.
     OpenFileClick,
@@ -105,7 +106,7 @@ struct Model {
 
 impl Model {
     fn load_from_file(&mut self, ctx: &Context<Self>, files: gloo_file::FileList) {
-        let file = if let Some(file) = files.get(0) {
+        let file = if let Some(file) = files.first() {
             file
         } else {
             // no files were selected

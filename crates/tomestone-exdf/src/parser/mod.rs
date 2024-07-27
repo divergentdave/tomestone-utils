@@ -17,7 +17,7 @@ pub fn parse_row<'a>(
     row_data: RawDataRow<'a>,
     exhf: &Exhf,
 ) -> Result<Vec<SubRow<'a>>, nom::error::ErrorKind> {
-    let row_size: usize = exhf.row_size().try_into().unwrap();
+    let row_size: usize = exhf.row_size().into();
     let (is_multiple, wrapped_sub_row_length, values_offset) = match exhf.cardinality() {
         Cardinality::Single => {
             if row_data.sub_row_count != 1 {
@@ -29,8 +29,7 @@ pub fn parse_row<'a>(
     };
     (0..row_data.sub_row_count)
         .map(|sub_row_counter| {
-            let sub_row_start_precursor =
-                TryInto::<usize>::try_into(sub_row_counter).unwrap() * wrapped_sub_row_length;
+            let sub_row_start_precursor = usize::from(sub_row_counter) * wrapped_sub_row_length;
             let sub_row_index = if is_multiple {
                 be_u16(&row_data.data[sub_row_start_precursor..])
                     .map_err(|_: nom::Err<nom::error::Error<&'a [u8]>>| nom::error::ErrorKind::Eof)?

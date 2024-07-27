@@ -77,15 +77,18 @@ impl PackIO for RealPackIO {
 
     fn open_dat_file(&mut self, number: u8) -> Result<File, io::Error> {
         assert_eq!(self.platform_id, PlatformId::Win32);
-        File::options().read(true).write(true).create(true).open(
-            self.base.join(self.pack_id.expansion.name()).join(format!(
+        File::options()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(self.base.join(self.pack_id.expansion.name()).join(format!(
                 "{:02x}{:02x}{:02x}.win32.dat{}",
                 self.pack_id.category as u8,
                 self.pack_id.expansion as u8,
                 self.pack_id.number,
                 number
-            )),
-        )
+            )))
     }
 }
 
@@ -629,7 +632,7 @@ impl<IO: PackIO> PackSetWriter<IO> {
 
         let dat_file_record = &mut self
             .dats
-            .get_mut(usize::try_from(pointer.data_file_id).unwrap())
+            .get_mut(usize::from(pointer.data_file_id))
             .unwrap();
         let dat_file = &mut dat_file_record.file;
         dat_file.seek(SeekFrom::Start(pointer.offset.into()))?;

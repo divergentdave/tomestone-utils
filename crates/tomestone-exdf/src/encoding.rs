@@ -34,7 +34,7 @@ pub fn encode_row(row: &[SubRow], header: &Exhf, padding_offset: u32) -> Vec<u8>
     let mut data = vec![0; outer_length];
     data[..4].copy_from_slice(&inner_length.to_be_bytes());
     data[4..6].copy_from_slice(&TryInto::<u16>::try_into(row.len()).unwrap().to_be_bytes());
-    let row_size = TryInto::<usize>::try_into(header.row_size()).unwrap();
+    let row_size = usize::from(header.row_size());
     let mut fixed_data_offset = 6;
     let mut string_data_offset_relative: u32 = 0;
     let mut string_data_offset_vec = 6 + row_size * row.len();

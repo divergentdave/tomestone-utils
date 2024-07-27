@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -161,9 +159,9 @@ fn cardinality(input: &[u8]) -> IResult<&[u8], Cardinality> {
 
 pub fn parse_exhf(input: &[u8]) -> IResult<&[u8], Exhf> {
     let (input, header) = exhf_header(input)?;
-    let num_columns = TryInto::<usize>::try_into(header.num_columns).unwrap();
-    let num_pages = TryInto::<usize>::try_into(header.num_pages).unwrap();
-    let num_language_codes = TryInto::<usize>::try_into(header.num_language_codes).unwrap();
+    let num_columns = usize::from(header.num_columns);
+    let num_pages = usize::from(header.num_pages);
+    let num_language_codes = usize::from(header.num_language_codes);
     map(
         tuple((
             count(column_entry, num_columns),
