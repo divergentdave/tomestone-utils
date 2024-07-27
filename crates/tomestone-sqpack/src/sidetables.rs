@@ -177,7 +177,7 @@ fn skip_entry(
     Ok(())
 }
 
-#[allow(unused)]
+#[allow(unused, clippy::needless_borrows_for_generic_args)]
 pub fn build_side_tables(
     game_data: &GameData,
     data_file_set: &mut DataFileSet,
